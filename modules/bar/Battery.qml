@@ -109,8 +109,7 @@ Item {
     readonly property int percent: Math.round(level * 100)
     readonly property bool isCharging: batteryDevice.ready
         && (batteryDevice.state === UPowerDeviceState.Charging
-            || batteryDevice.state === UPowerDeviceState.PendingCharge
-            || batteryDevice.changeRate > 0)
+            || batteryDevice.state === UPowerDeviceState.PendingCharge)
     readonly property color fillColor: percent > 95
         ? "#30d158"
         : percent >= 50

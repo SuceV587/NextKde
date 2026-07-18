@@ -52,6 +52,23 @@ Item {
     readonly property real activeBackgroundGap: _layout.activeBackgroundGap
     readonly property int iconUnits: _layout.iconUnits
     readonly property int musicUnits: _layout.musicUnits
+    // The active top-level app drag is shared with folder delegates so they
+    // can advertise a valid drop target before release.
+    property var draggedPinnedLoader: null
+    readonly property real draggedPointerX: draggedPinnedLoader
+        ? draggedPinnedLoader.dragPointerX : -1
+    readonly property string dropFolderId: {
+        if (!draggedPinnedLoader || draggedPinnedLoader.itemData.type !== "app")
+            return ""
+        for (let i = 0; i < pinnedRepeater.count; i++) {
+            const candidate = pinnedRepeater.itemAt(i)
+            if (candidate && candidate.itemData.type === "folder"
+                    && draggedPointerX >= candidate.x
+                    && draggedPointerX <= candidate.x + candidate.width)
+                return candidate.itemData.folderId
+        }
+        return ""
+    }
 
     // ── Debug: periodic state dump ──
     property Timer _dbg: Timer {
@@ -115,6 +132,8 @@ Item {
                 property var itemData: modelData
                 property int pinnedIndex: index
                 property bool dragged: false
+                readonly property real dragPointerX: reorderDrag.active
+                    ? reorderDrag.centroid.position.x : -1
                 // Keep the Row in charge of geometry while the visual item
                 // follows the pointer above it. This leaves a clear gap at
                 // the original position and avoids fighting Row's layout.
@@ -128,7 +147,10 @@ Item {
                 // pre-folder direct DockIcon delegate did.
                 height: container.computedDockHeight
                 z: reorderDrag.active ? 10 : 0
-                scale: reorderDrag.active ? 1.10 : 1.0
+                // Once the pointer is over a folder, make the source app
+                // visibly contract as if it is being absorbed by the folder.
+                scale: reorderDrag.active
+                    ? (container.dropFolderId ? 0.68 : 1.10) : 1.0
                 opacity: reorderDrag.active ? 0.88 : 1.0
                 transformOrigin: Item.Center
                 layer.enabled: reorderDrag.active
@@ -145,9 +167,10 @@ Item {
                 sourceComponent: itemData.type === "folder"
                     ? folderDelegate : appDelegate
 
-                // A reorder is committed only on release. The Row continues
-                // to own layout, which keeps adaptive width calculation and
-                // all existing icon interactions intact during a drag.
+                // A release over a folder moves a top-level app into that
+                // folder. Any other release commits the existing reorder.
+                // The Row continues to own layout, which keeps adaptive width
+                // calculation and all existing icon interactions intact.
                 DragHandler {
                     id: reorderDrag
                     target: null
@@ -156,6 +179,7 @@ Item {
                     onActiveChanged: {
                         if (active) {
                             pinnedItemLoader.dragged = true
+                            container.draggedPinnedLoader = pinnedItemLoader
                             return
                         }
                         if (!pinnedItemLoader.dragged)
@@ -165,12 +189,20 @@ Item {
                         // handler centroid still tracks the release point in
                         // the Loader's parent (contentRow) coordinates.
                         const center = reorderDrag.centroid.position.x
+                        let destinationFolderId = ""
                         let nearestIndex = pinnedItemLoader.pinnedIndex
                         let nearestDistance = Number.POSITIVE_INFINITY
                         for (let i = 0; i < pinnedRepeater.count; i++) {
                             const candidate = pinnedRepeater.itemAt(i)
                             if (!candidate)
                                 continue
+                            if (pinnedItemLoader.itemData.type === "app"
+                                    && candidate.itemData.type === "folder"
+                                    && center >= candidate.x
+                                    && center <= candidate.x + candidate.width) {
+                                destinationFolderId = candidate.itemData.folderId
+                                break
+                            }
                             const candidateCenter = candidate.x + candidate.width / 2
                             const distance = Math.abs(center - candidateCenter)
                             if (distance < nearestDistance) {
@@ -178,13 +210,20 @@ Item {
                                 nearestIndex = i
                             }
                         }
-                        DockModelService.movePinnedItem(
-                                    pinnedItemLoader.itemData.type,
-                                    pinnedItemLoader.itemData.type === "folder"
-                                        ? pinnedItemLoader.itemData.folderId
-                                        : pinnedItemLoader.itemData.appId,
-                                    nearestIndex)
+                        if (destinationFolderId) {
+                            DockModelService.moveAppToFolder(
+                                        destinationFolderId,
+                                        pinnedItemLoader.itemData.appId)
+                        } else {
+                            DockModelService.movePinnedItem(
+                                        pinnedItemLoader.itemData.type,
+                                        pinnedItemLoader.itemData.type === "folder"
+                                            ? pinnedItemLoader.itemData.folderId
+                                            : pinnedItemLoader.itemData.appId,
+                                        nearestIndex)
+                        }
                         pinnedItemLoader.dragged = false
+                        container.draggedPinnedLoader = null
                     }
                 }
 
@@ -220,6 +259,7 @@ Item {
                             folderId: pinnedItemLoader.itemData.folderId ?? ""
                             folderName: pinnedItemLoader.itemData.name ?? "新文件夹"
                             apps: pinnedItemLoader.itemData.apps ?? []
+                            dropTarget: container.dropFolderId === folderId
                         }
                     }
                 }

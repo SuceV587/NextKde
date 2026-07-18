@@ -2,8 +2,8 @@ import QtQuick
 import Quickshell.Widgets
 
 // DockFolderIcon — compact folder tile for the first folder vertical slice.
-// It intentionally owns no editing or drag state yet; those arrive in the
-// Dock edit-mode step after the read-only folder popup is validated.
+// It owns only its local drop-target presentation; DockContainer decides
+// whether the current top-level app drag is over this folder.
 
 Item {
     id: folderIcon
@@ -13,6 +13,7 @@ Item {
     property string folderId: ""
     property string folderName: "新文件夹"
     property var apps: []
+    property bool dropTarget: false
 
     readonly property real iconSlotSize: iconSize + activeBackgroundGap * 2
     readonly property real activeBackgroundRadius: iconSize * 0.3
@@ -20,13 +21,26 @@ Item {
     width: iconSlotSize
     height: iconSlotSize
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+    transformOrigin: Item.Center
+    scale: dropTarget ? 1.08 : 1.0
+    z: dropTarget ? 8 : 0
+    Behavior on scale {
+        NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+    }
 
     Rectangle {
         anchors.fill: parent
         radius: folderIcon.activeBackgroundRadius
-        color: Qt.rgba(1, 1, 1, 0.10)
+        color: folderIcon.dropTarget
+            ? Qt.rgba(1, 1, 1, 0.28)
+            : Qt.rgba(1, 1, 1, 0.10)
         border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.18)
+        border.color: folderIcon.dropTarget
+            ? Qt.rgba(1, 1, 1, 0.70)
+            : Qt.rgba(1, 1, 1, 0.18)
+        Behavior on color {
+            ColorAnimation { duration: 120 }
+        }
     }
 
     // Compact 3x3 preview of the first nine members. The tighter inset keeps
