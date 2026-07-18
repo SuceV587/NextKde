@@ -33,46 +33,71 @@ QtObject {
     }
 
     function _refreshPinned() {
-        const ids = ConfigService.pinnedAppIds || [];
+        const dockItems = ConfigService.dockItems || [];
         const items = [];
-        for (let i = 0; i < ids.length; i++) {
-            const identity = AppIdentityService.resolve(ids[i]);
-            const windows = WindowService.windowsForApp(identity.desktopId);
+        for (let i = 0; i < dockItems.length; i++) {
+            const dockItem = dockItems[i];
 
-            // iPadOS-style policy: a pinned app never moves. Runtime state is
-            // visual metadata (dot + active background), not a reason to
-            // remove its stable launcher position from the Dock.
-            items.push({
-                appId: identity.desktopId,
-                desktopId: identity.desktopId,
-                name: identity.name || ids[i],
-                icon: identity.iconSource,
-                isRunning: windows.length > 0,
-                isActivated: windows.some(window => window.toplevel.activated),
-            });
+            if (dockItem.type === "app") {
+                const identity = AppIdentityService.resolve(dockItem.appId);
+                const windows = WindowService.windowsForApp(identity.desktopId);
+                items.push({
+                    type: "app",
+                    appId: identity.desktopId,
+                    desktopId: identity.desktopId,
+                    name: identity.name || dockItem.appId,
+                    icon: identity.iconSource,
+                    isRunning: windows.length > 0,
+                    isActivated: windows.some(window => window.toplevel.activated),
+                });
+                continue;
+            }
+
+            if (dockItem.type === "folder") {
+                const folderApps = [];
+                for (let j = 0; j < dockItem.appIds.length; j++) {
+                    const identity = AppIdentityService.resolve(dockItem.appIds[j]);
+                    folderApps.push({
+                        appId: identity.desktopId,
+                        name: identity.name || dockItem.appIds[j],
+                        icon: identity.iconSource,
+                    });
+                }
+                items.push({
+                    type: "folder",
+                    folderId: dockItem.id,
+                    name: dockItem.name,
+                    apps: folderApps,
+                });
+            }
         }
         svc.pinnedItems = items;
         svc.pinnedCount = items.length;
     }
 
-    function _isPinnedApp(appId) {
-        const ids = ConfigService.pinnedAppIds || [];
-        for (let i = 0; i < ids.length; i++) {
-            if (AppIdentityService.sameApp(ids[i], appId))
+    // Only a top-level pinned app owns its fixed Dock slot exclusively.
+    // Apps inside folders are members of an aggregate launcher, but their
+    // live windows still belong in the separate windows section.
+    function _isTopLevelPinnedApp(appId) {
+        const items = ConfigService.dockItems || [];
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.type === "app"
+                    && AppIdentityService.sameApp(item.appId, appId))
                 return true;
         }
         return false;
     }
 
     function _refreshWindowItems() {
-        // A pinned app is represented once, in its fixed Dock location. Its
-        // individual windows deliberately stay available in WindowService for
-        // window previews, Alt+Tab, and future Stage Manager UI.
+        // A top-level pinned app is represented once, in its fixed Dock
+        // location. Folder members are intentionally not filtered here, so
+        // their live windows appear in the separate windows section.
         const records = WindowService.records || [];
         svc.windowModel.clear();
         for (let i = 0; i < records.length; i++) {
             const record = records[i];
-            if (_isPinnedApp(record.identity.desktopId))
+            if (_isTopLevelPinnedApp(record.identity.desktopId))
                 continue;
 
             svc.windowModel.append({
@@ -107,6 +132,9 @@ QtObject {
 
     property Connections _configConnections: Connections {
         target: ConfigService
+        function onDockItemsChanged() {
+            svc._refreshPresentation();
+        }
         function onPinnedAppIdsChanged() {
             svc._refreshPresentation();
         }
@@ -179,6 +207,55 @@ QtObject {
         if (!ConfigService.removeAppItem(wanted))
             return;
         console.log("[DockModel] unpin app=" + wanted
+                    + " items=" + JSON.stringify(ConfigService.dockItems));
+        svc._refreshPresentation();
+    }
+
+    function movePinnedItem(type, key, targetIndex) {
+        if (!ConfigService.moveDockItem(type, key, targetIndex))
+            return
+        console.log("[DockModel] reorder " + type + "=" + key
+                    + " target=" + targetIndex)
+        svc._refreshPresentation()
+    }
+
+    function renameFolder(folderId, newName) {
+        if (!ConfigService.renameFolder(folderId, newName))
+            return;
+        console.log("[DockModel] rename folder=" + folderId
+                    + " name=" + newName);
+        svc._refreshPresentation();
+    }
+
+    function dissolveFolder(folderId) {
+        if (!ConfigService.dissolveFolder(folderId))
+            return;
+        console.log("[DockModel] dissolve folder=" + folderId);
+        svc._refreshPresentation();
+    }
+
+    function removeAppFromFolder(folderId, appId) {
+        if (!ConfigService.removeAppFromFolder(folderId, appId))
+            return;
+        console.log("[DockModel] remove folder member folder=" + folderId
+                    + " app=" + appId);
+        svc._refreshPresentation();
+    }
+
+    function moveAppToFolder(folderId, appId) {
+        const identity = AppIdentityService.resolve(appId)
+        if (!ConfigService.moveAppToFolder(folderId, identity.desktopId))
+            return;
+        console.log("[DockModel] move app into folder=" + folderId
+                    + " app=" + identity.desktopId);
+        svc._refreshPresentation();
+    }
+
+    function createFolderWithApp(appId) {
+        const identity = AppIdentityService.resolve(appId);
+        if (!ConfigService.createFolderWithApp(identity.desktopId))
+            return;
+        console.log("[DockModel] create folder app=" + identity.desktopId
                     + " items=" + JSON.stringify(ConfigService.dockItems));
         svc._refreshPresentation();
     }

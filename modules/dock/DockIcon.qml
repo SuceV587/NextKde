@@ -180,6 +180,9 @@ Item {
             case "unpin":
                 DockModelService.unpinApp(icon.appId)
                 break
+            case "createFolder":
+                DockModelService.createFolderWithApp(icon.appId)
+                break
             case "activate":
                 DockModelService.activateWindow(icon.windowId)
                 break
@@ -191,6 +194,11 @@ Item {
                 break
             case "pin":
                 DockModelService.pinApp(icon.appId)
+                break
+            default:
+                const prefix = "moveToFolder:"
+                if (name.indexOf(prefix) === 0)
+                    DockModelService.moveAppToFolder(name.slice(prefix.length), icon.appId)
                 break
             }
         }

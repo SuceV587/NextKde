@@ -15,33 +15,37 @@ PopupWindow {
 
     signal action(string name)
 
-    readonly property var entries: isWindow ? [
-        {
-            name: "activate",
-            label: "激活窗口"
-        },
-        {
-            name: "minimize",
-            label: "最小化"
-        },
-        {
-            name: "close",
-            label: "关闭窗口"
-        },
-        {
-            name: "pin",
-            label: "固定此应用"
-        },
-    ] : [
-        {
-            name: "open",
-            label: "打开"
-        },
-        {
-            name: "unpin",
-            label: "取消固定"
-        },
-    ]
+    readonly property var folderEntries: {
+        const entries = []
+        const items = ConfigService.dockItems || []
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+            if (item.type === "folder") {
+                entries.push({
+                    name: "moveToFolder:" + item.id,
+                    label: "移入「" + item.name + "」",
+                })
+            }
+        }
+        return entries
+    }
+
+    readonly property var entries: {
+        if (isWindow) {
+            return [
+                { name: "activate", label: "激活窗口" },
+                { name: "minimize", label: "最小化" },
+                { name: "close", label: "关闭窗口" },
+                { name: "pin", label: "固定此应用" },
+            ]
+        }
+        return [
+            { name: "open", label: "打开" },
+            { name: "createFolder", label: "新建文件夹并移入" },
+        ].concat(folderEntries).concat([
+            { name: "unpin", label: "取消固定" },
+        ])
+    }
 
     // PopupWindow derives its size from implicit dimensions. Using width /
     // height here triggers a deprecation warning in newer Quickshell builds.
@@ -75,7 +79,7 @@ PopupWindow {
     Rectangle {
         anchors.fill: parent
         radius: 8
-        color: Qt.rgba(0.08, 0.08, 0.10, 0.78)
+        color: Qt.rgba(0.08, 0.08, 0.10, 0.9)
         // border.width: 1
         // border.color: Qt.rgba(1, 1, 1, 0.12)
 

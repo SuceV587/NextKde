@@ -10,6 +10,9 @@ DockIcon 1.0 DockIcon.qml
 DockDivider 1.0 DockDivider.qml
 DockMusicPlayer 1.0 DockMusicPlayer.qml
 DockContextMenu 1.0 DockContextMenu.qml
+DockFolderIcon 1.0 DockFolderIcon.qml
+DockFolderMenu 1.0 DockFolderMenu.qml
+DockFolderContextMenu 1.0 DockFolderContextMenu.qml
 
 # ── Singletons (QML type name matches code usage) ──
 singleton DockAnimation 1.0 DockAnimation.qml

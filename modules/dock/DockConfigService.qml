@@ -38,9 +38,9 @@ QtObject {
     // Optional per-app icon overrides keyed by canonical desktop ID.
     // Example: { "code.desktop": "/path/to/custom.svg" }
     property var iconOverrides:   ({})
-    // `dockItems` is the canonical, ordered Dock configuration. Phase 1 only
-    // renders `app` entries, but the persisted shape also reserves `folder`
-    // entries for the later folder/editor/drag-and-drop phases.
+    // `dockItems` is the canonical, ordered Dock configuration. App and
+    // folder entries are now rendered; editing and drag-and-drop arrive in
+    // later increments.
     //
     // App item:    { type: "app",    appId: "code.desktop" }
     // Folder item: { type: "folder", id: "dev", name: "开发",
@@ -54,7 +54,8 @@ QtObject {
     // Compatibility projection for the current Dock UI and AppGroupService.
     // Never edit this directly in new code: use setDockItems/addAppItem/
     // removeAppItem so future folder and drag operations have one source of
-    // truth. It contains only top-level app entries in dockItems.
+    // truth. It contains every app ID represented by a top-level app or
+    // folder, so existing runtime window filtering continues to work.
     property var pinnedAppIds: [
         "org.kde.dolphin.desktop",
         "org.kde.kate.desktop",
@@ -128,6 +129,9 @@ QtObject {
             const item = items[i]
             if (item.type === "app")
                 ids.push(item.appId)
+            else if (item.type === "folder")
+                for (let j = 0; j < item.appIds.length; j++)
+                    ids.push(item.appIds[j])
         }
         return ids
     }
@@ -151,11 +155,40 @@ QtObject {
         if (typeof appId !== "string" || !appId.length)
             return false
         const items = _normalizeDockItems(svc.dockItems)
-        for (let i = 0; i < items.length; i++) {
-            if (items[i].type === "app" && items[i].appId === appId)
-                return false
-        }
+        if (_pinnedIdsFromDockItems(items).indexOf(appId) >= 0)
+            return false
         items.push({ type: "app", appId: appId })
+        const changed = setDockItems(items)
+        if (changed)
+            scheduleSave()
+        return changed
+    }
+
+    // Reorder one top-level Dock entry without changing any folder members.
+    // `sourceKey` deliberately uses the persisted identifier so this remains
+    // stable even while application metadata is still resolving.
+    function moveDockItem(sourceType, sourceKey, targetIndex) {
+        const items = _normalizeDockItems(svc.dockItems)
+        let sourceIndex = -1
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+            if ((sourceType === "app" && item.type === "app" && item.appId === sourceKey)
+                    || (sourceType === "folder" && item.type === "folder" && item.id === sourceKey)) {
+                sourceIndex = i
+                break
+            }
+        }
+
+        if (sourceIndex < 0)
+            return false
+
+        const destination = Math.max(0, Math.min(items.length - 1,
+                                                   Math.round(targetIndex)))
+        if (sourceIndex === destination)
+            return false
+
+        const moved = items.splice(sourceIndex, 1)[0]
+        items.splice(destination, 0, moved)
         const changed = setDockItems(items)
         if (changed)
             scheduleSave()
@@ -164,14 +197,193 @@ QtObject {
 
     function removeAppItem(appId) {
         const items = _normalizeDockItems(svc.dockItems)
-        const remaining = items.filter(item =>
-            !(item.type === "app" && item.appId === appId))
-        if (remaining.length === items.length)
+        const remaining = []
+        let removed = false
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+            if (item.type === "app" && item.appId === appId) {
+                removed = true
+                continue
+            }
+            if (item.type === "folder" && item.appIds.indexOf(appId) >= 0) {
+                const appIds = item.appIds.filter(id => id !== appId)
+                removed = true
+                if (appIds.length > 0)
+                    remaining.push({
+                        type: "folder", id: item.id, name: item.name, appIds: appIds
+                    })
+                continue
+            }
+            remaining.push(item)
+        }
+        if (!removed)
             return false
         const changed = setDockItems(remaining)
         if (changed)
             scheduleSave()
         return changed
+    }
+
+    function renameFolder(folderId, newName) {
+        const name = String(newName ?? "").trim()
+        if (!name.length)
+            return false
+
+        const items = _normalizeDockItems(svc.dockItems)
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+            if (item.type !== "folder" || item.id !== folderId)
+                continue
+
+            if (item.name === name)
+                return false
+            items[i] = {
+                type: "folder",
+                id: item.id,
+                name: name,
+                appIds: item.appIds,
+            }
+            const changed = setDockItems(items)
+            if (changed)
+                scheduleSave()
+            return changed
+        }
+        return false
+    }
+
+    // Replace one folder in place with its ordered app entries.
+    function dissolveFolder(folderId) {
+        const items = _normalizeDockItems(svc.dockItems)
+        const result = []
+        let dissolved = false
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+            if (item.type !== "folder" || item.id !== folderId) {
+                result.push(item)
+                continue
+            }
+
+            for (let j = 0; j < item.appIds.length; j++)
+                result.push({ type: "app", appId: item.appIds[j] })
+            dissolved = true
+        }
+        if (!dissolved)
+            return false
+
+        const changed = setDockItems(result)
+        if (changed)
+            scheduleSave()
+        return changed
+    }
+
+    // Move one member out of a folder, keeping it immediately after the
+    // folder. A folder with no remaining members is removed naturally.
+    function removeAppFromFolder(folderId, appId) {
+        const items = _normalizeDockItems(svc.dockItems)
+        const result = []
+        let moved = false
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+            if (item.type !== "folder" || item.id !== folderId) {
+                result.push(item)
+                continue
+            }
+
+            const remaining = []
+            let movedId = ""
+            for (let j = 0; j < item.appIds.length; j++) {
+                const candidate = item.appIds[j]
+                if (!moved && AppIdentityService.sameApp(candidate, appId)) {
+                    moved = true
+                    movedId = candidate
+                } else {
+                    remaining.push(candidate)
+                }
+            }
+            if (!movedId) {
+                result.push(item)
+                continue
+            }
+            if (remaining.length > 0) {
+                result.push({
+                    type: "folder", id: item.id, name: item.name, appIds: remaining
+                })
+            }
+            result.push({ type: "app", appId: movedId })
+        }
+        if (!moved)
+            return false
+
+        const changed = setDockItems(result)
+        if (changed)
+            scheduleSave()
+        return changed
+    }
+
+    // Move one top-level app into an existing folder without changing the
+    // folder's Dock position or the order of its existing members.
+    function moveAppToFolder(folderId, appId) {
+        const items = _normalizeDockItems(svc.dockItems)
+        let sourceId = ""
+        let target = null
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+            if (item.type === "app" && AppIdentityService.sameApp(item.appId, appId))
+                sourceId = item.appId
+            if (item.type === "folder" && item.id === folderId)
+                target = item
+        }
+        if (!sourceId || !target)
+            return false
+        if (target.appIds.some(id => AppIdentityService.sameApp(id, sourceId)))
+            return false
+
+        const result = []
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+            if (item.type === "app" && AppIdentityService.sameApp(item.appId, sourceId))
+                continue
+            if (item.type === "folder" && item.id === folderId) {
+                result.push({
+                    type: "folder",
+                    id: item.id,
+                    name: item.name,
+                    appIds: item.appIds.concat([sourceId]),
+                })
+                continue
+            }
+            result.push(item)
+        }
+
+        const changed = setDockItems(result)
+        if (changed)
+            scheduleSave()
+        return changed
+    }
+
+    // Phase 2A creation action. The app stays at the same Dock position, now
+    // represented by a folder item containing it. A stable generated ID is
+    // enough until the editor phase adds user-selected names and IDs.
+    function createFolderWithApp(appId) {
+        const items = _normalizeDockItems(svc.dockItems)
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+            if (item.type === "folder" && item.appIds.indexOf(appId) >= 0)
+                return false
+            if (item.type === "app" && item.appId === appId) {
+                items[i] = {
+                    type: "folder",
+                    id: "folder-" + Date.now(),
+                    name: "新文件夹",
+                    appIds: [appId],
+                }
+                const changed = setDockItems(items)
+                if (changed)
+                    scheduleSave()
+                return changed
+            }
+        }
+        return false
     }
 
     // ═══════════════════════════════════════════════════════════
