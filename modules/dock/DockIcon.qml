@@ -21,6 +21,10 @@ Item {
     property string displayName: ""
     property string appId:       ""
     property string windowId:    ""
+    // `isRunning` is visual runtime state. `isWindowItem` identifies which
+    // context-menu actions are valid, because a pinned running app has no
+    // single windowId even though it displays a running indicator.
+    property bool   isWindowItem: false
     property bool   isRunning:   false
     property bool   isActivated: false
     property string bounceKey:   ""     // empty = never bounce
@@ -122,6 +126,22 @@ Item {
         asynchronous: true
     }
 
+    // iPadOS-style running marker. It lives in the pre-reserved icon slot, so
+    // toggling it never changes Row width, Dock height, or adaptive layout.
+    Rectangle {
+        id: runningIndicator
+        // 42px icon -> 4px dot. Keep a 3px lower bound at compact widths.
+        width: Math.max(3, Math.round(icon.iconSize * 0.10))
+        height: width
+        radius: width / 2
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        color: Qt.rgba(1, 1, 1, 0.88)
+        // The active/hover-style background already communicates the focused
+        // running app, so showing both markers would be redundant.
+        visible: icon.isRunning && !icon.showActiveBackground
+    }
+
     // ═══════════════════════════════════════════════════════════
     // Interaction
     // ═══════════════════════════════════════════════════════════
@@ -143,7 +163,7 @@ Item {
 
     DockContextMenu {
         id: contextMenu
-        isWindow: icon.isRunning
+        isWindow: icon.isWindowItem
         appId: icon.appId
         windowId: icon.windowId
         anchorItem: icon

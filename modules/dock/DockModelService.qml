@@ -14,11 +14,14 @@ QtObject {
 
     property var pinnedItems: []
     property int pinnedCount: 0
-    readonly property ListModel windowModel: WindowService.windowModel
-    readonly property int windowCount: WindowService.windowCount
+    // Presentation-only window list. WindowService keeps every live window;
+    // this model hides windows whose app already has a stable pinned icon.
+    // Keeping that policy here lets Alt+Tab and future Stage Manager views use
+    // the complete WindowService model without inheriting Dock decisions.
+    property ListModel windowModel: ListModel {}
+    readonly property int windowCount: windowModel.count
 
     property var _bouncedKeys: ({})
-    property string _pinStateCache: ""
 
     function shouldBounce(key) {
         if (!key)
@@ -29,66 +32,90 @@ QtObject {
         return true;
     }
 
-    function _pinnedStateKey() {
-        const ids = ConfigService.pinnedAppIds || [];
-        const running = [];
-        for (let i = 0; i < ids.length; i++) {
-            const desktopId = AppIdentityService.canonicalId(ids[i]);
-            running.push(WindowService.windowsForApp(desktopId).length > 0 ? "1" : "0");
-        }
-        return ids.join(",") + "|" + running.join("");
-    }
-
     function _refreshPinned() {
-        const stateKey = _pinnedStateKey();
-        if (stateKey === svc._pinStateCache)
-            return;
-        svc._pinStateCache = stateKey;
-
         const ids = ConfigService.pinnedAppIds || [];
         const items = [];
         for (let i = 0; i < ids.length; i++) {
             const identity = AppIdentityService.resolve(ids[i]);
             const windows = WindowService.windowsForApp(identity.desktopId);
 
-            // Current Dock policy: an app is represented by its live window(s)
-            // while running, and by its pinned launcher only when closed.
-            if (windows.length > 0)
-                continue;
-
+            // iPadOS-style policy: a pinned app never moves. Runtime state is
+            // visual metadata (dot + active background), not a reason to
+            // remove its stable launcher position from the Dock.
             items.push({
                 appId: identity.desktopId,
                 desktopId: identity.desktopId,
                 name: identity.name || ids[i],
                 icon: identity.iconSource,
-                isRunning: false,
-                isActivated: false,
+                isRunning: windows.length > 0,
+                isActivated: windows.some(window => window.toplevel.activated),
             });
         }
         svc.pinnedItems = items;
         svc.pinnedCount = items.length;
     }
 
+    function _isPinnedApp(appId) {
+        const ids = ConfigService.pinnedAppIds || [];
+        for (let i = 0; i < ids.length; i++) {
+            if (AppIdentityService.sameApp(ids[i], appId))
+                return true;
+        }
+        return false;
+    }
+
+    function _refreshWindowItems() {
+        // A pinned app is represented once, in its fixed Dock location. Its
+        // individual windows deliberately stay available in WindowService for
+        // window previews, Alt+Tab, and future Stage Manager UI.
+        const records = WindowService.records || [];
+        svc.windowModel.clear();
+        for (let i = 0; i < records.length; i++) {
+            const record = records[i];
+            if (_isPinnedApp(record.identity.desktopId))
+                continue;
+
+            svc.windowModel.append({
+                windowId: record.windowId,
+                desktopId: record.identity.desktopId,
+                appId: record.identity.desktopId,
+                rawAppId: record.identity.rawAppId,
+                title: record.title,
+                icon: record.identity.iconSource,
+                isActivated: record.toplevel.activated || false,
+                isMinimized: record.toplevel.minimized || false,
+                isFullscreen: record.toplevel.fullscreen || false,
+            });
+        }
+    }
+
+    function _refreshPresentation() {
+        _refreshPinned();
+        _refreshWindowItems();
+        const runningPinned = svc.pinnedItems.filter(item => item.isRunning).length;
+        console.log("[DockModel] presentation pinned=" + svc.pinnedCount
+                    + " runningPinned=" + runningPinned
+                    + " unpinnedWindows=" + svc.windowCount);
+    }
+
     property Connections _windowConnections: Connections {
         target: WindowService
         function onRevisionChanged() {
-            svc._refreshPinned();
+            svc._refreshPresentation();
         }
     }
 
     property Connections _configConnections: Connections {
         target: ConfigService
         function onPinnedAppIdsChanged() {
-            svc._pinStateCache = "";
-            svc._refreshPinned();
+            svc._refreshPresentation();
         }
     }
 
     property Connections _identityConnections: Connections {
         target: AppIdentityService
         function onRevisionChanged() {
-            svc._pinStateCache = "";
-            svc._refreshPinned();
+            svc._refreshPresentation();
         }
     }
 
@@ -140,37 +167,21 @@ QtObject {
 
     function pinApp(appId) {
         const identity = AppIdentityService.resolve(appId);
-        const ids = (ConfigService.pinnedAppIds || []).slice();
-        for (let i = 0; i < ids.length; i++) {
-            if (AppIdentityService.sameApp(ids[i], identity.desktopId))
-                return;
-        }
-        ids.push(identity.desktopId);
-        ConfigService.pinnedAppIds = ids;
+        if (!ConfigService.addAppItem(identity.desktopId))
+            return;
         console.log("[DockModel] pin app=" + identity.desktopId
-                    + " pinned=" + JSON.stringify(ids));
-        ConfigService.scheduleSave();
-        svc._pinStateCache = "";
-        svc._refreshPinned();
+                    + " items=" + JSON.stringify(ConfigService.dockItems));
+        svc._refreshPresentation();
     }
 
     function unpinApp(appId) {
         const wanted = AppIdentityService.canonicalId(appId);
-        const ids = (ConfigService.pinnedAppIds || []).slice();
-        const remaining = [];
-        for (let i = 0; i < ids.length; i++) {
-            if (!AppIdentityService.sameApp(ids[i], wanted))
-                remaining.push(ids[i]);
-        }
-        if (remaining.length === ids.length)
+        if (!ConfigService.removeAppItem(wanted))
             return;
-        ConfigService.pinnedAppIds = remaining;
         console.log("[DockModel] unpin app=" + wanted
-                    + " pinned=" + JSON.stringify(remaining));
-        ConfigService.scheduleSave();
-        svc._pinStateCache = "";
-        svc._refreshPinned();
+                    + " items=" + JSON.stringify(ConfigService.dockItems));
+        svc._refreshPresentation();
     }
 
-    Component.onCompleted: _refreshPinned()
+    Component.onCompleted: _refreshPresentation()
 }

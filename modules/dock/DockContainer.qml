@@ -116,6 +116,7 @@ Item {
                 isRunning: modelData.isRunning ?? false
                 isActivated: modelData.isActivated ?? false
                 appId: modelData.appId ?? ""
+                isWindowItem: false
                 bounceKey: ""   // pinned never bounce
                 // Use the delegate's stable appId property instead of reading
                 // modelData again inside the signal handler. This keeps the
@@ -145,6 +146,7 @@ Item {
                 isActivated: model.isActivated ?? false
                 appId: model.appId ?? ""
                 windowId: model.windowId ?? ""
+                isWindowItem: true
                 bounceKey: model.windowId ?? ""
                 onActivate: DockModelService.activateWindow(model.windowId ?? "")
             }

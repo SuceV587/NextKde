@@ -38,9 +38,23 @@ QtObject {
     // Optional per-app icon overrides keyed by canonical desktop ID.
     // Example: { "code.desktop": "/path/to/custom.svg" }
     property var iconOverrides:   ({})
-    // Pinned entries are shown only while the corresponding app has no open
-    // window. Once a window exists, the window section is the single visible
-    // representation of that app until all its windows are closed.
+    // `dockItems` is the canonical, ordered Dock configuration. Phase 1 only
+    // renders `app` entries, but the persisted shape also reserves `folder`
+    // entries for the later folder/editor/drag-and-drop phases.
+    //
+    // App item:    { type: "app",    appId: "code.desktop" }
+    // Folder item: { type: "folder", id: "dev", name: "开发",
+    //                appIds: ["code.desktop", "org.kde.kate.desktop"] }
+    property var dockItems: [
+        { type: "app", appId: "org.kde.dolphin.desktop" },
+        { type: "app", appId: "org.kde.kate.desktop" },
+        { type: "app", appId: "code.desktop" },
+    ]
+
+    // Compatibility projection for the current Dock UI and AppGroupService.
+    // Never edit this directly in new code: use setDockItems/addAppItem/
+    // removeAppItem so future folder and drag operations have one source of
+    // truth. It contains only top-level app entries in dockItems.
     property var pinnedAppIds: [
         "org.kde.dolphin.desktop",
         "org.kde.kate.desktop",
@@ -70,21 +84,114 @@ QtObject {
     function scheduleSave() { _saveTimer.restart() }
 
     // ═══════════════════════════════════════════════════════════
+    // Dock item model — Phase 1 persistence API
+    // ═══════════════════════════════════════════════════════════
+    function _normalizeDockItems(rawItems) {
+        const normalized = []
+        const items = Array.isArray(rawItems) ? rawItems : []
+
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+            if (!item || typeof item !== "object")
+                continue
+
+            if (item.type === "app" && typeof item.appId === "string"
+                    && item.appId.length > 0) {
+                normalized.push({ type: "app", appId: item.appId })
+                continue
+            }
+
+            // Folder entries are preserved now even though their visual
+            // representation lands in a later incremental change. Keeping
+            // them here makes persistence forward-compatible and prevents a
+            // newer configuration from silently losing user data.
+            if (item.type === "folder" && typeof item.id === "string"
+                    && item.id.length > 0) {
+                const appIds = Array.isArray(item.appIds)
+                    ? item.appIds.filter(appId => typeof appId === "string" && appId.length > 0)
+                    : []
+                normalized.push({
+                    type: "folder",
+                    id: item.id,
+                    name: typeof item.name === "string" && item.name.length > 0
+                        ? item.name : item.id,
+                    appIds: appIds,
+                })
+            }
+        }
+        return normalized
+    }
+
+    function _pinnedIdsFromDockItems(items) {
+        const ids = []
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+            if (item.type === "app")
+                ids.push(item.appId)
+        }
+        return ids
+    }
+
+    // All future editor and drag operations must go through this transaction.
+    // It updates the legacy projection atomically, so the current Dock cannot
+    // observe a half-updated configuration while the model is being extended.
+    function setDockItems(rawItems) {
+        const items = _normalizeDockItems(rawItems)
+        const before = JSON.stringify(svc.dockItems)
+        const after = JSON.stringify(items)
+        if (before === after)
+            return false
+
+        svc.dockItems = items
+        svc.pinnedAppIds = _pinnedIdsFromDockItems(items)
+        return true
+    }
+
+    function addAppItem(appId) {
+        if (typeof appId !== "string" || !appId.length)
+            return false
+        const items = _normalizeDockItems(svc.dockItems)
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type === "app" && items[i].appId === appId)
+                return false
+        }
+        items.push({ type: "app", appId: appId })
+        const changed = setDockItems(items)
+        if (changed)
+            scheduleSave()
+        return changed
+    }
+
+    function removeAppItem(appId) {
+        const items = _normalizeDockItems(svc.dockItems)
+        const remaining = items.filter(item =>
+            !(item.type === "app" && item.appId === appId))
+        if (remaining.length === items.length)
+            return false
+        const changed = setDockItems(remaining)
+        if (changed)
+            scheduleSave()
+        return changed
+    }
+
+    // ═══════════════════════════════════════════════════════════
     // Persistence — write JSON via shell process
     // ═══════════════════════════════════════════════════════════
     function _doSave() {
         const obj = {
-            version: 1,
+            version: 2,
             baseHeight:    svc.baseHeight,
             maxWidthRatio: svc.maxWidthRatio,
             theme:         svc.theme,
             iconOverrides: svc.iconOverrides,
+            dockItems:     svc.dockItems,
+            // Kept for one compatibility release. New code reads dockItems.
             pinnedAppIds:  svc.pinnedAppIds,
             proportions:   svc.proportions,
         }
         const json = JSON.stringify(obj, null, 2)
         console.log("[DockConfig] save requested path=" + svc.configPath
-                    + " pinned=" + JSON.stringify(obj.pinnedAppIds))
+                    + " items=" + JSON.stringify(obj.dockItems))
 
         // Pass the directory and JSON as separate process arguments. The old
         // implementation called write() before exec() while stdinEnabled was
@@ -168,7 +275,19 @@ QtObject {
         if (obj.maxWidthRatio !== undefined) svc.maxWidthRatio = obj.maxWidthRatio
         if (obj.theme        !== undefined) svc.theme        = obj.theme
         if (obj.iconOverrides !== undefined) svc.iconOverrides = obj.iconOverrides
-        if (obj.pinnedAppIds !== undefined) svc.pinnedAppIds  = obj.pinnedAppIds
+
+        if (obj.dockItems !== undefined) {
+            setDockItems(obj.dockItems)
+        } else if (obj.pinnedAppIds !== undefined) {
+            // Version 1 migration: retain the order of the old flat list,
+            // then write version 2 after loading. This migration is safe to
+            // repeat because dockItems wins once it exists on disk.
+            setDockItems(obj.pinnedAppIds.map(appId => ({
+                type: "app", appId: appId,
+            })))
+            console.log("[DockConfig] migrated pinnedAppIds to dockItems")
+            scheduleSave()
+        }
         if (obj.proportions  !== undefined) svc.proportions   = obj.proportions
     }
 
