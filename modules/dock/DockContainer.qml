@@ -52,9 +52,13 @@ Item {
     readonly property real activeBackgroundGap: _layout.activeBackgroundGap
     readonly property int iconUnits: _layout.iconUnits
     readonly property int musicUnits: _layout.musicUnits
+    // Long press enters the persistent iPadOS-like edit state. A real drag
+    // also enables it transiently, so direct drag remains available.
+    property bool editMode: false
     // The active top-level app drag is shared with folder delegates so they
     // can advertise a valid drop target before release.
     property var draggedPinnedLoader: null
+    readonly property bool isEditing: editMode || draggedPinnedLoader !== null
     readonly property real draggedPointerX: draggedPinnedLoader
         ? draggedPinnedLoader.dragPointerX : -1
     readonly property string dropFolderId: {
@@ -68,6 +72,26 @@ Item {
                 return candidate.itemData.folderId
         }
         return ""
+    }
+    // Nearest top-level slot for the in-progress reorder preview. Folder
+    // targets take priority, so no icons are pushed aside while dropping.
+    readonly property int dragInsertIndex: {
+        if (!draggedPinnedLoader || dropFolderId)
+            return -1
+        let nearestIndex = draggedPinnedLoader.pinnedIndex
+        let nearestDistance = Number.POSITIVE_INFINITY
+        for (let i = 0; i < pinnedRepeater.count; i++) {
+            const candidate = pinnedRepeater.itemAt(i)
+            if (!candidate)
+                continue
+            const distance = Math.abs(draggedPointerX
+                                      - (candidate.x + candidate.width / 2))
+            if (distance < nearestDistance) {
+                nearestDistance = distance
+                nearestIndex = i
+            }
+        }
+        return nearestIndex
     }
 
     // ── Debug: periodic state dump ──
@@ -112,6 +136,37 @@ Item {
         }
     }
 
+    // Quickshell cannot observe clicks delivered to another Wayland surface,
+    // but it can observe when the pointer leaves this Dock surface. That is
+    // the non-invasive equivalent of tapping away from an iPadOS edit state.
+    HoverHandler {
+        enabled: container.editMode && !container.draggedPinnedLoader
+        onHoveredChanged: {
+            if (!hovered)
+                container.editMode = false
+        }
+    }
+
+    // This sits behind the delegates, so it only receives clicks in the Dock
+    // gaps. It provides a natural way to leave the persistent edit state.
+    MouseArea {
+        anchors.fill: parent
+        z: -1
+        enabled: container.editMode && !container.draggedPinnedLoader
+        onClicked: container.editMode = false
+    }
+
+    // A Dock panel cannot receive pointer events from the rest of the
+    // desktop. WindowService does observe focus changes, which lets an edit
+    // session end naturally when the user clicks any other application.
+    Connections {
+        target: WindowService
+        function onActiveWindowIdChanged() {
+            if (container.editMode)
+                container.editMode = false
+        }
+    }
+
     Row {
         id: contentRow
         anchors.verticalCenter: parent.verticalCenter
@@ -132,14 +187,33 @@ Item {
                 property var itemData: modelData
                 property int pinnedIndex: index
                 property bool dragged: false
+                property real lastDragOffsetX: 0
                 readonly property real dragPointerX: reorderDrag.active
-                    ? reorderDrag.centroid.position.x : -1
+                    ? pinnedItemLoader.x + pinnedItemLoader.width / 2
+                      + reorderDrag.translation.x : -1
                 // Keep the Row in charge of geometry while the visual item
                 // follows the pointer above it. This leaves a clear gap at
                 // the original position and avoids fighting Row's layout.
                 property real dragOffsetX: reorderDrag.active
-                    ? reorderDrag.centroid.position.x - reorderDrag.centroid.pressPosition.x
+                    ? reorderDrag.translation.x
                     : 0
+                readonly property real reorderOffsetX: {
+                    const source = container.draggedPinnedLoader
+                    const destination = container.dragInsertIndex
+                    if (!source || source === pinnedItemLoader || destination < 0)
+                        return 0
+                    const slotStep = pinnedItemLoader.width + container.itemSpacing
+                    if (destination < source.pinnedIndex
+                            && pinnedItemLoader.pinnedIndex >= destination
+                            && pinnedItemLoader.pinnedIndex < source.pinnedIndex)
+                        return slotStep
+                    if (destination > source.pinnedIndex
+                            && pinnedItemLoader.pinnedIndex <= destination
+                            && pinnedItemLoader.pinnedIndex > source.pinnedIndex)
+                        return -slotStep
+                    return 0
+                }
+                property real visualOffsetX: dragOffsetX + reorderOffsetX
                 width: container.iconSize + container.activeBackgroundGap * 2
                 // Row places delegates at y=0. Give the Loader the complete
                 // Dock height so DockIcon/DockFolderIcon can keep anchoring
@@ -154,9 +228,12 @@ Item {
                 opacity: reorderDrag.active ? 0.88 : 1.0
                 transformOrigin: Item.Center
                 layer.enabled: reorderDrag.active
-                transform: Translate { x: pinnedItemLoader.dragOffsetX }
-                Behavior on dragOffsetX {
-                    NumberAnimation { duration: 70; easing.type: Easing.OutCubic }
+                transform: Translate { x: pinnedItemLoader.visualOffsetX }
+                Behavior on visualOffsetX {
+                    // The dragged source follows immediately. Neighbours ease
+                    // out of the way as the candidate insertion slot changes.
+                    enabled: pinnedItemLoader !== container.draggedPinnedLoader
+                    NumberAnimation { duration: 240; easing.type: Easing.Linear }
                 }
                 Behavior on scale {
                     NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
@@ -179,16 +256,20 @@ Item {
                     onActiveChanged: {
                         if (active) {
                             pinnedItemLoader.dragged = true
+                            pinnedItemLoader.lastDragOffsetX = 0
                             container.draggedPinnedLoader = pinnedItemLoader
                             return
                         }
                         if (!pinnedItemLoader.dragged)
                             return
 
-                        // With target:null the Loader stays in the Row; the
-                        // handler centroid still tracks the release point in
-                        // the Loader's parent (contentRow) coordinates.
-                        const center = reorderDrag.centroid.position.x
+                        // `translation` is measured from this Loader's start
+                        // position, so it gives the actual visual centre in
+                        // contentRow coordinates without centroid-space
+                        // ambiguity.
+                        const center = pinnedItemLoader.x
+                                + pinnedItemLoader.width / 2
+                                + pinnedItemLoader.lastDragOffsetX
                         let destinationFolderId = ""
                         let nearestIndex = pinnedItemLoader.pinnedIndex
                         let nearestDistance = Number.POSITIVE_INFINITY
@@ -225,6 +306,13 @@ Item {
                         pinnedItemLoader.dragged = false
                         container.draggedPinnedLoader = null
                     }
+                    // DragHandler clears translation during deactivation,
+                    // before onActiveChanged(false) runs. Keep the final
+                    // non-zero value for the release transaction above.
+                    onTranslationChanged: {
+                        if (active)
+                            pinnedItemLoader.lastDragOffsetX = translation.x
+                    }
                 }
 
                 Component {
@@ -244,6 +332,9 @@ Item {
                             appId: pinnedItemLoader.itemData.appId ?? ""
                             isWindowItem: false
                             bounceKey: ""   // pinned never bounce
+                            editMode: container.isEditing
+                            isDragging: reorderDrag.active
+                            onRequestEdit: container.editMode = true
                             onActivate: DockModelService.activateApp(appId)
                         }
                     }
@@ -260,6 +351,9 @@ Item {
                             folderName: pinnedItemLoader.itemData.name ?? "新文件夹"
                             apps: pinnedItemLoader.itemData.apps ?? []
                             dropTarget: container.dropFolderId === folderId
+                            editMode: container.isEditing
+                            isDragging: reorderDrag.active
+                            onRequestEdit: container.editMode = true
                         }
                     }
                 }
@@ -289,7 +383,10 @@ Item {
                 windowId: model.windowId ?? ""
                 isWindowItem: true
                 bounceKey: model.windowId ?? ""
-                onActivate: DockModelService.activateWindow(model.windowId ?? "")
+                onActivate: {
+                    container.editMode = false
+                    DockModelService.activateWindow(model.windowId ?? "")
+                }
             }
         }
 

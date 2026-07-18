@@ -28,6 +28,10 @@ Item {
     property bool   isRunning:   false
     property bool   isActivated: false
     property string bounceKey:   ""     // empty = never bounce
+    // Pinned delegates enable this while a sibling is being dragged. Window
+    // icons intentionally leave it false.
+    property bool   editMode: false
+    property bool   isDragging: false
     // This is proportional to iconSize (3px when iconSize is 44px). It is
     // also included in AdaptiveMath, so the active background never overlaps
     // a neighbour or makes the real Row wider than the calculated width.
@@ -40,7 +44,9 @@ Item {
     readonly property bool showActiveBackground: isRunning && isActivated
 
     signal activate()
+    signal requestEdit()
     property bool _menuOpen: false
+    property bool _heldForEdit: false
 
     // Reserve the background's outer slot for every app icon. Only the active
     // window paints it; reserving the slot prevents focus changes from moving
@@ -102,6 +108,28 @@ Item {
         }
     }
 
+    // iPadOS-style edit-state wiggle. The held icon stays steady so it reads
+    // as the object under direct manipulation rather than a background item.
+    SequentialAnimation {
+        id: editWiggle
+        running: icon.editMode && !icon.isDragging
+        loops: Animation.Infinite
+        NumberAnimation {
+            target: icon; property: "rotation"
+            from: -3.4; to: 3.4; duration: 105
+            easing.type: Easing.InOutSine
+        }
+        NumberAnimation {
+            target: icon; property: "rotation"
+            from: 3.4; to: -3.4; duration: 115
+            easing.type: Easing.InOutSine
+        }
+        onRunningChanged: {
+            if (!running)
+                icon.rotation = 0
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════
     // Icon image
     // ═══════════════════════════════════════════════════════════
@@ -151,10 +179,15 @@ Item {
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         cursorShape: Qt.PointingHandCursor
+        onPressed: icon._heldForEdit = false
+        onPressAndHold: {
+            icon._heldForEdit = true
+            icon.requestEdit()
+        }
         onClicked: function(mouse) {
             if (mouse.button === Qt.RightButton)
                 icon._menuOpen = true
-            else
+            else if (!icon._heldForEdit)
                 icon.activate()
         }
         onEntered: icon._hovering = true

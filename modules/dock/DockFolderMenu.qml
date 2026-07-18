@@ -2,9 +2,9 @@ import QtQuick
 import Quickshell
 import Quickshell.Widgets
 
-// Read-only folder popup. Editing, rename, reorder, and drag-and-drop are
-// intentionally separate future steps so this surface remains easy to test.
-
+// Keep the folder surface deliberately local to its tile. A direct item
+// anchor is reliable across Dock relayouts and lets PopupWindow handle focus
+// and dismissal without coordinating a second global panel surface.
 PopupWindow {
     id: menu
 

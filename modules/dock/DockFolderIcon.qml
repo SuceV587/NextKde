@@ -14,6 +14,11 @@ Item {
     property string folderName: "新文件夹"
     property var apps: []
     property bool dropTarget: false
+    property bool editMode: false
+    property bool isDragging: false
+    property bool _heldForEdit: false
+
+    signal requestEdit()
 
     readonly property real iconSlotSize: iconSize + activeBackgroundGap * 2
     readonly property real activeBackgroundRadius: iconSize * 0.3
@@ -26,6 +31,25 @@ Item {
     z: dropTarget ? 8 : 0
     Behavior on scale {
         NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+    }
+    SequentialAnimation {
+        id: editWiggle
+        running: folderIcon.editMode && !folderIcon.isDragging
+        loops: Animation.Infinite
+        NumberAnimation {
+            target: folderIcon; property: "rotation"
+            from: -3.4; to: 3.4; duration: 105
+            easing.type: Easing.InOutSine
+        }
+        NumberAnimation {
+            target: folderIcon; property: "rotation"
+            from: 3.4; to: -3.4; duration: 115
+            easing.type: Easing.InOutSine
+        }
+        onRunningChanged: {
+            if (!running)
+                folderIcon.rotation = 0
+        }
     }
 
     Rectangle {
@@ -71,11 +95,18 @@ Item {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         cursorShape: Qt.PointingHandCursor
+        onPressed: folderIcon._heldForEdit = false
+        onPressAndHold: {
+            folderIcon._heldForEdit = true
+            folderIcon.requestEdit()
+        }
         onClicked: function(mouse) {
             if (mouse.button === Qt.RightButton) {
                 folderContextMenu.visible = true
                 return
             }
+            if (folderIcon._heldForEdit)
+                return
             folderMenu.visible = true
         }
     }
