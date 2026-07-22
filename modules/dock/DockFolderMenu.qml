@@ -1,6 +1,8 @@
 import QtQuick
 import Quickshell
+import Quickshell.Wayland
 import Quickshell.Widgets
+import qs.modules.common
 
 // Keep the folder surface deliberately local to its tile. A direct item
 // anchor is reliable across Dock relayouts and lets PopupWindow handle focus
@@ -31,10 +33,12 @@ PopupWindow {
         margins.top: -8
     }
 
-    Rectangle {
+    LiquidGlassSurface {
+        id: background
         anchors.fill: parent
         radius: 8
-        color: Qt.rgba(0.08, 0.08, 0.10, 0.9)
+        baseColor: ThemeService.backgroundColor
+        surfaceOpacity: 0.72
 
         Text {
             id: title
@@ -45,7 +49,7 @@ PopupWindow {
             leftPadding: 8
             verticalAlignment: Text.AlignVCenter
             text: menu.folderName
-            color: "white"
+            color: ThemeService.foregroundColor
             font.pixelSize: 13
         }
 
@@ -88,5 +92,12 @@ PopupWindow {
                 }
             }
         }
+    }
+
+    // PopupWindow is a separate Wayland surface, so it needs its own region.
+    // Reuse the Dock's colour and rounded mask for the same glass treatment.
+    BackgroundEffect.blurRegion: RoundedBlurRegion {
+        item: background
+        radius: background.radius
     }
 }
