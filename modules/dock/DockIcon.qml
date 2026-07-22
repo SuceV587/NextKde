@@ -185,6 +185,9 @@ Item {
             icon.requestEdit()
         }
         onClicked: function(mouse) {
+            console.log("[DockIcon] click window=" + icon.isWindowItem
+                        + " windowId=" + icon.windowId
+                        + " appId=" + icon.appId);
             if (mouse.button === Qt.RightButton)
                 icon._menuOpen = true
             else if (!icon._heldForEdit)

@@ -46,7 +46,7 @@ QtObject {
                     appId: identity.desktopId,
                     desktopId: identity.desktopId,
                     name: identity.name || dockItem.appId,
-                    icon: identity.iconSource,
+                    icon: windows[0]?.iconSource ?? identity.iconSource,
                     isRunning: windows.length > 0,
                     isActivated: windows.some(window => window.toplevel.activated),
                 });
@@ -57,10 +57,11 @@ QtObject {
                 const folderApps = [];
                 for (let j = 0; j < dockItem.appIds.length; j++) {
                     const identity = AppIdentityService.resolve(dockItem.appIds[j]);
+                    const windows = WindowService.windowsForApp(identity.desktopId);
                     folderApps.push({
                         appId: identity.desktopId,
                         name: identity.name || dockItem.appIds[j],
-                        icon: identity.iconSource,
+                        icon: windows[0]?.iconSource ?? identity.iconSource,
                     });
                 }
                 items.push({
@@ -94,33 +95,47 @@ QtObject {
         // location. Folder members are intentionally not filtered here, so
         // their live windows appear in the separate windows section.
         const records = WindowService.records || [];
-        svc.windowModel.clear();
+        const nextItems = [];
         for (let i = 0; i < records.length; i++) {
             const record = records[i];
             if (_isTopLevelPinnedApp(record.identity.desktopId))
                 continue;
 
-            svc.windowModel.append({
+            nextItems.push({
                 windowId: record.windowId,
                 desktopId: record.identity.desktopId,
                 appId: record.identity.desktopId,
                 rawAppId: record.identity.rawAppId,
                 title: record.title,
-                icon: record.identity.iconSource,
+                icon: record.iconSource ?? record.identity.iconSource,
                 isActivated: record.toplevel.activated || false,
                 isMinimized: record.toplevel.minimized || false,
                 isFullscreen: record.toplevel.fullscreen || false,
             });
+        }
+
+        while (svc.windowModel.count > nextItems.length)
+            svc.windowModel.remove(svc.windowModel.count - 1);
+
+        for (let i = 0; i < nextItems.length; i++) {
+            const item = nextItems[i];
+            if (i >= svc.windowModel.count) {
+                svc.windowModel.append(item);
+                continue;
+            }
+            const row = svc.windowModel.get(i);
+            const keys = Object.keys(item);
+            for (let j = 0; j < keys.length; j++) {
+                const key = keys[j];
+                if (row[key] !== item[key])
+                    svc.windowModel.setProperty(i, key, item[key]);
+            }
         }
     }
 
     function _refreshPresentation() {
         _refreshPinned();
         _refreshWindowItems();
-        const runningPinned = svc.pinnedItems.filter(item => item.isRunning).length;
-        console.log("[DockModel] presentation pinned=" + svc.pinnedCount
-                    + " runningPinned=" + runningPinned
-                    + " unpinnedWindows=" + svc.windowCount);
     }
 
     property Connections _windowConnections: Connections {

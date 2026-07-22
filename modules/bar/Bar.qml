@@ -8,7 +8,7 @@ PanelWindow {
 
     color: "transparent"
     exclusionMode: ExclusionMode.Normal
-    implicitHeight: 22
+    implicitHeight: 28
     exclusiveZone: implicitHeight
 
     anchors {
@@ -17,9 +17,9 @@ PanelWindow {
         right: true
     }
     margins {
-        top: 2
-        left: 16
-        right: 16
+        top: 0
+        left: 25
+        right: 25
     }
 
     SystemClock {

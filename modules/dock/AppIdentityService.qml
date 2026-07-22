@@ -42,6 +42,11 @@ QtObject {
         const value = String(candidate ?? "").trim();
         if (!value)
             return "";
+        // IconImage treats a bare absolute path as qrc:/... . Local files
+        // must be an explicit file URL, otherwise a successfully found icon
+        // still renders as the fallback placeholder.
+        if (value.startsWith("/"))
+            return "file://" + value;
         if (_isDirectIconSource(value))
             return value;
 
@@ -217,6 +222,7 @@ QtObject {
             if (icon)
                 break;
         }
+        const hasPreferredIcon = !!icon;
         if (!icon)
             icon = _iconPath("application-x-executable");
 
@@ -226,6 +232,8 @@ QtObject {
             rawAppId: raw,
             name: entry?.name ?? raw,
             iconSource: icon,
+            hasIconOverride: !!_iconPath(override),
+            hasPreferredIcon: hasPreferredIcon,
             entry: entry,
         };
         if (cacheKey)
