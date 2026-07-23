@@ -1,3 +1,4 @@
 module qs.modules.common
 RoundedBlurRegion 1.0 RoundedBlurRegion.qml
 LiquidGlassSurface 1.0 LiquidGlassSurface.qml
+ArtworkPalette 1.0 ArtworkPalette.qml

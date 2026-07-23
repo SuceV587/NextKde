@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 import Quickshell.Services.Mpris
+import qs.modules.common
 
 // ────────────────────────────────────────────────────────────────
 // DockMusicPlayer — Music player widget sized in icon-width units.
@@ -30,6 +31,10 @@ Item {
     // ── Player reference ──
     readonly property var player: DockMprisService.activePlayer
 
+    function artworkTint(color, alpha) {
+        return Qt.rgba(color.r, color.g, color.b, alpha)
+    }
+
     // The content itself is exactly iconSize high. The outer slot includes
     // the same 0.1*iconSize margin used by active app backgrounds, and this
     // extra width is included by AdaptiveMath during width fitting.
@@ -57,8 +62,28 @@ Item {
         width: widget.width
         height: widget.iconSize + widget.backgroundGap * 2
         radius: widget.iconSize * 0.3
-        color: Qt.rgba(0, 0, 0, 0.5)
+        color: "transparent"
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop {
+                position: 0.0
+                color: widget.artworkTint(artworkPalette.primary, 0.82)
+            }
+            GradientStop {
+                position: 0.52
+                color: widget.artworkTint(artworkPalette.secondary, 0.64)
+            }
+            GradientStop {
+                position: 1.0
+                color: widget.artworkTint(artworkPalette.primary, 0.38)
+            }
+        }
         z: -1
+    }
+
+    ArtworkPalette {
+        id: artworkPalette
+        source: widget.player?.trackArtUrl ?? ""
     }
 
     Row {

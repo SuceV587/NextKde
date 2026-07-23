@@ -54,6 +54,14 @@ PanelWindow {
             anchors.fill: parent
             radius: dockContainer.pillRadius
             baseColor: ThemeService.backgroundColor
+            ambientPrimary: WallpaperPaletteService.primary
+            ambientSecondary: WallpaperPaletteService.secondary
+            // Kept visibly above the base glass tint so a wallpaper switch is
+            // perceptible while the desktop still reads through the surface.
+            // Keep the previous tint visible while the next wallpaper is
+            // being quantized. Gating this on `ready` briefly removed the
+            // tint and made each wallpaper switch look like a flash.
+            ambientStrength: 0.82
         }
 
         // Adaptive layout engine
