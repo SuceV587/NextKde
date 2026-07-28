@@ -15,7 +15,10 @@ QtObject {
     // Keep this aligned with shell.qml's primaryScreen selection.
     readonly property int preferredScreen: Quickshell.screens.length > 1 ? 1 : 0
     property url wallpaperUrl: ""
-    property bool _refreshing: false
+    // Keep a QML-owned reference to each read process. A local JavaScript
+    // reference can be collected before its exit callback on some reloads,
+    // which leaves the old boolean guard permanently set.
+    property var _refreshProcess: null
     readonly property color primary: palette.primary
     readonly property color secondary: palette.secondary
     readonly property bool ready: palette.ready
@@ -76,14 +79,17 @@ QtObject {
     }
 
     function refresh() {
-        if (_refreshing)
+        if (_refreshProcess)
             return
-        _refreshing = true
         const proc = _processFactory.createObject(svc, {
             command: ["sh", "-c", "cat \"$1\"", "wallpaper-palette-read", configPath],
         })
+        _refreshProcess = proc
+        _refreshWatchdog.restart()
         proc.exited.connect(function(code) {
-            svc._refreshing = false
+            svc._refreshWatchdog.stop()
+            if (svc._refreshProcess === proc)
+                svc._refreshProcess = null
             const output = proc.stdout?.text ?? ""
             if (code === 0)
                 svc._readWallpaperText(output)
@@ -92,6 +98,21 @@ QtObject {
             proc.destroy()
         })
         proc.running = true
+    }
+
+    property Timer _refreshWatchdog: Timer {
+        interval: 1500
+        repeat: false
+        onTriggered: {
+            const proc = svc._refreshProcess
+            if (!proc)
+                return
+            console.warn("[WallpaperPalette] config reader stalled; retrying")
+            svc._refreshProcess = null
+            proc.running = false
+            proc.destroy()
+            svc.refresh()
+        }
     }
 
     property Component _processFactory: Component {
@@ -111,6 +132,9 @@ QtObject {
     property ArtworkPalette _palette: ArtworkPalette {
         id: palette
         source: svc.wallpaperUrl
+        // LiquidGlassSurface owns the slow visual transition for wallpaper
+        // adaptation. Keep the palette value immediate and unambiguous.
+        transitionDuration: 0
     }
 
     property Connections _paletteLog: Connections {

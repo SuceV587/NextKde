@@ -30,6 +30,8 @@ Item {
 
     // ── Player reference ──
     readonly property var player: DockMprisService.activePlayer
+    property bool detailsHovered: false
+    property bool musicPopupRequested: false
 
     function artworkTint(color, alpha) {
         return Qt.rgba(color.r, color.g, color.b, alpha)
@@ -49,6 +51,60 @@ Item {
         NumberAnimation {
             duration: DockAnimation.musicExpandDuration
             easing.type: DockAnimation.musicExpandEasing
+        }
+    }
+
+    // The compact Dock player stays compact. Hover opens an independent
+    // PopupWindow above it so detailed controls never affect adaptive sizing.
+    HoverHandler {
+        id: musicHover
+        onHoveredChanged: {
+            if (hovered) {
+                musicPopupRequested = true
+                musicPopupCloseDelay.stop()
+                musicPopupOpenDelay.restart()
+            } else if (!musicPopup.pointerInside) {
+                musicPopupOpenDelay.stop()
+                musicPopupCloseDelay.restart()
+            }
+        }
+    }
+
+    Timer {
+        id: musicPopupOpenDelay
+        interval: 420
+        repeat: false
+        onTriggered: {
+            if (!musicHover.hovered || !widget.player)
+                return
+            DockModelService.openDockPopup(musicPopup)
+        }
+    }
+
+    Timer {
+        id: musicPopupCloseDelay
+        interval: 260
+        repeat: false
+        onTriggered: {
+            if (!musicHover.hovered && !musicPopup.pointerInside)
+                musicPopup.visible = false
+        }
+    }
+
+    DockMusicPopup {
+        id: musicPopup
+        anchorItem: widget
+        player: widget.player
+        onPointerInsideChanged: {
+            if (pointerInside) {
+                musicPopupCloseDelay.stop()
+            } else if (!musicHover.hovered) {
+                musicPopupCloseDelay.restart()
+            }
+        }
+        onVisibleChanged: {
+            if (!visible)
+                DockModelService.releaseDockPopup(musicPopup)
         }
     }
 
@@ -190,7 +246,10 @@ Item {
 
                     SequentialAnimation on scrollOffset {
                         id: trackScroll
-                        running: trackMarquee.width > trackViewport.width
+                        // Avoid continuous full-scene rendering while the
+                        // Dock is idle. Long metadata scrolls on demand.
+                        running: widget.detailsHovered
+                            && trackMarquee.width > trackViewport.width
                         loops: Animation.Infinite
 
                         PauseAnimation { duration: 1200 }
@@ -209,6 +268,12 @@ Item {
                                 trackMarquee.scrollOffset = 0;
                         }
                     }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onContainsMouseChanged: widget.detailsHovered = containsMouse
                 }
             }
 
@@ -237,52 +302,95 @@ Item {
     // Mini playback buttons
     // ═══════════════════════════════════════════════════════════
 
-    // Previous button
-    component DockPrevBtn: Text {
+    // A small, self-contained material is what gives iOS-style controls
+    // their liquid feel: the Dock window provides the real backdrop blur,
+    // while these circles provide a translucent body, specular top edge and
+    // press depth. The play button is deliberately one step larger.
+    component DockControlButton: Item {
+        id: control
         property bool enabled: true
-        text: "⏮"  // ⏮
-        font.pixelSize: Math.max(14, widget.iconSize * 0.35)
-        color: enabled ? ThemeService.foregroundColor : ThemeService.dividerColor
-        opacity: enabled ? 1.0 : 0.3
+        property bool primary: false
+        property string symbol: ""
+        property var trigger: null
+        property bool hovered: false
+        property bool pressed: false
+
+        width: primary ? Math.max(25, widget.iconSize * 0.58)
+                       : Math.max(21, widget.iconSize * 0.49)
+        height: width
+        opacity: enabled ? 1.0 : 0.35
+        scale: pressed ? 0.90 : (hovered ? 1.06 : 1.0)
         anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+
+        Behavior on scale {
+            NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: width / 2
+            border.width: 1
+            border.color: Qt.rgba(1, 1, 1, ThemeService.isDark ? 0.24 : 0.56)
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop {
+                    position: 0
+                    color: widget.artworkTint(artworkPalette.primary,
+                        primary ? 0.76 : 0.52)
+                }
+                GradientStop {
+                    position: 0.45
+                    color: Qt.rgba(1, 1, 1, primary ? 0.25 : 0.16)
+                }
+                GradientStop {
+                    position: 1
+                    color: Qt.rgba(0, 0, 0, primary ? 0.32 : 0.22)
+                }
+            }
+
+            Text {
+                anchors.centerIn: parent
+                anchors.horizontalCenterOffset: symbol === "▶" ? 1 : 0
+                text: symbol
+                color: enabled ? ThemeService.foregroundColor : ThemeService.dividerColor
+                style: Text.Outline
+                styleColor: Qt.rgba(0, 0, 0, 0.30)
+                font.pixelSize: primary ? Math.max(14, widget.iconSize * 0.34)
+                                        : Math.max(11, widget.iconSize * 0.27)
+                font.weight: Font.DemiBold
+            }
+        }
+
         MouseArea {
             anchors.fill: parent
-            cursorShape: parent.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            enabled: parent.enabled
-            onClicked: DockMprisService.previous()
+            hoverEnabled: true
+            cursorShape: control.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            enabled: control.enabled
+            onContainsMouseChanged: control.hovered = containsMouse
+            onPressed: control.pressed = true
+            onReleased: control.pressed = false
+            onCanceled: control.pressed = false
+            onClicked: {
+                if (control.trigger)
+                    control.trigger()
+            }
         }
     }
 
-    // Play/Pause button
-    component DockPlayBtn: Text {
-        property bool enabled: true
+    component DockPrevBtn: DockControlButton {
+        symbol: "⏮"
+        trigger: DockMprisService.previous
+    }
+
+    component DockPlayBtn: DockControlButton {
         property bool isPlaying: false
-        text: isPlaying ? "⏸" : "▶"  // ⏸ or ▶
-        font.pixelSize: Math.max(16, widget.iconSize * 0.40)
-        color: enabled ? ThemeService.foregroundColor : ThemeService.dividerColor
-        opacity: enabled ? 1.0 : 0.3
-        anchors.verticalCenter: parent ? parent.verticalCenter : undefined
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: parent.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            enabled: parent.enabled
-            onClicked: DockMprisService.togglePlayPause()
-        }
+        primary: true
+        symbol: isPlaying ? "⏸" : "▶"
+        trigger: DockMprisService.togglePlayPause
     }
 
-    // Next button
-    component DockNextBtn: Text {
-        property bool enabled: true
-        text: "⏭"  // ⏭
-        font.pixelSize: Math.max(14, widget.iconSize * 0.35)
-        color: enabled ? ThemeService.foregroundColor : ThemeService.dividerColor
-        opacity: enabled ? 1.0 : 0.3
-        anchors.verticalCenter: parent ? parent.verticalCenter : undefined
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: parent.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            enabled: parent.enabled
-            onClicked: DockMprisService.next()
-        }
+    component DockNextBtn: DockControlButton {
+        symbol: "⏭"
+        trigger: DockMprisService.next
     }
 }

@@ -1,0 +1,158 @@
+uniform vec3 tintColor;
+uniform float tintGray;
+uniform float tintStrength;
+uniform int autoTintAlpha;
+uniform vec3 glowColor;
+uniform float glowStrength;
+uniform int edgeLighting;
+
+uniform float edgeSizePixels;
+uniform float refractionStrength;
+uniform float refractionNormalPow;
+uniform float refractionRGBFringing;
+uniform float refractionOffsetStrength;
+uniform float refractionBevelIntensity;
+uniform int physicallyBasedRefraction;
+
+float roundedRectangleDist(vec2 p, vec2 b, vec4 cornerRadius)
+{
+    float r = p.x > 0.0
+        ? (p.y > 0.0 ? cornerRadius.y : cornerRadius.w)
+        : (p.y > 0.0 ? cornerRadius.x : cornerRadius.z);
+    vec2 q = abs(p) - b + r;
+    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+}
+
+struct GlassFragment {
+    vec4 color;
+    float dist;
+    float edgeFactor;
+    float concaveFactor;
+    vec3 normal;
+    float ior;
+};
+
+#include "snells-glass.glsl"
+
+vec4 roundedRectangle(vec2 fragCoord, vec3 color, vec4 cornerRadius)
+{
+    vec2 halfblurSize = blurSize * 0.5;
+    vec2 p = fragCoord - halfblurSize;
+    float dist = roundedRectangleDist(p, halfblurSize, cornerRadius);
+
+    if (dist <= 0.0) {
+        return vec4(color, 1.0);
+    }
+
+    float s = smoothstep(0.0, 1.0, dist);
+    return vec4(color, mix(1.0, 0.0, s));
+}
+
+GlassFragment glassRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadius, float dist, float edgeFactor, float concaveFactor)
+{
+    const float h = 1.0;
+    vec2 gradient = vec2(
+            roundedRectangleDist(position + vec2(h, 0), halfBlurSize, cornerRadius) - roundedRectangleDist(position - vec2(h, 0), halfBlurSize, cornerRadius),
+            roundedRectangleDist(position + vec2(0, h), halfBlurSize, cornerRadius) - roundedRectangleDist(position - vec2(0, h), halfBlurSize, cornerRadius)
+    );
+
+    vec2 normal = length(gradient) > 0.0 ? -normalize(gradient) : vec2(0.0, 1.0);
+
+    float finalStrength = min(0.4 * concaveFactor * refractionStrength, 1.0);
+
+    vec2 refractOffsetG = -normal.xy * finalStrength;
+    vec2 refractOffsetR = -normal.xy * finalStrength;
+    vec2 refractOffsetB = -normal.xy * finalStrength;
+
+    // Different refraction offsets for each color channel
+    float fringingFactor = refractionRGBFringing * 0.3;
+    if (fringingFactor > 0.0) {
+        // Red bends most
+        refractOffsetR = -normal.xy * (finalStrength * (1.0 + fringingFactor));
+        // Blue bends least
+        refractOffsetB = -normal.xy * (finalStrength * (1.0 - fringingFactor));
+    }
+
+    vec2 coordR = clamp(uv - refractOffsetR, 0.0, 1.0);
+    vec2 coordG = clamp(uv - refractOffsetG, 0.0, 1.0);
+    vec2 coordB = clamp(uv - refractOffsetB, 0.0, 1.0);
+
+    vec4 color = vec4(
+        texture(texUnit, coordR).r,
+        texture(texUnit, coordG).g,
+        texture(texUnit, coordB).b,
+        texture(texUnit, coordG).a
+    );
+    return GlassFragment(color, dist, edgeFactor, concaveFactor, vec3(0.0, 0.0, 1.0), 1.0);
+}
+
+vec3 glassOutline(vec2 position, GlassFragment s)
+{
+    float rimMask = clamp(0.25 * s.concaveFactor, 0.0, glowStrength);
+    vec3 glow = mix(s.color.rgb, glowColor, rimMask);
+    if (edgeLighting == 1) {
+        glow += (s.color.rgb * s.concaveFactor);
+    }
+
+    if (glowStrength > 0.0) {
+        float edgeMask = smoothstep(0.0, -2.0, s.dist);
+        float borderInner = smoothstep(-1.0, -3.0, s.dist);
+        float edgeProfile = edgeMask - borderInner;
+        float thicknessShadow = pow(edgeProfile, 0.9);
+        float shadowMask = smoothstep(blurSize.y * 0.7, -blurSize.y * 0.7, position.y) *
+                           smoothstep(blurSize.x * 0.7, -blurSize.x * 0.7, position.x);
+        float highlightMask = smoothstep(-blurSize.y * 0.7, blurSize.y * 0.7, position.y) *
+                              smoothstep(-blurSize.x * 0.7, blurSize.x * 0.7, position.x);
+
+        glow = mix(glow, vec3(1.0), thicknessShadow * shadowMask);
+        glow = mix(glow, vec3(1.0), thicknessShadow * highlightMask);
+    }
+
+    return glow;
+}
+
+float adjustedTintStrength(float baseTintStrength, vec3 backgroundColor)
+{
+    float strength = clamp(baseTintStrength, 0.0, 1.0);
+
+    const vec3 grayscaleWeights = vec3(0.299, 0.587, 0.114);
+    float backgroundGray = dot(backgroundColor, grayscaleWeights);
+
+    float finalScale = clamp(abs(backgroundGray - tintGray), 0.0, 1.0);
+
+    float localStrength = strength * finalScale;
+    float useLocal = step(0.5, float(autoTintAlpha)) * step(0.001, strength);
+
+    return mix(strength, localStrength, useLocal);
+}
+
+vec4 glass(vec4 sum, vec4 cornerRadius)
+{
+    vec2 halfBlurSize = blurSize * 0.5;
+    float minHalfSize = min(halfBlurSize.x, halfBlurSize.y);
+
+    vec2 position = uv * blurSize - halfBlurSize.xy;
+    float dist = roundedRectangleDist(position, halfBlurSize, cornerRadius);
+
+    if (dist >= 0.0) {
+        return sum;
+    }
+
+    float minEsp = clamp(edgeSizePixels, 0.1, minHalfSize * 0.9);
+    float edgeFactor = 1.0 - clamp(abs(dist) / minEsp, 0.0, 1.0);
+    float concaveFactor = 1.0 - sqrt(1.0 - pow(smoothstep(0.0, 1.0, edgeFactor), refractionNormalPow));
+
+    GlassFragment s;
+    if (refractionStrength > 0.0) {
+        vec4 r = clamp(cornerRadius * 2.0, min(64.0, minHalfSize), min(128.0, minHalfSize));
+        s = physicallyBasedRefraction == 0
+            ? glassRefraction(position, halfBlurSize, r, dist, edgeFactor, concaveFactor)
+            : snellsRefraction(position, halfBlurSize, r, minHalfSize, dist, edgeFactor, concaveFactor);
+    } else {
+        s = GlassFragment(sum, dist, edgeFactor, concaveFactor, vec3(0.0, 0.0, 1.0), 1.0);
+    }
+
+    vec3 rgb = s.concaveFactor < 1.0 ? glassOutline(position, s) : s.color.rgb;
+    vec3 tinted = mix(rgb, tintColor, adjustedTintStrength(tintStrength, rgb));
+    return roundedRectangle(uv * blurSize, tinted, cornerRadius);
+}

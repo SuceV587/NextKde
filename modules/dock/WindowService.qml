@@ -29,28 +29,32 @@ QtObject {
     property var _kwinWindows: []
     property bool _kwinReceivedInitialSnapshot: false
     property var _pendingKwinActivation: null
-    property int _kwinBridgeOutputLength: 0
-    // StdioCollector can deliver one newline-delimited bridge event in more
-    // than one chunk. Keep the incomplete tail until its terminating newline
-    // arrives instead of attempting to parse partial JSON.
-    property string _kwinBridgePendingLine: ""
     property bool _kwinScriptStarted: false
+    property var _thumbnailUrlsByHandle: ({})
+    property var _thumbnailPendingByHandle: ({})
+    // A QML binding can depend on this counter to observe a map entry update.
+    property int thumbnailRevision: 0
+    readonly property bool _kwinBridgeEnabled: true
     readonly property string _kwinBridgePath:
-        Quickshell.shellDir + "/tools/kwin-window-bridge/build/quickshell-kwin-window-bridge"
+        "/usr/local/libexec/quickshell-kwin-window-bridge"
     readonly property string _kwinScriptPath:
         Quickshell.shellDir + "/tools/kwin-window-bridge/kwin/contents/code/main.js"
 
     property Process _kwinBridge: Process {
         command: [svc._kwinBridgePath]
-        running: true
+        running: svc._kwinBridgeEnabled
         // Persistent low-latency command channel to the local bridge. The
         // bridge forwards KWin snapshots and receives commands on stdin.
         stdinEnabled: true
-        stdout: StdioCollector {
-            waitForEnd: false
-            onTextChanged: svc._consumeKwinBridgeOutput(text)
+        // A StdioCollector retains the complete stream forever. This bridge
+        // is long-lived and emits a snapshot/event stream, so that would make
+        // each new event copy an ever-growing string. SplitParser delivers
+        // one line at a time and keeps only its incomplete tail.
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: data => svc._consumeKwinBridgeLine(data)
         }
-        stderr: StdioCollector { waitForEnd: false }
+        stderr: SplitParser { splitMarker: "\n" }
         onExited: function(code) {
             if (code !== 0)
                 console.log("[WindowService] KWin bridge unavailable code=" + code)
@@ -72,8 +76,12 @@ QtObject {
 
             property Connections changeConnection: Connections {
                 target: toplevelDelegate.toplevel
+                // Not every foreign-toplevel implementation exposes urgent;
+                // ignore that optional signal while observing it when present.
+                ignoreUnknownSignals: true
                 function onActivatedChanged() { svc._scheduleUpdate() }
                 function onMinimizedChanged() { svc._scheduleUpdate() }
+                function onDemandsAttentionChanged() { svc._scheduleUpdate() }
                 function onTitleChanged() { svc._scheduleUpdate() }
                 function onAppIdChanged() { svc._scheduleUpdate() }
                 function onClosed() { svc._scheduleUpdate() }
@@ -166,6 +174,8 @@ QtObject {
             && left.identity.desktopId === right.identity.desktopId
             && left.identity.rawAppId === right.identity.rawAppId
             && left.iconSource === right.iconSource
+            && left.pid === right.pid
+            && !!left.isUrgent === !!right.isUrgent
             && !!left.toplevel.activated === !!right.toplevel.activated
             && !!left.toplevel.minimized === !!right.toplevel.minimized
             && !!left.toplevel.fullscreen === !!right.toplevel.fullscreen;
@@ -179,9 +189,11 @@ QtObject {
             rawAppId: record.identity.rawAppId,
             title: record.title,
             icon: record.iconSource,
+            pid: record.pid,
             isActivated: record.toplevel.activated || false,
             isMinimized: record.toplevel.minimized || false,
             isFullscreen: record.toplevel.fullscreen || false,
+            isUrgent: !!record.isUrgent,
         };
         const keys = Object.keys(values);
         for (let i = 0; i < keys.length; i++) {
@@ -206,6 +218,7 @@ QtObject {
                 activated: !!source.activated,
                 minimized: !!source.minimized,
                 fullscreen: !!source.fullscreen,
+                pid: Number(source.pid || 0),
                 appId: source.appId || "",
                 title: source.title || ""
             } : source;
@@ -216,14 +229,22 @@ QtObject {
             // take precedence over that authoritative themed result.
             const iconSource = useKwin && source.iconPath && !identity.hasIconOverride
                 ? "file://" + source.iconPath : identity.iconSource;
+            // zwlr-foreign-toplevel does not require an urgency field, so
+            // read it defensively. KWin's bridge always provides `urgent`.
+            let foreignUrgent = false;
+            if (!useKwin) {
+                try { foreignUrgent = !!source.demandsAttention; } catch (e) {}
+            }
             const record = {
                 windowId: old?.windowId ?? _newWindowId(),
                 toplevel: toplevel,
                 provider: provider,
                 handleId: handleId,
                 identity: identity,
+                pid: Number(toplevel.pid || 0),
                 iconSource: iconSource,
                 title: toplevel.title || identity.name || identity.desktopId,
+                isUrgent: useKwin ? !!source.urgent : foreignUrgent,
             };
             nextRecords.push(record);
             nextById[record.windowId] = record;
@@ -254,9 +275,11 @@ QtObject {
                     rawAppId: record.identity.rawAppId,
                     title: record.title,
                     icon: record.iconSource,
+                    pid: record.pid,
                     isActivated: record.toplevel.activated || false,
                     isMinimized: record.toplevel.minimized || false,
                     isFullscreen: record.toplevel.fullscreen || false,
+                    isUrgent: !!record.isUrgent,
                 });
             } else {
                 const row = windowModel.get(i);
@@ -267,9 +290,11 @@ QtObject {
                     rawAppId: record.identity.rawAppId,
                     title: record.title,
                     icon: record.iconSource,
+                    pid: record.pid,
                     isActivated: record.toplevel.activated || false,
                     isMinimized: record.toplevel.minimized || false,
                     isFullscreen: record.toplevel.fullscreen || false,
+                    isUrgent: !!record.isUrgent,
                 };
                 const keys = Object.keys(values);
                 for (let j = 0; j < keys.length; j++) {
@@ -300,15 +325,43 @@ QtObject {
         return result;
     }
 
+    function thumbnailUrl(windowId) {
+        // Reading the revision makes bindings reactive while retaining a
+        // private map keyed by KWin's stable UUID.
+        thumbnailRevision
+        const record = windowById(windowId);
+        return record?.provider === "kwin"
+            ? (_thumbnailUrlsByHandle[record.handleId] ?? "") : "";
+    }
+
+    function requestThumbnail(windowId) {
+        const record = windowById(windowId);
+        if (!record) {
+            console.warn("[WindowService] thumbnail missing windowId=" + windowId);
+            return false;
+        }
+        if (record.provider !== "kwin" || !record.handleId) {
+            console.warn("[WindowService] thumbnail unavailable provider="
+                + record.provider + " windowId=" + windowId);
+            return false;
+        }
+        if (_thumbnailPendingByHandle[record.handleId])
+            return false;
+
+        const pending = Object.assign({}, _thumbnailPendingByHandle);
+        pending[record.handleId] = true;
+        _thumbnailPendingByHandle = pending;
+        console.log("[WindowService] thumbnail request id=" + record.handleId);
+        _sendKwinCommand({ action: "thumbnail", id: record.handleId });
+        return true;
+    }
+
     function activateWindow(windowId) {
         const record = windowById(windowId);
         if (!record) {
             console.warn("[WindowService] activate missing windowId=" + windowId);
             return;
         }
-        console.log("[WindowService] activate windowId=" + windowId
-                    + " provider=" + record.provider
-                    + " handleId=" + record.handleId);
         if (record.provider === "kwin") {
             _enqueueKwinCommand({ action: "activate", id: record.handleId });
             return;
@@ -342,20 +395,17 @@ QtObject {
         try { record.toplevel.close(); } catch (e) {}
     }
 
-    function _consumeKwinBridgeOutput(output) {
-        const data = String(output ?? "");
-        const fresh = data.slice(svc._kwinBridgeOutputLength);
-        svc._kwinBridgeOutputLength = data.length;
-        const lines = (svc._kwinBridgePendingLine + fresh).split("\n");
-        svc._kwinBridgePendingLine = lines.pop();
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            if (line === "READY") {
-                svc._startKwinScript();
-            } else if (line.startsWith("EVENT ")) {
-                try {
-                    const event = JSON.parse(line.slice(6));
-                    if (event.type === "snapshot" && Array.isArray(event.windows)) {
+    function _consumeKwinBridgeLine(line) {
+        const message = String(line ?? "");
+        if (message === "READY") {
+            svc._startKwinScript();
+        } else if (message.startsWith("EVENT ")) {
+            try {
+                const event = JSON.parse(message.slice(6));
+                if (event.type !== "snapshot")
+                    console.log("[WindowService] bridge event type=" + event.type
+                        + (event.stage ? " stage=" + event.stage : ""));
+                if (event.type === "snapshot" && Array.isArray(event.windows)) {
                         // Keep activation direct. Virtual-desktop transient
                         // filtering is handled separately; delaying this
                         // authoritative list also delayed focus changes.
@@ -364,14 +414,24 @@ QtObject {
                             svc._kwinReceivedInitialSnapshot = true;
                         }
                         svc._scheduleUpdate();
-                    } else if (event.type === "action") {
-                        console.log("[WindowService] KWin action=" + event.action
-                                    + " id=" + event.id
-                                    + " found=" + event.found);
-                    }
-                } catch (e) {
-                    console.warn("[WindowService] invalid KWin event: " + e);
+                } else if (event.type === "thumbnail" && event.id) {
+                        const pending = Object.assign({}, svc._thumbnailPendingByHandle);
+                        delete pending[event.id];
+                        svc._thumbnailPendingByHandle = pending;
+                        if (event.path) {
+                            const urls = Object.assign({}, svc._thumbnailUrlsByHandle);
+                            urls[event.id] = "file://" + event.path;
+                            svc._thumbnailUrlsByHandle = urls;
+                            svc.thumbnailRevision++;
+                            console.log("[WindowService] thumbnail ready id="
+                                + event.id + " " + event.width + "x" + event.height);
+                        } else if (event.error) {
+                            console.warn("[WindowService] thumbnail failed id="
+                                + event.id + " error=" + event.error);
+                        }
                 }
+            } catch (e) {
+                console.warn("[WindowService] invalid KWin event: " + e);
             }
         }
     }
@@ -424,8 +484,6 @@ QtObject {
     }
 
     function _sendKwinCommand(command) {
-        console.log("[WindowService] KWin enqueue action=" + command.action
-                    + " id=" + command.id);
         if (!svc._kwinBridge.running) {
             console.warn("[WindowService] KWin bridge is not running");
             return;
@@ -433,5 +491,8 @@ QtObject {
         svc._kwinBridge.write(JSON.stringify(command) + "\n");
     }
 
-    Component.onCompleted: _scheduleUpdate()
+    Component.onCompleted: {
+        if (svc._kwinBridgeEnabled)
+            _scheduleUpdate()
+    }
 }

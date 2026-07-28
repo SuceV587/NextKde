@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import "./AdaptiveMath.mjs" as AdaptiveMath
+import qs.modules.applauncher
 
 // ────────────────────────────────────────────────────────────────
 // DockContainer — Adaptive layout engine.
@@ -20,7 +21,10 @@ Item {
     // ═══════════════════════════════════════════════════════════
     // Inputs (from services / parent)
     // ═══════════════════════════════════════════════════════════
-    readonly property int pinnedCount: DockModelService.pinnedCount
+    // The app launcher is a permanent visual slot before persisted pinned apps.
+    // Include it in adaptive width fitting, but never in the model used for
+    // drag-reordering or persistence.
+    readonly property int pinnedCount: DockModelService.pinnedCount + 1
     readonly property int windowCount: DockModelService.windowCount
     readonly property bool hasPlayer: DockMprisService.hasPlayer
     readonly property int screenWidth: Quickshell.screens[0]?.width ?? 1920
@@ -55,28 +59,100 @@ Item {
     // Long press enters the persistent iPadOS-like edit state. A real drag
     // also enables it transiently, so direct drag remains available.
     property bool editMode: false
-    // The active top-level app drag is shared with folder delegates so they
-    // can advertise a valid drop target before release.
+    // A drag temporarily enables the iPadOS-like edit state.
     property var draggedPinnedLoader: null
     readonly property bool isEditing: editMode || draggedPinnedLoader !== null
     readonly property real draggedPointerX: draggedPinnedLoader
         ? draggedPinnedLoader.dragPointerX : -1
-    readonly property string dropFolderId: {
-        if (!draggedPinnedLoader || draggedPinnedLoader.itemData.type !== "app")
-            return ""
-        for (let i = 0; i < pinnedRepeater.count; i++) {
-            const candidate = pinnedRepeater.itemAt(i)
-            if (candidate && candidate.itemData.type === "folder"
-                    && draggedPointerX >= candidate.x
-                    && draggedPointerX <= candidate.x + candidate.width)
-                return candidate.itemData.folderId
-        }
-        return ""
+    // A presentation-only target for DockActiveIndicator. The delayed clear
+    // avoids a transient fade when WindowService reports the old window's
+    // deactivation one signal before reporting the next window's activation.
+    property Item activeIcon: null
+
+    function publishLauncherGeometry() {
+        console.log("[DockContainer] publish launcher "
+            + computedDockWidth + "x" + computedDockHeight)
+        AppLauncherService.setDockPresentation(
+            computedDockWidth,
+            computedDockHeight,
+            ThemeService.backgroundColor,
+            WallpaperPaletteService.primary,
+            WallpaperPaletteService.secondary,
+            ThemeService.foregroundColor)
     }
-    // Nearest top-level slot for the in-progress reorder preview. Folder
-    // targets take priority, so no icons are pushed aside while dropping.
+
+    Component.onCompleted: publishLauncherGeometry()
+    onComputedDockWidthChanged: publishLauncherGeometry()
+    onComputedDockHeightChanged: publishLauncherGeometry()
+
+    Connections {
+        target: ThemeService
+        function onBackgroundColorChanged() { container.publishLauncherGeometry() }
+        function onForegroundColorChanged() { container.publishLauncherGeometry() }
+    }
+    Connections {
+        target: WallpaperPaletteService
+        function onPrimaryChanged() { container.publishLauncherGeometry() }
+        function onSecondaryChanged() { container.publishLauncherGeometry() }
+    }
+    // Launcher actions enter Dock through the launcher service contract. This
+    // keeps launcher UI independent from Dock's persistence/model internals.
+    Connections {
+        target: AppLauncherService
+        function onPinToDockRequested(appId) {
+            DockModelService.pinApp(appId)
+        }
+    }
+
+    function reportActiveIcon(icon, activated) {
+        if (activated) {
+            activeIconClear.stop()
+            activeIcon = icon
+            activeIndicator.requestSync()
+        } else if (activeIcon === icon) {
+            if (!DockModelService.preserveActiveIndicator)
+                activeIconClear.restart()
+        }
+    }
+
+    function _windowTaskIcon(windowId) {
+        for (let i = 0; i < windowsRepeater.count; i++) {
+            const candidate = windowsRepeater.itemAt(i)
+            if (candidate && candidate.windowId === windowId)
+                return candidate
+        }
+        return null
+    }
+
+    function animateRequestedWindow(windowId) {
+        const target = _windowTaskIcon(windowId)
+        if (!target)
+            return
+        activeIconClear.stop()
+        activeIcon = target
+        activeIndicator.requestSync()
+    }
+
+    function syncActiveIcon(icon) {
+        if (activeIcon === icon)
+            activeIndicator.requestSync()
+    }
+
+    Timer {
+        id: activeIconClear
+        // Focus providers can emit deactivation and activation in separate
+        // event-loop turns (notably QuickSearch). Keep the old target briefly
+        // so the next target still receives a continuous travel animation.
+        interval: 180
+        repeat: false
+        onTriggered: {
+            if (container.activeIcon && !container.activeIcon.isActivated)
+                container.activeIcon = null
+        }
+    }
+    // Nearest top-level slot for the in-progress reorder preview.
     readonly property int dragInsertIndex: {
-        if (!draggedPinnedLoader || dropFolderId)
+        if (!draggedPinnedLoader)
             return -1
         let nearestIndex = draggedPinnedLoader.pinnedIndex
         let nearestDistance = Number.POSITIVE_INFINITY
@@ -92,14 +168,6 @@ Item {
             }
         }
         return nearestIndex
-    }
-
-    // ── Debug: periodic state dump ──
-    property Timer _dbg: Timer {
-        interval: 2000
-        repeat: true
-        running: true
-        onTriggered: console.log("[DockContainer] pinned=" + container.pinnedCount + " windows=" + container.windowCount + " music=" + container.hasPlayer + " screenW=" + container.screenWidth + " baseH=" + container.baseHeight + " → H=" + container.computedDockHeight + " icon=" + container.iconSize + " W=" + container.computedDockWidth)
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -156,6 +224,12 @@ Item {
         onClicked: container.editMode = false
     }
 
+    DockActiveIndicator {
+        id: activeIndicator
+        target: container.activeIcon
+        moveDuration: 260
+    }
+
     // A Dock panel cannot receive pointer events from the rest of the
     // desktop. WindowService does observe focus changes, which lets an edit
     // session end naturally when the user clicks any other application.
@@ -167,6 +241,19 @@ Item {
         }
     }
 
+    Connections {
+        target: DockModelService
+        function onRequestedActivationWindowIdChanged() {
+            container.animateRequestedWindow(DockModelService.requestedActivationWindowId)
+        }
+        function onPreserveActiveIndicatorChanged() {
+            if (!DockModelService.preserveActiveIndicator
+                    && container.activeIcon
+                    && !container.activeIcon.isActivated)
+                activeIconClear.restart()
+        }
+    }
+
     Row {
         id: contentRow
         anchors.verticalCenter: parent.verticalCenter
@@ -175,8 +262,34 @@ Item {
         leftPadding: container.hPadding
         rightPadding: container.hPadding
         height: container.computedDockHeight
+        onXChanged: activeIndicator.requestSync()
+        onYChanged: activeIndicator.requestSync()
+        onWidthChanged: activeIndicator.requestSync()
+        onHeightChanged: activeIndicator.requestSync()
 
         // ── Pinned apps ──
+        // Fixed launcher slot. This project-owned image avoids icon-theme
+        // lookup differences. Interaction is deliberately disabled until the
+        // app-launcher surface is implemented. Keeping it outside the Repeater
+        // makes it immutable with respect to pinned-app ordering.
+        DockIcon {
+            iconSize: container.iconSize
+            activeBackgroundGap: container.activeBackgroundGap
+            iconSource: Qt.resolvedUrl("../../assets/appLancher.svg")
+            displayName: "应用程序"
+            showContextMenu: false
+            allowEdit: false
+            isPinnedItem: false
+            bounceKey: ""
+            onActivate: {
+                container.editMode = false
+                if (DockModelService.activeDockPopup)
+                    DockModelService.activeDockPopup.visible = false
+                console.log("[DockContainer] app launcher requested")
+                AppLauncherService.toggle()
+            }
+        }
+
         Repeater {
             id: pinnedRepeater
             model: DockModelService.pinnedItems
@@ -184,6 +297,7 @@ Item {
                 id: pinnedItemLoader
                 required property var modelData
                 required property int index
+                property real lastDragX: 0
                 property var itemData: modelData
                 property int pinnedIndex: index
                 property bool dragged: false
@@ -214,17 +328,17 @@ Item {
                     return 0
                 }
                 property real visualOffsetX: dragOffsetX + reorderOffsetX
-                width: container.iconSize + container.activeBackgroundGap * 2
-                // Row places delegates at y=0. Give the Loader the complete
-                // Dock height so DockIcon/DockFolderIcon can keep anchoring
-                // their icon slot to its vertical center, exactly like the
-                // pre-folder direct DockIcon delegate did.
+                readonly property real iconSlotWidth: container.iconSize
+                    + container.activeBackgroundGap * 2
+                readonly property int extraWindowCount: itemData.type === "app"
+                    ? (itemData.extraWindows?.length ?? 0) : 0
+                width: iconSlotWidth * (1 + extraWindowCount)
+                    + container.itemSpacing * extraWindowCount
+                // Row places delegates at y=0; keep the Loader dock-height
+                // tall so the nested square icon can remain vertically centred.
                 height: container.computedDockHeight
                 z: reorderDrag.active ? 10 : 0
-                // Once the pointer is over a folder, make the source app
-                // visibly contract as if it is being absorbed by the folder.
-                scale: reorderDrag.active
-                    ? (container.dropFolderId ? 0.68 : 1.10) : 1.0
+                scale: reorderDrag.active ? 1.10 : 1.0
                 opacity: reorderDrag.active ? 0.88 : 1.0
                 transformOrigin: Item.Center
                 layer.enabled: reorderDrag.active
@@ -241,16 +355,13 @@ Item {
                 Behavior on opacity {
                     NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
                 }
-                sourceComponent: itemData.type === "folder"
-                    ? folderDelegate : appDelegate
+                sourceComponent: appDelegate
 
-                // A release over a folder moves a top-level app into that
-                // folder. Any other release commits the existing reorder.
-                // The Row continues to own layout, which keeps adaptive width
-                // calculation and all existing icon interactions intact.
+                // Releasing a drag commits the reordered top-level app.
                 DragHandler {
                     id: reorderDrag
                     target: null
+                    acceptedButtons: Qt.LeftButton
                     xAxis.enabled: true
                     yAxis.enabled: false
                     onActiveChanged: {
@@ -270,20 +381,12 @@ Item {
                         const center = pinnedItemLoader.x
                                 + pinnedItemLoader.width / 2
                                 + pinnedItemLoader.lastDragOffsetX
-                        let destinationFolderId = ""
                         let nearestIndex = pinnedItemLoader.pinnedIndex
                         let nearestDistance = Number.POSITIVE_INFINITY
                         for (let i = 0; i < pinnedRepeater.count; i++) {
                             const candidate = pinnedRepeater.itemAt(i)
                             if (!candidate)
                                 continue
-                            if (pinnedItemLoader.itemData.type === "app"
-                                    && candidate.itemData.type === "folder"
-                                    && center >= candidate.x
-                                    && center <= candidate.x + candidate.width) {
-                                destinationFolderId = candidate.itemData.folderId
-                                break
-                            }
                             const candidateCenter = candidate.x + candidate.width / 2
                             const distance = Math.abs(center - candidateCenter)
                             if (distance < nearestDistance) {
@@ -291,18 +394,10 @@ Item {
                                 nearestIndex = i
                             }
                         }
-                        if (destinationFolderId) {
-                            DockModelService.moveAppToFolder(
-                                        destinationFolderId,
-                                        pinnedItemLoader.itemData.appId)
-                        } else {
-                            DockModelService.movePinnedItem(
-                                        pinnedItemLoader.itemData.type,
-                                        pinnedItemLoader.itemData.type === "folder"
-                                            ? pinnedItemLoader.itemData.folderId
-                                            : pinnedItemLoader.itemData.appId,
-                                        nearestIndex)
-                        }
+                        DockModelService.movePinnedItem(
+                                    pinnedItemLoader.itemData.type,
+                                    pinnedItemLoader.itemData.appId,
+                                    nearestIndex)
                         pinnedItemLoader.dragged = false
                         container.draggedPinnedLoader = null
                     }
@@ -321,54 +416,69 @@ Item {
                     // Keep the actual square icon in a nested child so its
                     // backgrounds are never stretched by that layout wrapper.
                     Item {
-                        DockIcon {
-                            anchors.horizontalCenter: parent.horizontalCenter
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: container.itemSpacing
+
+                            DockIcon {
                             iconSize: container.iconSize
                             activeBackgroundGap: container.activeBackgroundGap
                             iconSource: pinnedItemLoader.itemData.icon ?? ""
                             displayName: pinnedItemLoader.itemData.name ?? ""
                             isRunning: pinnedItemLoader.itemData.isRunning ?? false
                             isActivated: pinnedItemLoader.itemData.isActivated ?? false
+                            activeIndicatorHost: container
                             appId: pinnedItemLoader.itemData.appId ?? ""
                             isWindowItem: false
+                            isPinnedItem: true
                             bounceKey: ""   // pinned never bounce
                             editMode: container.isEditing
                             isDragging: reorderDrag.active
                             onRequestEdit: container.editMode = true
                             onActivate: DockModelService.activateApp(appId)
+                            }
+
+                            Repeater {
+                                model: pinnedItemLoader.itemData.extraWindows ?? []
+                                delegate: DockIcon {
+                                    required property var modelData
+                                    iconSize: container.iconSize
+                                    activeBackgroundGap: container.activeBackgroundGap
+                                    iconSource: modelData.iconSource
+                                        ?? modelData.identity.iconSource ?? ""
+                                    displayName: modelData.title ?? ""
+                                    isRunning: true
+                                    isActivated: modelData.toplevel.activated ?? false
+                                    isUrgent: modelData.isUrgent ?? false
+                                    activeIndicatorHost: container
+                                    appId: modelData.identity.desktopId ?? ""
+                                    windowId: modelData.windowId ?? ""
+                                    isWindowItem: true
+                                    isPinnedItem: false
+                                    bounceKey: modelData.windowId ?? ""
+                                    onActivate: DockModelService.toggleWindow(windowId)
+                                }
+                            }
                         }
                     }
                 }
 
-                Component {
-                    id: folderDelegate
-                    Item {
-                        DockFolderIcon {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            iconSize: container.iconSize
-                            activeBackgroundGap: container.activeBackgroundGap
-                            folderId: pinnedItemLoader.itemData.folderId ?? ""
-                            folderName: pinnedItemLoader.itemData.name ?? "新文件夹"
-                            apps: pinnedItemLoader.itemData.apps ?? []
-                            dropTarget: container.dropFolderId === folderId
-                            editMode: container.isEditing
-                            isDragging: reorderDrag.active
-                            onRequestEdit: container.editMode = true
-                        }
-                    }
-                }
             }
         }
 
-        // ── Divider 1: pinned | windows ──
+        // ── Divider: persistent launchers | temporary windows ──
         DockDivider {
             dockHeight: container.computedDockHeight
-            dividerWidth: 1
+            // Make the app/window boundary read as a deliberate section break.
+            dividerWidth: 2
             sideMargin: container.dividerMargin
+            lineColor: Qt.rgba(1, 1, 1, 1)
+            lineOpacity: 0.46
+            lineRadius: 999
             visible: pinnedRepeater.count > 0 && windowsRepeater.count > 0
         }
 
-        // ── Open windows ──
+        // ── Unpinned window tasks ──
         Repeater {
             id: windowsRepeater
             model: DockModelService.windowModel
@@ -379,13 +489,16 @@ Item {
                 displayName: model.title ?? ""
                 isRunning: true
                 isActivated: model.isActivated ?? false
+                isUrgent: model.isUrgent ?? false
+                activeIndicatorHost: container
                 appId: model.appId ?? ""
                 windowId: model.windowId ?? ""
                 isWindowItem: true
+                isPinnedItem: false
                 bounceKey: model.windowId ?? ""
                 onActivate: {
                     container.editMode = false
-                    DockModelService.activateWindow(model.windowId ?? "")
+                    DockModelService.toggleWindow(windowId)
                 }
             }
         }

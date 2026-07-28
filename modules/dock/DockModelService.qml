@@ -14,14 +14,44 @@ QtObject {
 
     property var pinnedItems: []
     property int pinnedCount: 0
-    // Presentation-only window list. WindowService keeps every live window;
-    // this model hides windows whose app already has a stable pinned icon.
-    // Keeping that policy here lets Alt+Tab and future Stage Manager views use
-    // the complete WindowService model without inheriting Dock decisions.
+    // Presentation-only task list. WindowService keeps every live window;
+    // this layer optionally groups those windows for the Dock while Alt+Tab
+    // and future Stage Manager views retain their complete per-window model.
     property ListModel windowModel: ListModel {}
     readonly property int windowCount: windowModel.count
 
     property var _bouncedKeys: ({})
+    // DockIcon instances own their PopupWindows, but the Dock presents only
+    // one context menu at a time.
+    property var activeContextMenu: null
+    // Every temporary Dock surface (context menu or preview) goes
+    // through this coordinator. PopupWindows are independent Wayland surfaces;
+    // without one shared owner, two anchors can remain open and fight over
+    // placement and pointer focus.
+    property var activeDockPopup: null
+    // External surfaces such as QuickSearch can temporarily own focus while a
+    // user chooses the next Dock window. Preserve the last indicator target
+    // during that hand-off so the next activation still has a travel origin.
+    property bool preserveActiveIndicator: false
+    property string requestedActivationWindowId: ""
+
+    function setActiveIndicatorHold(hold) {
+        svc.preserveActiveIndicator = !!hold;
+    }
+
+    function openDockPopup(popup) {
+        if (!popup)
+            return;
+        if (svc.activeDockPopup && svc.activeDockPopup !== popup)
+            svc.activeDockPopup.visible = false;
+        svc.activeDockPopup = popup;
+        popup.visible = true;
+    }
+
+    function releaseDockPopup(popup) {
+        if (svc.activeDockPopup === popup)
+            svc.activeDockPopup = null;
+    }
 
     function shouldBounce(key) {
         if (!key)
@@ -41,6 +71,12 @@ QtObject {
             if (dockItem.type === "app") {
                 const identity = AppIdentityService.resolve(dockItem.appId);
                 const windows = WindowService.windowsForApp(identity.desktopId);
+                // A running pinned application is represented by its live
+                // window tasks in the right-hand section. Keep this launcher
+                // slot only while it has no windows; it returns here in its
+                // persisted position after the final window closes.
+                if (windows.length > 0)
+                    continue;
                 items.push({
                     type: "app",
                     appId: identity.desktopId,
@@ -53,54 +89,16 @@ QtObject {
                 continue;
             }
 
-            if (dockItem.type === "folder") {
-                const folderApps = [];
-                for (let j = 0; j < dockItem.appIds.length; j++) {
-                    const identity = AppIdentityService.resolve(dockItem.appIds[j]);
-                    const windows = WindowService.windowsForApp(identity.desktopId);
-                    folderApps.push({
-                        appId: identity.desktopId,
-                        name: identity.name || dockItem.appIds[j],
-                        icon: windows[0]?.iconSource ?? identity.iconSource,
-                    });
-                }
-                items.push({
-                    type: "folder",
-                    folderId: dockItem.id,
-                    name: dockItem.name,
-                    apps: folderApps,
-                });
-            }
         }
         svc.pinnedItems = items;
         svc.pinnedCount = items.length;
     }
 
-    // Only a top-level pinned app owns its fixed Dock slot exclusively.
-    // Apps inside folders are members of an aggregate launcher, but their
-    // live windows still belong in the separate windows section.
-    function _isTopLevelPinnedApp(appId) {
-        const items = ConfigService.dockItems || [];
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            if (item.type === "app"
-                    && AppIdentityService.sameApp(item.appId, appId))
-                return true;
-        }
-        return false;
-    }
-
     function _refreshWindowItems() {
-        // A top-level pinned app is represented once, in its fixed Dock
-        // location. Folder members are intentionally not filtered here, so
-        // their live windows appear in the separate windows section.
         const records = WindowService.records || [];
         const nextItems = [];
         for (let i = 0; i < records.length; i++) {
             const record = records[i];
-            if (_isTopLevelPinnedApp(record.identity.desktopId))
-                continue;
-
             nextItems.push({
                 windowId: record.windowId,
                 desktopId: record.identity.desktopId,
@@ -108,12 +106,20 @@ QtObject {
                 rawAppId: record.identity.rawAppId,
                 title: record.title,
                 icon: record.iconSource ?? record.identity.iconSource,
-                isActivated: record.toplevel.activated || false,
-                isMinimized: record.toplevel.minimized || false,
-                isFullscreen: record.toplevel.fullscreen || false,
+                isActivated: !!record.toplevel.activated,
+                isMinimized: !!record.toplevel.minimized,
+                isUrgent: !!record.isUrgent,
+                isFullscreen: !!record.toplevel.fullscreen,
+                pid: Number(record.pid || 0),
+                isWindowItem: true,
             });
         }
+        nextItems.sort((left, right) => left.pid - right.pid
+                       || left.windowId.localeCompare(right.windowId));
+        svc._setWindowItems(nextItems);
+    }
 
+    function _setWindowItems(nextItems) {
         while (svc.windowModel.count > nextItems.length)
             svc.windowModel.remove(svc.windowModel.count - 1);
 
@@ -151,6 +157,9 @@ QtObject {
             svc._refreshPresentation();
         }
         function onPinnedAppIdsChanged() {
+            svc._refreshPresentation();
+        }
+        function onGroupWindowsChanged() {
             svc._refreshPresentation();
         }
     }
@@ -192,12 +201,34 @@ QtObject {
                 WindowService.minimizeWindow(windows[i].windowId, true);
         } else {
             console.log("[DockModel] activate app=" + identity.desktopId);
-            WindowService.activateWindow(windows[0].windowId);
+            activateWindow(windows[0].windowId);
         }
     }
 
     function activateWindow(windowId) {
+        // This is presentation intent only; WindowService remains the sole
+        // authority for the actual Wayland activation request.
+        svc.requestedActivationWindowId = windowId;
         WindowService.activateWindow(windowId);
+    }
+
+    // Dock task icons are toggles: a background/minimized window is brought
+    // forward, while the currently focused window is minimized. Keep this
+    // separate from activateWindow() because preview clicks and context-menu
+    // "activate" actions must always bring a window forward, never minimize.
+    function toggleWindow(windowId) {
+        const record = WindowService.windowById(windowId);
+        if (!record) {
+            console.warn("[DockModel] toggle missing windowId=" + windowId);
+            return;
+        }
+        if (record.toplevel.activated && !record.toplevel.minimized) {
+            console.log("[DockModel] minimize window=" + windowId);
+            WindowService.minimizeWindow(windowId, true);
+        } else {
+            console.log("[DockModel] activate window=" + windowId);
+            activateWindow(windowId);
+        }
     }
 
     function minimizeWindow(windowId) {
@@ -217,6 +248,19 @@ QtObject {
         svc._refreshPresentation();
     }
 
+    // Pin membership is defined by persisted Dock data. Compare canonical
+    // identities rather than raw app IDs because a
+    // live Wayland window and its .desktop entry can use different aliases.
+    function isAppPinned(appId) {
+        const wanted = AppIdentityService.canonicalId(appId);
+        const pinnedIds = ConfigService.pinnedAppIds || [];
+        for (let i = 0; i < pinnedIds.length; i++) {
+            if (AppIdentityService.sameApp(pinnedIds[i], wanted))
+                return true;
+        }
+        return false;
+    }
+
     function unpinApp(appId) {
         const wanted = AppIdentityService.canonicalId(appId);
         if (!ConfigService.removeAppItem(wanted))
@@ -234,46 +278,6 @@ QtObject {
         svc._refreshPresentation()
     }
 
-    function renameFolder(folderId, newName) {
-        if (!ConfigService.renameFolder(folderId, newName))
-            return;
-        console.log("[DockModel] rename folder=" + folderId
-                    + " name=" + newName);
-        svc._refreshPresentation();
-    }
-
-    function dissolveFolder(folderId) {
-        if (!ConfigService.dissolveFolder(folderId))
-            return;
-        console.log("[DockModel] dissolve folder=" + folderId);
-        svc._refreshPresentation();
-    }
-
-    function removeAppFromFolder(folderId, appId) {
-        if (!ConfigService.removeAppFromFolder(folderId, appId))
-            return;
-        console.log("[DockModel] remove folder member folder=" + folderId
-                    + " app=" + appId);
-        svc._refreshPresentation();
-    }
-
-    function moveAppToFolder(folderId, appId) {
-        const identity = AppIdentityService.resolve(appId)
-        if (!ConfigService.moveAppToFolder(folderId, identity.desktopId))
-            return;
-        console.log("[DockModel] move app into folder=" + folderId
-                    + " app=" + identity.desktopId);
-        svc._refreshPresentation();
-    }
-
-    function createFolderWithApp(appId) {
-        const identity = AppIdentityService.resolve(appId);
-        if (!ConfigService.createFolderWithApp(identity.desktopId))
-            return;
-        console.log("[DockModel] create folder app=" + identity.desktopId
-                    + " items=" + JSON.stringify(ConfigService.dockItems));
-        svc._refreshPresentation();
-    }
 
     Component.onCompleted: _refreshPresentation()
 }

@@ -12,12 +12,18 @@ Item {
     property color primary: fallbackPrimary
     property color secondary: fallbackSecondary
     property bool ready: false
+    // Consumers that already animate their own material can set this to 0 so
+    // there is one deliberate colour transition rather than two retargeting
+    // animations chasing one another.
+    property int transitionDuration: 760
 
     Behavior on primary {
-        ColorAnimation { duration: 760; easing.type: Easing.InOutCubic }
+        enabled: root.transitionDuration > 0
+        ColorAnimation { duration: root.transitionDuration; easing.type: Easing.InOutCubic }
     }
     Behavior on secondary {
-        ColorAnimation { duration: 760; easing.type: Easing.InOutCubic }
+        enabled: root.transitionDuration > 0
+        ColorAnimation { duration: root.transitionDuration; easing.type: Easing.InOutCubic }
     }
 
     function _distance(left, right) {

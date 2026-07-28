@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import qs.modules.applauncher
 
 // AppIdentityService — the single identity boundary for applications.
 //
@@ -42,17 +43,27 @@ QtObject {
         const value = String(candidate ?? "").trim();
         if (!value)
             return "";
-        // IconImage treats a bare absolute path as qrc:/... . Local files
-        // must be an explicit file URL, otherwise a successfully found icon
-        // still renders as the fallback placeholder.
-        if (value.startsWith("/"))
+        // Use the same icon-provider path as AppLauncher for custom files.
+        // A raw file:// URL loads through Qt's generic image path, while
+        // Quickshell.iconPath can select the high-quality icon provider used
+        // by the launcher. Only fall back to file:// when it cannot resolve.
+        if (value.startsWith("/")) {
+            try {
+                const resolvedFile = Quickshell.iconPath(value, true);
+                if (resolvedFile)
+                    return resolvedFile;
+            } catch (e) {}
             return "file://" + value;
+        }
         if (_isDirectIconSource(value))
             return value;
 
         try {
-            if (!Quickshell.hasThemeIcon(value))
-                return "";
+            // `hasThemeIcon()` can reject a valid hicolor fallback before Qt
+            // has fully indexed the active icon theme. iconPath(..., true)
+            // performs the authoritative lookup and returns an empty source
+            // when it truly cannot resolve the name, so use it directly for
+            // every consumer (Dock, QuickSearch, and future providers).
             return Quickshell.iconPath(value, true) || "";
         } catch (e) {
             return "";
@@ -201,6 +212,24 @@ QtObject {
         return /\.desktop$/i.test(value) ? value : value + ".desktop";
     }
 
+    // A launcher stores desktop-entry IDs, while Wayland/KWin may report an
+    // appId or startup class. Resolve the explicit forms first, then compare
+    // normalised aliases so one custom PNG reaches both launcher and Dock.
+    function _overrideFor(overrides, desktopId, rawId) {
+        const values = overrides || ({});
+        const direct = values[desktopId] ?? values[rawId] ?? "";
+        if (direct)
+            return direct;
+        const wantedDesktop = normalize(desktopId);
+        const wantedRaw = normalize(rawId);
+        for (const key in values) {
+            const normalized = normalize(key);
+            if (normalized && (normalized === wantedDesktop || normalized === wantedRaw))
+                return values[key] || "";
+        }
+        return "";
+    }
+
     function resolve(rawId) {
         const raw = String(rawId ?? "").trim();
         const cacheKey = _key(raw);
@@ -209,8 +238,18 @@ QtObject {
 
         const entry = _findEntry(raw);
         const desktopId = _canonicalId(raw, entry);
-        const overrides = ConfigService.iconOverrides || ({});
-        const override = overrides[desktopId] ?? overrides[raw] ?? "";
+        // Launcher edits are the user-facing source of truth for icon
+        // presentation. Keep the older Dock config as a compatibility
+        // fallback for pre-launcher overrides.
+        const launcherOverrides = AppLauncherService.appIconOverrides || ({});
+        const dockOverrides = ConfigService.iconOverrides || ({});
+        const launcherOverride = _overrideFor(launcherOverrides, desktopId, raw);
+        const override = launcherOverride
+            || _overrideFor(dockOverrides, desktopId, raw);
+        if (launcherOverride) {
+            console.log("[AppIdentity] launcher icon override raw=" + raw
+                + " desktop=" + desktopId + " source=" + launcherOverride);
+        }
         const iconCandidates = [override, entry?.icon ?? "", raw];
         const candidates = _candidates(raw);
         for (let i = 0; i < candidates.length; i++)
@@ -245,6 +284,14 @@ QtObject {
         return resolve(rawId).desktopId;
     }
 
+    // Consumers that receive an application identifier together with an icon
+    // hint (notifications, portals, etc.) should use this rather than doing a
+    // second theme lookup. It preserves the Dock's desktop-entry fallbacks.
+    function iconSourceFor(rawId, preferredIcon) {
+        const preferred = _iconPath(preferredIcon);
+        return preferred || resolve(rawId).iconSource;
+    }
+
     function sameApp(left, right) {
         const a = typeof left === "object" ? left.desktopId : canonicalId(left);
         const b = typeof right === "object" ? right.desktopId : canonicalId(right);
@@ -266,6 +313,15 @@ QtObject {
     property Connections _configConnections: Connections {
         target: ConfigService
         function onIconOverridesChanged() {
+            svc.clearCache();
+        }
+    }
+
+    property Connections _launcherIconConnections: Connections {
+        target: AppLauncherService
+        function onAppIconOverridesRevisionChanged() {
+            // Re-resolve live windows and pinned apps immediately after an
+            // editor save; no Quickshell restart should be necessary.
             svc.clearCache();
         }
     }

@@ -73,11 +73,15 @@ function snapshot() {
 
         windows.push({
             id: windowId(window),
+            pid: Number(propertyValue(window, "pid", 0)),
             appId: String(window.desktopFileName || window.resourceClass || window.resourceName || ""),
             title: String(window.caption || ""),
             activated: !!window.active,
             minimized: !!window.minimized,
-            fullscreen: !!window.fullScreen
+            fullscreen: !!window.fullScreen,
+            // KWin's authoritative _NET_WM_STATE_DEMANDS_ATTENTION state.
+            // This is the provider boundary for the Dock's urgent styling.
+            urgent: !!propertyValue(window, "demandsAttention", false)
         });
     }
     callDBus(service, path, iface, "Publish", JSON.stringify({ type: "snapshot", windows: windows }));
@@ -167,6 +171,8 @@ function watchWindow(window) {
     window.activeChanged.connect(scheduleSnapshot);
     window.minimizedChanged.connect(scheduleSnapshot);
     window.fullScreenChanged.connect(scheduleSnapshot);
+    // Kept defensive for an older KWin scripting API that lacks this signal.
+    try { window.demandsAttentionChanged.connect(scheduleSnapshot); } catch (error) {}
     window.skipTaskbarChanged.connect(scheduleSnapshot);
     window.closed.connect(scheduleSnapshot);
 }

@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dff2ff"/>
+      <stop offset="0.42" stop-color="#b9d5ff"/>
+      <stop offset="1" stop-color="#d8c6ff"/>
+    </linearGradient>
+
+    <linearGradient id="wave1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7db7ff" stop-opacity=".75"/>
+      <stop offset="1" stop-color="#8b7cff" stop-opacity=".38"/>
+    </linearGradient>
+
+    <linearGradient id="wave2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a88cff" stop-opacity=".48"/>
+      <stop offset="1" stop-color="#f0b7ff" stop-opacity=".56"/>
+    </linearGradient>
+
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".72"/>
+      <stop offset=".45" stop-color="#ffffff" stop-opacity=".18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity=".06"/>
+    </linearGradient>
+
+    <linearGradient id="rocket" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".5" stop-color="#dbe8ff"/>
+      <stop offset="1" stop-color="#b8c9ef"/>
+    </linearGradient>
+
+    <linearGradient id="flame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".95"/>
+      <stop offset=".45" stop-color="#c8e4ff" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#7aa7ff" stop-opacity=".15"/>
+    </linearGradient>
+
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#40518f" flood-opacity=".28"/>
+    </filter>
+
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+
+    <clipPath id="clip">
+      <rect x="16" y="16" width="224" height="224" rx="54"/>
+    </clipPath>
+  </defs>
+
+  <!-- transparent outside rounded icon -->
+  <g clip-path="url(#clip)">
+    <rect x="16" y="16" width="224" height="224" rx="54" fill="url(#bg)"/>
+
+    <!-- soft inner glow -->
+    <ellipse cx="80" cy="48" rx="92" ry="58" fill="#ffffff" opacity=".22" filter="url(#soft)"/>
+
+    <!-- abstract liquid layers -->
+    <path d="M-12 122 C36 86, 80 100, 122 139 C156 170, 198 170, 274 118 L274 274 L-12 274 Z"
+          fill="url(#wave1)"/>
+    <path d="M54 274 C88 212, 128 188, 165 174 C204 159, 233 162, 274 194 L274 274 Z"
+          fill="url(#wave2)"/>
+
+    <!-- glass film -->
+    <rect x="22" y="22" width="212" height="212" rx="48"
+          fill="url(#glass)" stroke="#ffffff" stroke-opacity=".42" stroke-width="1.5"/>
+
+    <!-- rocket shadow -->
+    <g transform="rotate(43 132 126)" opacity=".22" filter="url(#soft)">
+      <ellipse cx="131" cy="139" rx="50" ry="18" fill="#3c4d91"/>
+    </g>
+
+    <!-- rocket -->
+    <g transform="rotate(43 132 126)" filter="url(#shadow)">
+      <path d="M132 54
+               C153 69 163 92 163 119
+               C163 147 150 170 132 188
+               C114 170 101 147 101 119
+               C101 92 111 69 132 54 Z"
+            fill="url(#rocket)" stroke="#ffffff" stroke-width="3"/>
+
+      <circle cx="132" cy="103" r="14" fill="#8fa8d6" stroke="#ffffff" stroke-width="3"/>
+      <circle cx="132" cy="103" r="8" fill="#b7c8eb" opacity=".9"/>
+
+      <path d="M101 128 L83 144 L103 148 Z"
+            fill="#d9e5ff" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M163 128 L181 144 L161 148 Z"
+            fill="#d9e5ff" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+
+      <rect x="119" y="181" width="26" height="11" rx="5.5"
+            fill="#dce8ff" stroke="#ffffff" stroke-width="2.5"/>
+
+      <path d="M124 191
+               C124 210 128 219 132 227
+               C136 219 140 210 140 191 Z"
+            fill="url(#flame)" opacity=".96"/>
+
+      <!-- rocket highlight -->
+      <path d="M118 72 C106 91 106 123 115 146"
+            fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity=".52"/>
+    </g>
+
+    <!-- specular highlights -->
+    <path d="M42 48 C78 27 142 27 192 43"
+          fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity=".42"/>
+    <path d="M32 192 C64 220 103 229 144 226"
+          fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity=".16"/>
+  </g>
+
+  <!-- outer liquid-glass rim -->
+  <rect x="16" y="16" width="224" height="224" rx="54"
+        fill="none" stroke="#f8fbff" stroke-width="4" stroke-opacity=".92"/>
+  <rect x="20" y="20" width="216" height="216" rx="50"
+        fill="none" stroke="#9bbcff" stroke-width="1.5" stroke-opacity=".72"/>
+</svg>

@@ -13,6 +13,10 @@ Rectangle {
     property int dockHeight:   60
     property int dividerWidth: 1
     property int sideMargin:   8
+    property real lineHeightRatio: 0.45
+    property color lineColor: ThemeService.dividerColor
+    property real lineOpacity: 0.55
+    property real lineRadius: dividerWidth / 2
 
     // ── Layout ──
     width: dividerWidth + sideMargin * 2   // total slot width including margins
@@ -23,11 +27,11 @@ Rectangle {
     // The visible line (centered in the slot)
     Rectangle {
         width:  divider.dividerWidth
-        height: divider.dockHeight * 0.45          // 45% of dock height
-        radius: divider.dividerWidth / 2
+        height: divider.dockHeight * divider.lineHeightRatio
+        radius: divider.lineRadius
         anchors.centerIn: parent
-        color: ThemeService.dividerColor
-        opacity: 0.55
+        color: divider.lineColor
+        opacity: divider.lineOpacity
     }
 
     // ── Visibility animation ──

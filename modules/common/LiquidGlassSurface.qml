@@ -10,6 +10,19 @@ Rectangle {
     property color ambientPrimary: "transparent"
     property color ambientSecondary: "transparent"
     property real ambientStrength: 0.0
+    // Some lightweight surfaces (for example notification cards) should keep
+    // the upper reflection without the heavier bottom inset edge.
+    property bool bottomEdgeVisible: true
+    property bool bottomShadeVisible: true
+    // Wallpaper changes should feel like pigment slowly moving through the
+    // glass rather than a theme colour snapping to its next value.
+    property int ambientTransitionDuration: 2600
+    property bool _ambientInitialized: false
+    property real _ambientProgress: 1.0
+    property color _ambientFromPrimary: ambientPrimary
+    property color _ambientFromSecondary: ambientSecondary
+    property color _displayAmbientPrimary: ambientPrimary
+    property color _displayAmbientSecondary: ambientSecondary
     // 0 = dock/base surface, 1 = popup, 2 = contextual foreground menu.
     property real materialDepth: 0.0
     readonly property real baseLuminance: baseColor.r * 0.2126
@@ -19,24 +32,62 @@ Rectangle {
     readonly property real highlightFactor: baseLuminance > 0.6 ? 0.70 : 1.0
     readonly property real materialHighlightFactor: highlightFactor
         * (1.0 + Math.max(0.0, materialDepth) * 0.10)
+    // Tint the glass body itself as well as its reflection overlay. This is
+    // what makes wallpaper adaptation readable on dark desktops instead of
+    // disappearing beneath the base surface.
+    // A restrained tint keeps the Dock primarily neutral glass while still
+    // letting its material pick up a little colour from the wallpaper.
+    readonly property real ambientBaseMix: Math.min(0.14, ambientStrength * 0.16)
 
-    // Wallpaper palette updates arrive asynchronously. Animate at the
-    // surface boundary as well, so every consumer gets the same calm crossfade
-    // even when its palette source changes colours in one assignment.
-    Behavior on ambientPrimary {
-        ColorAnimation { duration: 760; easing.type: Easing.InOutCubic }
+    function _mixColor(from, to, progress) {
+        return Qt.rgba(
+            from.r + (to.r - from.r) * progress,
+            from.g + (to.g - from.g) * progress,
+            from.b + (to.b - from.b) * progress,
+            from.a + (to.a - from.a) * progress
+        )
     }
-    Behavior on ambientSecondary {
-        ColorAnimation { duration: 760; easing.type: Easing.InOutCubic }
+
+    function _beginAmbientTransition() {
+        if (!_ambientInitialized) {
+            _displayAmbientPrimary = ambientPrimary
+            _displayAmbientSecondary = ambientSecondary
+            return
+        }
+        _ambientFromPrimary = _displayAmbientPrimary
+        _ambientFromSecondary = _displayAmbientSecondary
+        _ambientProgress = 0.0
+        ambientColourFlow.restart()
+    }
+
+    onAmbientPrimaryChanged: _beginAmbientTransition()
+    onAmbientSecondaryChanged: _beginAmbientTransition()
+    on_AmbientProgressChanged: {
+        _displayAmbientPrimary = _mixColor(_ambientFromPrimary, ambientPrimary, _ambientProgress)
+        _displayAmbientSecondary = _mixColor(_ambientFromSecondary, ambientSecondary, _ambientProgress)
+    }
+    Component.onCompleted: {
+        _displayAmbientPrimary = ambientPrimary
+        _displayAmbientSecondary = ambientSecondary
+        _ambientInitialized = true
+    }
+
+    NumberAnimation {
+        id: ambientColourFlow
+        target: root
+        property: "_ambientProgress"
+        to: 1.0
+        duration: root.ambientTransitionDuration
+        easing.type: Easing.InOutSine
     }
     Behavior on ambientStrength {
         NumberAnimation { duration: 420; easing.type: Easing.InOutCubic }
     }
 
     color: Qt.rgba(
-        baseColor.r,
-        baseColor.g,
-        baseColor.b,
+        baseColor.r * (1.0 - ambientBaseMix) + _displayAmbientPrimary.r * ambientBaseMix,
+        baseColor.g * (1.0 - ambientBaseMix) + _displayAmbientPrimary.g * ambientBaseMix,
+        baseColor.b * (1.0 - ambientBaseMix) + _displayAmbientPrimary.b * ambientBaseMix,
         baseColor.a * surfaceOpacity
     )
 
@@ -50,7 +101,11 @@ Rectangle {
             GradientStop { position: 0.10; color: Qt.rgba(0.88, 0.94, 1, 0.15 * root.materialHighlightFactor) }
             GradientStop { position: 0.28; color: Qt.rgba(1, 1, 1, 0.07 * root.materialHighlightFactor) }
             GradientStop { position: 0.58; color: Qt.rgba(0.86, 0.93, 1, 0.025 * root.materialHighlightFactor) }
-            GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.11 + Math.max(0.0, root.materialDepth) * 0.025) }
+            GradientStop {
+                position: 1.0
+                color: Qt.rgba(0, 0, 0, root.bottomShadeVisible
+                    ? 0.11 + Math.max(0.0, root.materialDepth) * 0.025 : 0.0)
+            }
         }
     }
 
@@ -64,15 +119,15 @@ Rectangle {
             GradientStop {
                 position: 0.0
                 color: Qt.rgba(
-                    root.ambientPrimary.r, root.ambientPrimary.g, root.ambientPrimary.b,
-                    root.ambientStrength * 0.22
+                    root._displayAmbientPrimary.r, root._displayAmbientPrimary.g, root._displayAmbientPrimary.b,
+                    root.ambientStrength * 0.26
                 )
             }
             GradientStop {
                 position: 0.55
                 color: Qt.rgba(
-                    root.ambientSecondary.r, root.ambientSecondary.g, root.ambientSecondary.b,
-                    root.ambientStrength * 0.12
+                    root._displayAmbientSecondary.r, root._displayAmbientSecondary.g, root._displayAmbientSecondary.b,
+                    root.ambientStrength * 0.15
                 )
             }
             GradientStop { position: 1.0; color: Qt.rgba(1, 1, 1, 0.0) }
@@ -111,6 +166,7 @@ Rectangle {
     }
 
     Rectangle {
+        visible: root.bottomEdgeVisible
         x: Math.min(parent.width / 2, root.radius + 3)
         y: parent.height - 2
         width: Math.max(0, parent.width - x * 2)

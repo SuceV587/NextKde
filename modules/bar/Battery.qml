@@ -7,8 +7,8 @@ import qs.modules.dock
 Item {
     id: root
 
-    implicitWidth: 25
-    implicitHeight: 14
+    implicitWidth: 23
+    implicitHeight: 13
     width: implicitWidth
     height: implicitHeight
 
@@ -18,9 +18,9 @@ Item {
             left: parent.left
             verticalCenter: parent.verticalCenter
         }
-        width: 21
-        height: 12
-        radius: 3.5
+        width: 19
+        height: 11
+        radius: 3
         color: "transparent"
         border {
             width: 1.5
@@ -34,7 +34,7 @@ Item {
             verticalCenter: outline.verticalCenter
         }
         width: 2
-        height: 5
+        height: 4
         radius: 1
         color: ThemeService.foregroundColor
     }
@@ -58,7 +58,7 @@ Item {
         visible: root.isCharging
         text: "⚡"
         color: root.boltColor
-        font.pixelSize: 9
+        font.pixelSize: 8
         font.bold: true
     }
 

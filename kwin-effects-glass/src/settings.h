@@ -1,0 +1,96 @@
+#pragma once
+
+#include <QStringList>
+
+namespace KWin
+{
+
+QStringList parseWindowClasses(const QString &input);
+
+enum class WindowClassMatchingMode
+{
+    Blacklist,
+    Whitelist
+};
+
+
+struct GeneralSettings
+{
+    int blurStrength;
+    int noiseStrength;
+    int decorationBlurStrength;
+    int decorationNoiseStrength;
+    int dockBlurStrength;
+    int dockNoiseStrength;
+    float brightness;
+    float saturation;
+    float contrast;
+    bool oklabSaturation;
+    float blurRadius;
+    float upsampleOffset;
+    bool saturationCompensation;
+    QString tintColor;
+    bool autoTintAlpha;
+    QString glowColor;
+    bool edgeLighting;
+    bool edgeLightingDock;
+    bool edgeLightingTooltip;
+    bool excludeDocks;
+    bool excludeDecorations;
+    bool excludeTooltips;
+    bool excludeMenus;
+    bool excludeOSD;
+};
+
+struct ForceBlurSettings
+{
+    QStringList windowClasses;
+    WindowClassMatchingMode windowClassMatchingMode;
+    bool blurDecorations;
+    bool blurMenus;
+    bool blurDocks;
+    // Layer-shell clients such as Quickshell may create a background-effect
+    // object without declaring a region. Treating that empty region as the
+    // entire dock makes transparent panels receive the glass shader.
+    bool skipEmptyDockBlurRegions;
+};
+
+struct RoundedCornersSettings
+{
+    float windowTopRadius;
+    float windowBottomRadius;
+    float menuRadius;
+    float dockRadius;
+    bool useDeclaredCornerRadius;
+    bool ignoreContentBlurRegion;
+    bool roundMaximized;
+    bool dynamicCorners;
+    bool dynamicCornersExcludeWindows;
+    bool dynamicCornersExcludeDocks;
+    bool dynamicCornersExcludeTooltips;
+    bool dynamicCornersExcludeMenus;
+};
+
+struct RefractionSettings
+{
+    float edgeSizePixels;
+    float refractionStrength;
+    float refractionNormalPow;
+    float refractionRGBFringing;
+    float refractionOffsetStrength;
+    float refractionBevelIntensity;
+    bool physicallyBased;
+};
+
+class BlurSettings
+{
+public:
+    GeneralSettings general{};
+    ForceBlurSettings forceBlur{};
+    RoundedCornersSettings roundedCorners{};
+    RefractionSettings refraction{};
+
+    void read();
+};
+
+}

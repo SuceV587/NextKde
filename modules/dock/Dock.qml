@@ -1,73 +1,21 @@
 import Quickshell
-import Quickshell.Wayland
-import QtQuick
-import qs.modules.common
 
-// ────────────────────────────────────────────────────────────────
-// Dock.qml — macOS-style dock entry point.
-//
-// PanelWindow spans the full screen width (transparent) with a
-// centered pill-shaped container hosting the adaptive layout.
-// PanelWindow.x/y are NOT available — positioning is via anchors.
-// ────────────────────────────────────────────────────────────────
-
-PanelWindow {
+// Keep the Dock bound to a live output. A resume can temporarily remove every
+// screen from KWin; Variants then disposes the old layer surface and creates a
+// new one when the preferred output returns.
+Scope {
     id: root
 
-    color: "transparent"
-    exclusionMode: ExclusionMode.Normal
+    readonly property var targetScreen: Quickshell.screens.length > 1
+        ? Quickshell.screens[1]
+        : (Quickshell.screens[0] ?? null)
 
-    // Full-width bottom panel — content is centered internally
-    anchors {
-        left: true
-        bottom: true
-        right: true
-    }
-    margins {
-        bottom: 5
-    }
+    Variants {
+        model: root.targetScreen ? [root.targetScreen] : []
 
-    // Height follows the adaptive container (implicitHeight preferred over height)
-    implicitHeight: dockWrapper.height
-    exclusiveZone: implicitHeight + 5
-
-    // Glass only sees a Wayland surface, not the rounded QML Rectangle below.
-    BackgroundEffect.blurRegion: RoundedBlurRegion {
-        item: dockWrapper
-        radius: dockContainer.pillRadius
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    // Centered wrapper (constrained to computed dock dimensions)
-    // ═══════════════════════════════════════════════════════════
-    Item {
-        id: dockWrapper
-        anchors {
-            horizontalCenter: parent.horizontalCenter
-            bottom: parent.bottom
-        }
-        width: dockContainer.computedDockWidth
-        height: dockContainer.computedDockHeight
-
-        // Pill-shaped glass background
-        LiquidGlassSurface {
-            anchors.fill: parent
-            radius: dockContainer.pillRadius
-            baseColor: ThemeService.backgroundColor
-            ambientPrimary: WallpaperPaletteService.primary
-            ambientSecondary: WallpaperPaletteService.secondary
-            // Kept visibly above the base glass tint so a wallpaper switch is
-            // perceptible while the desktop still reads through the surface.
-            // Keep the previous tint visible while the next wallpaper is
-            // being quantized. Gating this on `ready` briefly removed the
-            // tint and made each wallpaper switch look like a flash.
-            ambientStrength: 0.82
-        }
-
-        // Adaptive layout engine
-        DockContainer {
-            id: dockContainer
-            anchors.centerIn: parent
+        DockWindow {
+            required property var modelData
+            screen: modelData
         }
     }
 }

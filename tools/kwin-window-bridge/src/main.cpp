@@ -1,9 +1,14 @@
 #include <QDBusConnection>
 #include <QDBusError>
+#include <QDBusInterface>
+#include <QDBusReply>
+#include <QDBusUnixFileDescriptor>
+#include <QDateTime>
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -13,11 +18,22 @@
 #include <QSocketNotifier>
 #include <QStandardPaths>
 #include <QSettings>
+#include <QSize>
+#include <QTimer>
 #include <QGuiApplication>
 #include <QTextStream>
 
+#include <QtConcurrent>
+
 #include <KIconLoader>
 
+#include <algorithm>
+#include <atomic>
+#include <array>
+#include <cerrno>
+#include <memory>
+#include <poll.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 class Bridge final : public QObject {
@@ -45,7 +61,7 @@ public slots:
             }
             event.insert(QStringLiteral("windows"), windows);
         }
-        QTextStream(stdout) << "EVENT " << QJsonDocument(event).toJson(QJsonDocument::Compact) << Qt::endl;
+        publishEvent(event);
     }
 
     QString TakeCommand()
@@ -62,6 +78,16 @@ public slots:
 
         const QString command = QString::fromUtf8(document.toJson(QJsonDocument::Compact));
         const QString action = document.object().value(QStringLiteral("action")).toString();
+
+        // Thumbnail capture uses KWin's restricted ScreenShot2 API directly.
+        // The KWin Script has no pixel access, but it already gives us the
+        // authoritative UUID that ScreenShot2 accepts on Wayland.
+        if (action == QStringLiteral("thumbnail")) {
+            const QString id = document.object().value(QStringLiteral("id")).toString();
+            if (!id.isEmpty())
+                QTimer::singleShot(0, this, [this, id] { captureThumbnail(id); });
+            return;
+        }
 
         // A Dock click expresses the latest focus intent. Keeping older
         // activate requests makes rapid clicks feel delayed and can focus a
@@ -93,6 +119,184 @@ public slots:
     }
 
 private:
+    void publishEvent(const QJsonObject &event)
+    {
+        QTextStream(stdout) << "EVENT "
+                            << QJsonDocument(event).toJson(QJsonDocument::Compact)
+                            << Qt::endl;
+    }
+
+    void publishThumbnailError(const QString &id, const QString &message)
+    {
+        QJsonObject event;
+        event.insert(QStringLiteral("type"), QStringLiteral("thumbnail"));
+        event.insert(QStringLiteral("id"), id);
+        event.insert(QStringLiteral("error"), message);
+        publishEvent(event);
+    }
+
+    void publishThumbnailDebug(const QString &id, const QString &stage)
+    {
+        QJsonObject event;
+        event.insert(QStringLiteral("type"), QStringLiteral("thumbnail-debug"));
+        event.insert(QStringLiteral("id"), id);
+        event.insert(QStringLiteral("stage"), stage);
+        publishEvent(event);
+    }
+
+    void captureThumbnail(const QString &id)
+    {
+        if (m_thumbnailInFlight.contains(id))
+            return;
+        m_thumbnailInFlight.insert(id);
+        publishThumbnailDebug(id, QStringLiteral("begin"));
+
+        int pipeFds[2];
+        if (::pipe(pipeFds) != 0) {
+            m_thumbnailInFlight.remove(id);
+            publishThumbnailError(id, QStringLiteral("Cannot create screenshot pipe"));
+            return;
+        }
+        // Keep one local write descriptor so we can close it deterministically
+        // after the D-Bus call. QDBusUnixFileDescriptor owns a duplicate.
+        const int dbusWriteFd = ::dup(pipeFds[1]);
+        if (dbusWriteFd == -1) {
+            ::close(pipeFds[0]);
+            ::close(pipeFds[1]);
+            m_thumbnailInFlight.remove(id);
+            publishThumbnailError(id, QStringLiteral("Cannot duplicate screenshot pipe"));
+            return;
+        }
+
+        // KWin may start writing the raw RGBA frame before it delivers the
+        // delayed D-Bus reply. A 4K window readily exceeds a pipe buffer; if
+        // we wait for that reply before reading, KWin and this process can
+        // deadlock. Start draining immediately in a worker thread.
+        const auto expectedBytes = std::make_shared<std::atomic<qint64>>(-1);
+        const auto deadlineMs = std::make_shared<std::atomic<qint64>>(-1);
+        auto pixelsFuture = QtConcurrent::run([readFd = pipeFds[0], expectedBytes, deadlineMs] {
+            const int flags = ::fcntl(readFd, F_GETFL);
+            if (flags == -1 || ::fcntl(readFd, F_SETFL, flags | O_NONBLOCK) == -1) {
+                ::close(readFd);
+                return QByteArray{};
+            }
+            QByteArray bytes;
+            std::array<char, 64 * 1024> buffer;
+            for (;;) {
+                const qint64 expected = expectedBytes->load();
+                if (expected >= 0 && bytes.size() >= expected)
+                    return bytes.left(expected);
+                const qint64 deadline = deadlineMs->load();
+                if (expected >= 0 && deadline > 0
+                        && QDateTime::currentMSecsSinceEpoch() >= deadline)
+                    return bytes;
+
+                pollfd pollFd = { readFd, POLLIN | POLLHUP, 0 };
+                if (::poll(&pollFd, 1, 50) <= 0)
+                    continue;
+                const ssize_t bytesRead = ::read(readFd, buffer.data(), buffer.size());
+                if (bytesRead > 0) {
+                    bytes.append(buffer.data(), bytesRead);
+                    continue;
+                }
+                if (bytesRead == -1 && (errno == EAGAIN || errno == EINTR))
+                    continue;
+                ::close(readFd);
+                if (bytesRead <= 0)
+                    return bytes;
+            }
+        });
+
+        QVariantMap options;
+        options.insert(QStringLiteral("include-decoration"), true);
+        QDBusReply<QVariantMap> reply;
+        {
+            // ScreenShot2 writes raw pixels to this descriptor after its D-Bus
+            // reply describes the image dimensions and QImage format.
+            QDBusUnixFileDescriptor writePipe(dbusWriteFd);
+            QDBusInterface screenshot(QStringLiteral("org.kde.KWin"),
+                                      QStringLiteral("/org/kde/KWin/ScreenShot2"),
+                                      QStringLiteral("org.kde.KWin.ScreenShot2"));
+            reply = screenshot.call(QStringLiteral("CaptureWindow"), id, options,
+                                    QVariant::fromValue(writePipe));
+        }
+        // Without this close, our own write end keeps the reader's readAll()
+        // waiting forever after KWin has finished writing the frame.
+        ::close(pipeFds[1]);
+        publishThumbnailDebug(id, reply.isValid()
+            ? QStringLiteral("dbus-reply")
+            : QStringLiteral("dbus-error"));
+
+        if (!reply.isValid()) {
+            expectedBytes->store(0);
+            pixelsFuture.waitForFinished();
+            m_thumbnailInFlight.remove(id);
+            publishThumbnailError(id, reply.error().message());
+            return;
+        }
+
+        const QVariantMap result = reply.value();
+        const int width = result.value(QStringLiteral("width")).toInt();
+        const int height = result.value(QStringLiteral("height")).toInt();
+        const int stride = result.value(QStringLiteral("stride")).toInt();
+        const auto format = static_cast<QImage::Format>(result.value(QStringLiteral("format")).toInt());
+        const qint64 expectedSize = qint64(stride) * height;
+        publishThumbnailDebug(id, QStringLiteral("meta=%1x%2 stride=%3 format=%4 type=%5")
+            .arg(width).arg(height).arg(stride).arg(int(format))
+            .arg(result.value(QStringLiteral("type")).toString()));
+        expectedBytes->store(std::max<qint64>(0, expectedSize));
+        deadlineMs->store(QDateTime::currentMSecsSinceEpoch() + 4000);
+        const QByteArray bytes = pixelsFuture.result();
+        publishThumbnailDebug(id, QStringLiteral("pixels=") + QString::number(bytes.size()));
+
+        if (width <= 0 || height <= 0 || stride <= 0 || format == QImage::Format_Invalid
+                || bytes.size() < expectedSize) {
+            m_thumbnailInFlight.remove(id);
+            publishThumbnailError(id, QStringLiteral("KWin returned an invalid screenshot"));
+            return;
+        }
+
+        QImage image(reinterpret_cast<const uchar *>(bytes.constData()), width, height,
+                     stride, format);
+        // The preview is rendered at roughly 316x184 logical pixels. Keep a
+        // 2x source so it remains crisp on high-DPI outputs rather than being
+        // upscaled by Qt Quick from a 360px thumbnail.
+        image = image.copy().scaled(QSize(720, 440), Qt::KeepAspectRatio,
+                                    Qt::SmoothTransformation);
+        if (image.isNull()) {
+            m_thumbnailInFlight.remove(id);
+            publishThumbnailError(id, QStringLiteral("Cannot decode KWin screenshot"));
+            return;
+        }
+
+        const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation)
+            + QStringLiteral("/quickshell/window-thumbnails");
+        QDir().mkpath(runtimeDir);
+        QString safeId = id;
+        safeId.remove(QRegularExpression(QStringLiteral("[^A-Za-z0-9_-]")));
+        const QString path = runtimeDir + QLatin1Char('/') + safeId + QLatin1Char('-')
+            + QString::number(++m_thumbnailSerial) + QStringLiteral(".png");
+        if (!image.save(path, "PNG")) {
+            m_thumbnailInFlight.remove(id);
+            publishThumbnailError(id, QStringLiteral("Cannot save thumbnail PNG"));
+            return;
+        }
+
+        const QString previousPath = m_thumbnailPaths.value(id);
+        if (!previousPath.isEmpty() && previousPath != path)
+            QFile::remove(previousPath);
+        m_thumbnailPaths.insert(id, path);
+        m_thumbnailInFlight.remove(id);
+
+        QJsonObject event;
+        event.insert(QStringLiteral("type"), QStringLiteral("thumbnail"));
+        event.insert(QStringLiteral("id"), id);
+        event.insert(QStringLiteral("path"), path);
+        event.insert(QStringLiteral("width"), image.width());
+        event.insert(QStringLiteral("height"), image.height());
+        publishEvent(event);
+    }
+
     static QString normalizeName(QString value) {
         value = value.toLower(); value.remove(QStringLiteral(".desktop"));
         QString result;
@@ -167,6 +371,9 @@ private:
     QQueue<QString> m_commands;
     QHash<QString, QString> m_desktopIcons;
     QHash<QString, QString> m_iconCache;
+    QHash<QString, QString> m_thumbnailPaths;
+    QSet<QString> m_thumbnailInFlight;
+    quint64 m_thumbnailSerial = 0;
     bool m_desktopIndexReady = false;
 };
 
@@ -176,6 +383,7 @@ int main(int argc, char *argv[])
     // session/theme context. QCoreApplication silently falls back to a
     // different icon context for some themes.
     QGuiApplication application(argc, argv);
+    application.setDesktopFileName(QStringLiteral("org.quickshell.KWinWindowBridge"));
     QDBusConnection bus = QDBusConnection::sessionBus();
 
     if (!bus.registerService(QStringLiteral("org.quickshell.KWinWindowBridge"))) {
