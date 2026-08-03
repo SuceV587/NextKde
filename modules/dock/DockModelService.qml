@@ -1,5 +1,6 @@
 pragma Singleton
 import QtQuick
+import qs.modules.common
 
 // DockModelService — compatibility facade for the current Dock UI.
 //
@@ -35,6 +36,31 @@ QtObject {
     property bool preserveActiveIndicator: false
     property string requestedActivationWindowId: ""
 
+    // Some Dock popups (the context menu) need to keep their Wayland surface
+    // alive briefly for an exit animation. Other popup types can still use the
+    // native `visible` property directly through this shared gateway.
+    function setDockPopupVisible(popup, shouldOpen) {
+        if (!popup)
+            return
+        if (typeof popup.setDockPopupVisible === "function")
+            popup.setDockPopupVisible(shouldOpen)
+        else
+            popup.visible = shouldOpen
+    }
+
+    // Replacing one anchored popup with another must not leave the old surface
+    // animating at a stale anchor. The replacement gets the next frame to map
+    // its own icon, which prevents the screen-edge flash during rapid right
+    // clicks across Dock items.
+    function dismissDockPopupImmediately(popup) {
+        if (!popup)
+            return
+        if (typeof popup.dismissDockPopupImmediately === "function")
+            popup.dismissDockPopupImmediately()
+        else
+            popup.visible = false
+    }
+
     function setActiveIndicatorHold(hold) {
         svc.preserveActiveIndicator = !!hold;
     }
@@ -43,9 +69,9 @@ QtObject {
         if (!popup)
             return;
         if (svc.activeDockPopup && svc.activeDockPopup !== popup)
-            svc.activeDockPopup.visible = false;
+            svc.dismissDockPopupImmediately(svc.activeDockPopup);
         svc.activeDockPopup = popup;
-        popup.visible = true;
+        svc.setDockPopupVisible(popup, true);
     }
 
     function releaseDockPopup(popup) {
@@ -177,12 +203,7 @@ QtObject {
 
         if (windows.length === 0) {
             console.log("[DockModel] launch app=" + identity.desktopId);
-            try {
-                if (identity.entry?.execute)
-                    identity.entry.execute();
-            } catch (e) {
-                console.warn("[DockModel] failed to launch app=" + identity.desktopId + ": " + e);
-            }
+            AppActionService.launch(identity);
             return;
         }
 
@@ -275,7 +296,9 @@ QtObject {
             return
         console.log("[DockModel] reorder " + type + "=" + key
                     + " target=" + targetIndex)
-        svc._refreshPresentation()
+        // ConfigService's dockItemsChanged connection already rebuilds the
+        // presentation synchronously. A second rebuild here recreates pinned
+        // delegates during their release animation and causes a visible flash.
     }
 
 

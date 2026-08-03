@@ -35,8 +35,9 @@ QtObject {
     property real   baseHeight:   60
     property real   maxWidthRatio: 0.9
     property string theme:        "dark"
-    // Optional per-app icon overrides keyed by canonical desktop ID.
-    // Example: { "code.desktop": "/path/to/custom.svg" }
+    // Legacy compatibility field. New app name/icon edits live in
+    // AppLauncherConfigService and are published through AppPresentationService.
+    // Keep existing values round-trippable so older config files are not lost.
     property var iconOverrides:   ({})
     // `dockItems` is the canonical ordered list of pinned applications.
     // App item: { type: "app", appId: "code.desktop" }

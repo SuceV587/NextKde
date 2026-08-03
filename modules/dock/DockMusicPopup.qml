@@ -12,6 +12,8 @@ PopupWindow {
 
     property Item anchorItem: null
     property var player: DockMprisService.activePlayer
+    readonly property url artworkSource: player?.trackArtUrl
+        ? player.trackArtUrl : Qt.resolvedUrl("../../assets/defaultCover.png")
     property bool pointerInside: popupMouse.containsMouse
 
     readonly property real safeLength: player?.lengthSupported
@@ -60,7 +62,7 @@ PopupWindow {
     // compact and expanded music controls always belong to one visual system.
     ArtworkPalette {
         id: artworkPalette
-        source: popup.player?.trackArtUrl ?? ""
+        source: popup.artworkSource
     }
 
     LiquidGlassSurface {
@@ -126,7 +128,7 @@ PopupWindow {
                 Image {
                     id: coverImage
                     anchors.fill: parent
-                    source: popup.player?.trackArtUrl ?? ""
+                    source: popup.artworkSource
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                     cache: true
@@ -143,14 +145,6 @@ PopupWindow {
                     radius: 5
                     visible: false
                     layer.enabled: true
-                }
-                Text {
-                    anchors.centerIn: parent
-                    visible: !popup.player?.trackArtUrl
-                    text: "♫"
-                    color: ThemeService.foregroundColor
-                    opacity: 0.52
-                    font.pixelSize: 42
                 }
             }
 

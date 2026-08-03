@@ -31,7 +31,7 @@ function clamp(value, min, max) {
 //   baseHeight  — user-configured ideal dock height (e.g. 60)
 //   pinnedCount — number of pinned launcher icons
 //   windowCount — number of open (non-pinned) window icons
-//   hasPlayer   — whether an active MPRIS player exists
+//   hasPlayer   — whether the right-side information slot is occupied
 //   screenWidth — current screen width in pixels
 //
 // Returns: {
@@ -64,7 +64,7 @@ export function computeLayout(
     const widthRatio = clamp(Number(maxWidthRatio), 0.1, 1.0)
     const maxWidth = screenWidth * widthRatio
 
-    // ── Determine music section ──
+    // ── Determine right-side information section ──
     const musicUnits   = hasPlayer ? MUSIC_UNITS : 0
     const dividerCount = hasPlayer ? 2 : 1
 

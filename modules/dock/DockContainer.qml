@@ -2,6 +2,8 @@ import QtQuick
 import Quickshell
 import "./AdaptiveMath.mjs" as AdaptiveMath
 import qs.modules.applauncher
+import qs.modules.common
+import qs.modules.weather
 
 // ────────────────────────────────────────────────────────────────
 // DockContainer — Adaptive layout engine.
@@ -27,6 +29,9 @@ Item {
     readonly property int pinnedCount: DockModelService.pinnedCount + 1
     readonly property int windowCount: DockModelService.windowCount
     readonly property bool hasPlayer: DockMprisService.hasPlayer
+    readonly property bool hasPlayingMusic: DockMprisService.hasPlayingPlayer
+    readonly property bool hasWeather: WeatherService.available
+    readonly property bool hasInfo: hasPlayingMusic || hasWeather
     readonly property int screenWidth: Quickshell.screens[0]?.width ?? 1920
     readonly property real baseHeight: ConfigService.baseHeight
     readonly property real maxWidthRatio: ConfigService.maxWidthRatio
@@ -39,7 +44,7 @@ Item {
     // must affect the calculation through counts/units instead of changing
     // height or spacing locally, otherwise width fitting can be bypassed.
     readonly property var _layout: AdaptiveMath.computeLayout(
-        baseHeight, pinnedCount, windowCount, hasPlayer, screenWidth,
+        baseHeight, pinnedCount, windowCount, hasInfo, screenWidth,
         maxWidthRatio, proportions
     )
 
@@ -56,10 +61,12 @@ Item {
     readonly property real activeBackgroundGap: _layout.activeBackgroundGap
     readonly property int iconUnits: _layout.iconUnits
     readonly property int musicUnits: _layout.musicUnits
-    // Long press enters the persistent iPadOS-like edit state. A real drag
-    // also enables it transiently, so direct drag remains available.
+    // Long press enters the persistent iPadOS-like edit state. Starting a
+    // real drag also enters that same state, and only an explicit tap-away or
+    // external window focus change ends it.
     property bool editMode: false
-    // A drag temporarily enables the iPadOS-like edit state.
+    // This tracks only the in-progress source for reorder geometry; it must
+    // not decide whether the user remains in persistent edit mode after drop.
     property var draggedPinnedLoader: null
     readonly property bool isEditing: editMode || draggedPinnedLoader !== null
     readonly property real draggedPointerX: draggedPinnedLoader
@@ -95,13 +102,12 @@ Item {
         function onPrimaryChanged() { container.publishLauncherGeometry() }
         function onSecondaryChanged() { container.publishLauncherGeometry() }
     }
-    // Launcher actions enter Dock through the launcher service contract. This
-    // keeps launcher UI independent from Dock's persistence/model internals.
+    // Pin actions may come from Dock, AppLauncher, QuickSearch, or future
+    // shell surfaces. Dock remains the sole owner of Dock persistence.
     Connections {
-        target: AppLauncherService
-        function onPinToDockRequested(appId) {
-            DockModelService.pinApp(appId)
-        }
+        target: AppActionService
+        function onPinRequested(appId) { DockModelService.pinApp(appId) }
+        function onUnpinRequested(appId) { DockModelService.unpinApp(appId) }
     }
 
     function reportActiveIcon(icon, activated) {
@@ -204,24 +210,19 @@ Item {
         }
     }
 
-    // Quickshell cannot observe clicks delivered to another Wayland surface,
-    // but it can observe when the pointer leaves this Dock surface. That is
-    // the non-invasive equivalent of tapping away from an iPadOS edit state.
-    HoverHandler {
-        enabled: container.editMode && !container.draggedPinnedLoader
-        onHoveredChanged: {
-            if (!hovered)
-                container.editMode = false
-        }
-    }
-
     // This sits behind the delegates, so it only receives clicks in the Dock
     // gaps. It provides a natural way to leave the persistent edit state.
     MouseArea {
         anchors.fill: parent
         z: -1
-        enabled: container.editMode && !container.draggedPinnedLoader
-        onClicked: container.editMode = false
+        enabled: (container.editMode && !container.draggedPinnedLoader)
+            || AppLauncherService.open
+        onClicked: {
+            if (AppLauncherService.open)
+                AppLauncherService.hide()
+            if (container.editMode && !container.draggedPinnedLoader)
+                container.editMode = false
+        }
     }
 
     DockActiveIndicator {
@@ -279,12 +280,18 @@ Item {
             displayName: "应用程序"
             showContextMenu: false
             allowEdit: false
+            dismissAppLauncherOnInteraction: false
             isPinnedItem: false
             bounceKey: ""
             onActivate: {
+                if (container.isEditing) {
+                    container.editMode = false
+                    return
+                }
                 container.editMode = false
                 if (DockModelService.activeDockPopup)
-                    DockModelService.activeDockPopup.visible = false
+                    DockModelService.setDockPopupVisible(
+                        DockModelService.activeDockPopup, false)
                 console.log("[DockContainer] app launcher requested")
                 AppLauncherService.toggle()
             }
@@ -302,15 +309,26 @@ Item {
                 property int pinnedIndex: index
                 property bool dragged: false
                 property real lastDragOffsetX: 0
+                // The DragHandler clears translation as soon as the pointer is
+                // released. Keep a visual anchor for one layout frame so the
+                // source never flashes back to its old slot before the reordered
+                // Repeater geometry is ready.
+                property bool settling: false
+                property real releaseCenterX: 0
                 readonly property real dragPointerX: reorderDrag.active
                     ? pinnedItemLoader.x + pinnedItemLoader.width / 2
                       + reorderDrag.translation.x : -1
                 // Keep the Row in charge of geometry while the visual item
                 // follows the pointer above it. This leaves a clear gap at
                 // the original position and avoids fighting Row's layout.
-                property real dragOffsetX: reorderDrag.active
-                    ? reorderDrag.translation.x
-                    : 0
+                property real dragOffsetX: {
+                    if (reorderDrag.active)
+                        return reorderDrag.translation.x
+                    if (settling)
+                        return releaseCenterX - (pinnedItemLoader.x
+                            + pinnedItemLoader.width / 2)
+                    return 0
+                }
                 readonly property real reorderOffsetX: {
                     const source = container.draggedPinnedLoader
                     const destination = container.dragInsertIndex
@@ -337,17 +355,20 @@ Item {
                 // Row places delegates at y=0; keep the Loader dock-height
                 // tall so the nested square icon can remain vertically centred.
                 height: container.computedDockHeight
-                z: reorderDrag.active ? 10 : 0
-                scale: reorderDrag.active ? 1.10 : 1.0
-                opacity: reorderDrag.active ? 0.88 : 1.0
+                z: reorderDrag.active || settling ? 10 : 0
+                scale: reorderDrag.active || settling ? 1.10 : 1.0
+                opacity: reorderDrag.active || settling ? 0.88 : 1.0
                 transformOrigin: Item.Center
-                layer.enabled: reorderDrag.active
+                layer.enabled: reorderDrag.active || settling
                 transform: Translate { x: pinnedItemLoader.visualOffsetX }
                 Behavior on visualOffsetX {
                     // The dragged source follows immediately. Neighbours ease
-                    // out of the way as the candidate insertion slot changes.
+                    // out of the way as the candidate insertion slot changes;
+                    // after release, the source uses the same easing to land
+                    // from its anchored pointer position into the new slot.
                     enabled: pinnedItemLoader !== container.draggedPinnedLoader
-                    NumberAnimation { duration: 240; easing.type: Easing.Linear }
+                        || pinnedItemLoader.settling
+                    NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
                 }
                 Behavior on scale {
                     NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
@@ -366,7 +387,13 @@ Item {
                     yAxis.enabled: false
                     onActiveChanged: {
                         if (active) {
+                            // A deliberate drag is an alternate entry point
+                            // into persistent edit mode. Do not clear it on
+                            // release: users may reorder several apps in one
+                            // session, like iPadOS.
+                            container.editMode = true
                             pinnedItemLoader.dragged = true
+                            pinnedItemLoader.settling = false
                             pinnedItemLoader.lastDragOffsetX = 0
                             container.draggedPinnedLoader = pinnedItemLoader
                             return
@@ -394,12 +421,16 @@ Item {
                                 nearestIndex = i
                             }
                         }
+                        // Preserve the pointer-release position until Row has
+                        // received the new model order. `settleTimer` then lets
+                        // the visual source glide into its new, real slot.
+                        pinnedItemLoader.releaseCenterX = center
+                        pinnedItemLoader.settling = true
                         DockModelService.movePinnedItem(
                                     pinnedItemLoader.itemData.type,
                                     pinnedItemLoader.itemData.appId,
                                     nearestIndex)
-                        pinnedItemLoader.dragged = false
-                        container.draggedPinnedLoader = null
+                        settleTimer.restart()
                     }
                     // DragHandler clears translation during deactivation,
                     // before onActiveChanged(false) runs. Keep the final
@@ -407,6 +438,21 @@ Item {
                     onTranslationChanged: {
                         if (active)
                             pinnedItemLoader.lastDragOffsetX = translation.x
+                    }
+                }
+
+                Timer {
+                    id: settleTimer
+                    // A frame lets the Repeater/Row commit its new geometry;
+                    // clearing the anchor sooner is the old-slot flash seen on
+                    // pointer release.
+                    interval: 16
+                    repeat: false
+                    onTriggered: {
+                        pinnedItemLoader.settling = false
+                        pinnedItemLoader.dragged = false
+                        if (container.draggedPinnedLoader === pinnedItemLoader)
+                            container.draggedPinnedLoader = null
                     }
                 }
 
@@ -433,9 +479,15 @@ Item {
                             isPinnedItem: true
                             bounceKey: ""   // pinned never bounce
                             editMode: container.isEditing
-                            isDragging: reorderDrag.active
+                            isDragging: reorderDrag.active || pinnedItemLoader.settling
                             onRequestEdit: container.editMode = true
-                            onActivate: DockModelService.activateApp(appId)
+                            onActivate: {
+                                // DockIcon also guards this, but keeping the
+                                // action boundary defensive ensures pinned
+                                // apps can never launch while sorting.
+                                if (!container.isEditing)
+                                    DockModelService.activateApp(appId)
+                            }
                             }
 
                             Repeater {
@@ -503,20 +555,20 @@ Item {
             }
         }
 
-        // ── Divider 2: windows | music (conditional) ──
+        // ── Divider 2: windows | information slot (conditional) ──
         DockDivider {
             dockHeight: container.computedDockHeight
             dividerWidth: 2
             sideMargin: container.dividerMargin
-            visible: container.hasPlayer
+            visible: container.hasInfo
         }
 
-        // ── Music player (conditional) ──
-        DockMusicPlayer {
+        // ── Shared music / weather information slot ──
+        DockInfoCarousel {
             iconSize: container.iconSize
             dockHeight: container.computedDockHeight
             widthUnits: container.musicUnits
-            visible: container.hasPlayer
+            visible: container.hasInfo
         }
     }
 }

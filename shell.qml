@@ -7,6 +7,7 @@ import qs.modules.dock
 import qs.modules.quicksearch
 import qs.modules.notifications
 import qs.modules.applauncher
+import qs.modules.deskcenter
 
 ShellRoot {
     id: shell
@@ -20,6 +21,7 @@ ShellRoot {
     }
     AppLauncher {}
     NotificationCenter {}
+    DeskCenter {}
     Bar {}
     Dock {}
 }

@@ -65,10 +65,11 @@
         <entry name="BlurDecorations" type="Bool">
             <default>false</default>
         </entry>
+        <entry name="OnlyQuickshell" type="Bool">
+            <default>true</default>
+        </entry>
         <entry name="WindowClasses" type="String">
-            <default>class1
-class2
-class3</default>
+            <default>quickshell</default>
         </entry>
         <entry name="BlurMatching" type="Bool">
             <default>true</default>

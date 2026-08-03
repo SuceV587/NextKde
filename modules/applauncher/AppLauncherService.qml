@@ -21,15 +21,6 @@ QtObject {
     property color dockAmbientPrimary: "transparent"
     property color dockAmbientSecondary: "transparent"
     property color dockForegroundColor: "white"
-    // Launcher-owned presentation overrides are published here instead of
-    // making Dock read the launcher config file. This keeps persistence local
-    // while giving every shell surface one reactive icon-override contract.
-    property var appIconOverrides: ({})
-    property int appIconOverridesRevision: 0
-    // Cross-module action contract. AppLauncher must not import Dock's model
-    // services directly, otherwise Dock → Launcher geometry publishing forms
-    // a circular QML module dependency.
-    signal pinToDockRequested(string appId)
 
     function setDockPresentation(width, height, background, primary, secondary, foreground) {
         service.dockWidth = width
@@ -53,24 +44,6 @@ QtObject {
         service.open = !service.open
         console.log("[AppLauncher] toggle open=" + service.open
             + " width=" + dockWidth + " height=" + dockHeight)
-    }
-
-    function requestPinToDock(appId) {
-        if (!appId)
-            return
-        console.log("[AppLauncher] request pin app=" + appId)
-        service.pinToDockRequested(appId)
-    }
-
-    function setAppIconOverrides(overrides) {
-        const next = overrides || ({})
-        if (JSON.stringify(next) === JSON.stringify(service.appIconOverrides))
-            return false
-        service.appIconOverrides = next
-        service.appIconOverridesRevision++
-        console.log("[AppLauncher] published icon overrides="
-            + Object.keys(next).length)
-        return true
     }
 
 }

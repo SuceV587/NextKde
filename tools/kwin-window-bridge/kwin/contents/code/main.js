@@ -189,7 +189,9 @@ workspace.windowRemoved.connect(scheduleSnapshot);
 workspace.windowActivated.connect(scheduleSnapshot);
 
 const commandTimer = new QTimer();
-commandTimer.interval = 25;
+// Commands are UI actions, so 100 ms keeps the Dock responsive while cutting
+// idle D-Bus traffic from 40 polls per second to 10.
+commandTimer.interval = 100;
 commandTimer.repeat = true;
 let commandPollInFlight = false;
 commandTimer.timeout.connect(function() {

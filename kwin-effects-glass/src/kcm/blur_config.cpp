@@ -53,6 +53,23 @@ BlurEffectConfig::BlurEffectConfig(QObject *parent, const KPluginMetaData &data)
     connect(ui.kcfg_UseDeclaredCornerRadius, &QCheckBox::toggled, this, updateRoundedCornerControls);
     connect(ui.kcfg_DynamicCorners, &QCheckBox::toggled, this, updateRoundedCornerControls);
 
+    auto updateQuickshellScope = [this]() {
+        const bool onlyQuickshell = ui.kcfg_OnlyQuickshell->isChecked();
+
+        // These controls configure global application-window behavior.  A
+        // Quickshell-only setup has no use for them and hiding them keeps the
+        // KCM focused on the material controls that affect its surfaces.
+        ui.windowClassesBriefDescription->setVisible(!onlyQuickshell);
+        ui.windowClassesContextualHelp->setVisible(!onlyQuickshell);
+        ui.kcfg_WindowClasses->setVisible(!onlyQuickshell);
+        ui.kcfg_BlurMatching->setVisible(!onlyQuickshell);
+        ui.kcfg_BlurNonMatching->setVisible(!onlyQuickshell);
+        ui.kcfg_BlurDecorations->setVisible(!onlyQuickshell);
+        ui.scrollAreaRoundedcorners->setEnabled(!onlyQuickshell);
+    };
+    updateQuickshellScope();
+    connect(ui.kcfg_OnlyQuickshell, &QCheckBox::toggled, this, updateQuickshellScope);
+
     QFile about(":/effects/glass/kcm/about.html");
     if (about.open(QIODevice::ReadOnly)) {
         const auto html = about.readAll()

@@ -1,0 +1,18 @@
+module qs.modules.bar
+
+Bar 1.0 Bar.qml
+BarWindow 1.0 BarWindow.qml
+Battery 1.0 Battery.qml
+CpuTemperature 1.0 CpuTemperature.qml
+NetworkStatus 1.0 NetworkStatus.qml
+NetworkTraffic 1.0 NetworkTraffic.qml
+NetworkPanel 1.0 NetworkPanel.qml
+BluetoothPanel 1.0 BluetoothPanel.qml
+ControlCenterToggle 1.0 ControlCenterToggle.qml
+ControlCenterPanel 1.0 ControlCenterPanel.qml
+SysTray 1.0 SysTray.qml
+UsageRing 1.0 UsageRing.qml
+UsageSparkline 1.0 UsageSparkline.qml
+
+singleton NetworkService 1.0 NetworkService.qml
+singleton ControlCenterService 1.0 ControlCenterService.qml

@@ -86,12 +86,31 @@ GlassFragment glassRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadiu
     return GlassFragment(color, dist, edgeFactor, concaveFactor, vec3(0.0, 0.0, 1.0), 1.0);
 }
 
-vec3 glassOutline(vec2 position, GlassFragment s)
+vec3 glassOutline(vec2 position, GlassFragment s, vec4 cornerRadius)
 {
-    float rimMask = clamp(0.25 * s.concaveFactor, 0.0, glowStrength);
+    // On a straight edge the SDF normal points mostly along one axis.  At a
+    // rounded corner both components are large, so applying the full edge
+    // light there creates a conspicuous bright knot.  Fade the highlight as
+    // the normal turns into a corner while keeping the straight-edge response
+    // unchanged.
+    const float h = 0.75;
+    vec2 halfBlurSize = blurSize * 0.5;
+    vec2 sdfGradient = vec2(
+        roundedRectangleDist(position + vec2(h, 0.0), halfBlurSize, cornerRadius)
+            - roundedRectangleDist(position - vec2(h, 0.0), halfBlurSize, cornerRadius),
+        roundedRectangleDist(position + vec2(0.0, h), halfBlurSize, cornerRadius)
+            - roundedRectangleDist(position - vec2(0.0, h), halfBlurSize, cornerRadius)
+    );
+    vec2 normalXY = length(sdfGradient) > 0.0001
+        ? abs(normalize(sdfGradient))
+        : vec2(0.0);
+    float cornerFactor = smoothstep(0.22, 0.68, min(normalXY.x, normalXY.y));
+    float edgeLightFactor = 1.0 - 0.62 * cornerFactor;
+
+    float rimMask = clamp(0.25 * s.concaveFactor * edgeLightFactor, 0.0, glowStrength);
     vec3 glow = mix(s.color.rgb, glowColor, rimMask);
     if (edgeLighting == 1) {
-        glow += (s.color.rgb * s.concaveFactor);
+        glow += s.color.rgb * s.concaveFactor * edgeLightFactor;
     }
 
     if (glowStrength > 0.0) {
@@ -152,7 +171,7 @@ vec4 glass(vec4 sum, vec4 cornerRadius)
         s = GlassFragment(sum, dist, edgeFactor, concaveFactor, vec3(0.0, 0.0, 1.0), 1.0);
     }
 
-    vec3 rgb = s.concaveFactor < 1.0 ? glassOutline(position, s) : s.color.rgb;
+    vec3 rgb = s.concaveFactor < 1.0 ? glassOutline(position, s, cornerRadius) : s.color.rgb;
     vec3 tinted = mix(rgb, tintColor, adjustedTintStrength(tintStrength, rgb));
     return roundedRectangle(uv * blurSize, tinted, cornerRadius);
 }

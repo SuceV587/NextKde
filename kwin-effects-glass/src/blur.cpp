@@ -51,6 +51,7 @@
 #include <QTimer>
 #include <QWindow>
 #include <algorithm>
+#include <vector>
 #include <cmath> // for ceil()
 #include <cstdlib>
 
@@ -649,6 +650,22 @@ BorderRadius BlurEffect::effectiveWindowCornerRadius(EffectWindow *w, const Bord
         return BorderRadius(0.0, 0.0, 0.0, 0.0);
     }
 
+    // Quickshell sends the exact blur area for cards inside a transparent
+    // layer-shell surface.  The region has already been chosen by the client;
+    // applying this effect's window-sized corner mask on top would use a
+    // different geometry and makes the card edge visibly stair-step.
+    const auto isQuickshellSurface = [](const EffectWindow *window) {
+        return window
+            && (window->window()->resourceClass().contains(QLatin1String("quickshell"), Qt::CaseInsensitive)
+                || window->window()->resourceName().contains(QLatin1String("quickshell"), Qt::CaseInsensitive));
+    };
+    if (isQuickshellSurface(w)) {
+        if (const auto it = m_windows.find(w); it != m_windows.end()
+            && it->second.content.has_value() && !it->second.content->isEmpty()) {
+            return declaredCornerRadius;
+        }
+    }
+
     if (m_settings.roundedCorners.useDeclaredCornerRadius) {
         return declaredCornerRadius;
     }
@@ -1003,6 +1020,18 @@ bool BlurEffect::shouldBlur(const EffectWindow *w, int mask, const WindowPaintDa
     const auto windowClass = w->window()->resourceClass();
     const auto resourceName = w->window()->resourceName();
 
+    // Layer-shell clients may expose either "quickshell" or an application
+    // id such as "org.quickshell".  Match both resource fields instead of
+    // relying on a single exact, user-maintained window-class entry.
+    if (m_settings.forceBlur.onlyQuickshell) {
+        const auto isQuickshell = [](const QString &value) {
+            return value.contains(QLatin1String("quickshell"), Qt::CaseInsensitive);
+        };
+        if (!isQuickshell(windowClass) && !isQuickshell(resourceName)) {
+            return false;
+        }
+    }
+
     auto classes = m_windowClasses;
 
     // Add some apps to the exclusion list
@@ -1194,11 +1223,68 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     };
 
     const auto effectiveEffectShape = buildEffectiveShape(effectShape);
-    const auto effectiveContentShape = splitRenderRegions ? buildEffectiveShape(contentShape) : effectiveEffectShape;
+    auto effectiveContentShape = splitRenderRegions ? buildEffectiveShape(contentShape) : effectiveEffectShape;
     const auto effectiveFrameShape = splitRenderRegions ? buildEffectiveShape(frameShape) : decltype(effectiveEffectShape){};
 
     if (effectiveEffectShape.isEmpty()) {
         return;
+    }
+
+    // Quickshell's RoundedBlurRegion is transported by Wayland as a union of
+    // pixel-aligned rectangles.  Rendering that union directly exposes its
+    // stair-step edge.  For one continuous rounded card, recover the radius
+    // from its top inset, render its complete bounding rectangle, and let the
+    // SDF in onscreen_rounded.glsl provide sub-pixel coverage instead.
+    bool smoothQuickshellCard = false;
+    qreal quickshellCardRadius = 0.0;
+    const bool isQuickshellSurface = w->window()->resourceClass().contains(QLatin1String("quickshell"), Qt::CaseInsensitive)
+        || w->window()->resourceName().contains(QLatin1String("quickshell"), Qt::CaseInsensitive);
+    if (isQuickshellSurface && frameShape.isEmpty()
+        && contentShape.boundingRect() == effectShape.boundingRect()) {
+        const auto bounds = contentShape.boundingRect();
+        const qreal centerX = bounds.x() + bounds.width() * 0.5;
+        qreal topInset = 0.0;
+        bool spansFullWidth = false;
+        std::vector<std::pair<qreal, qreal>> centerIntervals;
+
+        for (const auto &rect : contentShape.rects()) {
+            if (rect.y() == bounds.y()) {
+                topInset = std::max(topInset, qreal(rect.x() - bounds.x()));
+            }
+            if (rect.x() == bounds.x() && rect.width() == bounds.width()) {
+                spansFullWidth = true;
+            }
+            if (rect.x() <= centerX && rect.x() + rect.width() >= centerX) {
+                centerIntervals.emplace_back(rect.y(), rect.y() + rect.height());
+            }
+        }
+
+        // Region rectangles are not ordered by the Wayland protocol.  Merge
+        // their centre-line intervals before deciding whether this is one
+        // continuous card; otherwise a valid rounded card can miss the smooth
+        // path merely because KWin reordered its rectangles.
+        std::sort(centerIntervals.begin(), centerIntervals.end());
+        qreal coveredUntil = bounds.y();
+        for (const auto &[start, end] : centerIntervals) {
+            if (start > coveredUntil) {
+                break;
+            }
+            coveredUntil = std::max(coveredUntil, end);
+        }
+
+        quickshellCardRadius = std::min(topInset, std::min(bounds.width(), bounds.height()) * 0.5);
+        smoothQuickshellCard = spansFullWidth
+            && coveredUntil >= bounds.y() + bounds.height()
+            && quickshellCardRadius >= 1.0;
+    }
+
+    if (smoothQuickshellCard) {
+        effectiveContentShape.clear();
+#ifdef GLASS_X11
+        effectiveContentShape.append(QRectF(0, 0, scaledBackgroundRect.width(), scaledBackgroundRect.height()));
+#else
+        effectiveContentShape.append(RectF(0, 0, scaledBackgroundRect.width(), scaledBackgroundRect.height()));
+#endif
     }
 
     // Maybe reallocate offscreen render targets. Keep in mind that the first one contains
@@ -1452,6 +1538,21 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
                                  .translated(-scaledBackgroundRect.topLeft());
 #endif
     const BorderRadius nativeCornerRadius = cornerRadius.scaled(viewport.scale()).rounded();
+    const BorderRadius shaderCornerRadius = smoothQuickshellCard
+        ? BorderRadius(quickshellCardRadius * viewport.scale(),
+                       quickshellCardRadius * viewport.scale(),
+                       quickshellCardRadius * viewport.scale(),
+                       quickshellCardRadius * viewport.scale()).rounded()
+        : nativeCornerRadius;
+    const QVector4D shaderBox = smoothQuickshellCard
+        ? QVector4D(scaledBackgroundRect.width() * 0.5,
+                    scaledBackgroundRect.height() * 0.5,
+                    scaledBackgroundRect.width() * 0.5,
+                    scaledBackgroundRect.height() * 0.5)
+        : QVector4D(nativeBox.x() + nativeBox.width() * 0.5,
+                    nativeBox.y() + nativeBox.height() * 0.5,
+                    nativeBox.width() * 0.5,
+                    nativeBox.height() * 0.5);
 
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.mvpMatrixLocation, projectionMatrix);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.colorMatrixLocation, colorMatrix);
@@ -1459,8 +1560,8 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.saturationLocation, static_cast<float>(m_settings.general.saturation));
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.halfpixelLocation, halfpixel);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.offsetLocation, combinedBlurSettings.offset * m_upsampleOffset);
-    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.boxLocation, QVector4D(nativeBox.x() + nativeBox.width() * 0.5, nativeBox.y() + nativeBox.height() * 0.5, nativeBox.width() * 0.5, nativeBox.height() * 0.5));
-    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.cornerRadiusLocation, nativeCornerRadius.toVector());
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.boxLocation, shaderBox);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.cornerRadiusLocation, shaderCornerRadius.toVector());
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.opacityLocation, modulation);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.texUnitLocation, 0);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.blurSizeLocation, QVector2D(nativeBox.width(), nativeBox.height()));

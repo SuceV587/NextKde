@@ -11,6 +11,7 @@ DockIcon 1.0 DockIcon.qml
 DockActiveIndicator 1.0 DockActiveIndicator.qml
 DockDivider 1.0 DockDivider.qml
 DockMusicPlayer 1.0 DockMusicPlayer.qml
+DockInfoCarousel 1.0 DockInfoCarousel.qml
 DockContextMenu 1.0 DockContextMenu.qml
 DockWindowPreview 1.0 DockWindowPreview.qml
 

@@ -44,6 +44,10 @@ struct GeneralSettings
 
 struct ForceBlurSettings
 {
+    // Quickshell surfaces often contain several independently rounded blur
+    // regions.  Restricting the effect to them avoids changing the rendering
+    // or corner geometry of normal application windows.
+    bool onlyQuickshell;
     QStringList windowClasses;
     WindowClassMatchingMode windowClassMatchingMode;
     bool blurDecorations;

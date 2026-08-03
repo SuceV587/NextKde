@@ -720,6 +720,16 @@
          <widget class="QWidget" name="scrollContentForceblur">
           <layout class="QVBoxLayout">
            <item>
+            <widget class="QCheckBox" name="kcfg_OnlyQuickshell">
+             <property name="text">
+              <string>Only apply to Quickshell</string>
+             </property>
+             <property name="toolTip">
+              <string>Recommended for Quickshell: preserves its own rounded surfaces and prevents Glass from changing other applications.</string>
+             </property>
+            </widget>
+           </item>
+           <item>
             <layout class="QVBoxLayout">
              <item>
               <layout class="QHBoxLayout">

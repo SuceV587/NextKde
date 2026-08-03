@@ -1,0 +1,5 @@
+module qs.modules.deskcenter
+
+DeskCenter 1.0 DeskCenter.qml
+DeskCenterWindow 1.0 DeskCenterWindow.qml
+DeskWidgetCard 1.0 DeskWidgetCard.qml

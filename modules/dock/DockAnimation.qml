@@ -31,8 +31,10 @@ QtObject {
     // ═══════════════════════════════════════════════════════════
     // Icon hover magnification
     // ═══════════════════════════════════════════════════════════
-    readonly property int   iconHoverDuration:  150
-    readonly property real  iconHoverScale:     1.15
+    // Hover is an explicit pointer affordance: the icon lifts and grows while
+    // its layout slot remains unchanged, so adaptive Dock geometry is stable.
+    readonly property int   iconHoverDuration:  135
+    readonly property real  iconHoverScale:     1.20
     readonly property var   iconHoverEasing:    Easing.OutCubic
 
     // ═══════════════════════════════════════════════════════════

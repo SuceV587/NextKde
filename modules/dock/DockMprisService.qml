@@ -16,6 +16,9 @@ QtObject {
     // ── Active player ──
     property MprisPlayer activePlayer: null
     property bool hasPlayer: activePlayer !== null
+    // A paused player remains controllable through MPRIS, but it should not
+    // occupy the Dock's live information slot or take part in its carousel.
+    property bool hasPlayingPlayer: false
 
     // ── Player tracking via Repeater ──
     property var _playerRefs: []
@@ -38,6 +41,13 @@ QtObject {
                 svc._playerRefs = refs
                 svc._updateActivePlayer()
             }
+            // Playback can begin in a player that is not currently selected
+            // as active. Listen to every MPRIS player so the Dock information
+            // slot immediately enters or leaves its carousel in that case.
+            Connections {
+                target: delegate.player
+                function onPlaybackStateChanged() { svc._updateActivePlayer() }
+            }
         }
     }
 
@@ -47,6 +57,7 @@ QtObject {
         const refs = svc._playerRefs
         if (!refs || refs.length === 0) {
             activePlayer = null
+            hasPlayingPlayer = false
             return
         }
 
@@ -55,9 +66,12 @@ QtObject {
             const p = refs[i]
             if (p && p.isPlaying) {
                 activePlayer = p
+                hasPlayingPlayer = true
                 return
             }
         }
+
+        hasPlayingPlayer = false
 
         // 2. Fall back to a paused player
         for (let i = 0; i < refs.length; i++) {
@@ -90,11 +104,4 @@ QtObject {
         activePlayer?.previous()
     }
 
-    // ── React to the active player's state changes ──
-    property Connections _playerStateConn: Connections {
-        target: svc.activePlayer
-        enabled: svc.activePlayer !== null
-        function onPlaybackStateChanged() { svc._updateActivePlayer() }
-        function onReadyChanged()         { svc._updateActivePlayer() }
-    }
 }

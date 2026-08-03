@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.modules.common
 
 // AppLauncherConfigService — persistent launcher-only layout data.
 //
@@ -18,17 +19,10 @@ QtObject {
     property var appOverrides: ({})
     signal customIconImportFinished(string appId, string path, bool success)
 
-    // Only icon presentation crosses the launcher/Dock boundary. Names,
-    // folders, ordering and hidden-app state remain launcher-specific.
-    function _publishIconOverrides() {
-        const icons = ({})
-        const overrides = appOverrides || ({})
-        for (const appId in overrides) {
-            const icon = String(overrides[appId]?.icon ?? "").trim()
-            if (icon)
-                icons[appId] = icon
-        }
-        AppLauncherService.setAppIconOverrides(icons)
+    // Layout remains launcher-local; presentation overrides are published to
+    // the common service so Dock and QuickSearch consume the same record.
+    function _publishPresentationOverrides() {
+        AppPresentationService.setOverrides(appOverrides)
     }
 
     function _normalizeRootItems(rawItems) {
@@ -312,11 +306,11 @@ QtObject {
             // A shell surface can be recreated while this singleton retains
             // disk state. Re-publish even an unchanged save so Dock never
             // waits for a full Quickshell restart to learn the override.
-            _publishIconOverrides()
+            _publishPresentationOverrides()
             return false
         }
         appOverrides = next
-        _publishIconOverrides()
+        _publishPresentationOverrides()
         scheduleSave()
         console.log("[AppLauncherConfig] update app=" + appId
             + " override=" + JSON.stringify(override))
@@ -504,7 +498,7 @@ QtObject {
                     hiddenAppIds = Array.isArray(saved.hiddenAppIds)
                         ? saved.hiddenAppIds : []
                     appOverrides = saved.appOverrides ?? ({})
-                    service._publishIconOverrides()
+                    service._publishPresentationOverrides()
                     console.log("[AppLauncherConfig] loaded roots=" + rootItems.length)
                 } catch (error) {
                     console.warn("[AppLauncherConfig] parse failed: " + error)

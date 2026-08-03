@@ -1,6 +1,8 @@
 import QtQuick
 import Quickshell
 import Quickshell.Widgets
+import qs.modules.common
+import qs.modules.applauncher
 
 // ────────────────────────────────────────────────────────────────
 // DockIcon — Single icon in the dock.
@@ -34,6 +36,10 @@ Item {
     // A visual-only DockIcon (the fixed application launcher) deliberately
     // shares sizing and rendering with tasks without exposing task actions.
     property bool   interactive: true
+    // Any normal Dock task is an interaction outside the launcher sheet and
+    // should dismiss it first. The fixed launcher icon opts out so it can
+    // keep its expected toggle behavior.
+    property bool   dismissAppLauncherOnInteraction: true
     // Shell controls can use the standard left-click activation pipeline while
     // opting out of application-specific right-click context-menu actions.
     property bool   showContextMenu: true
@@ -84,9 +90,23 @@ Item {
     // ═══════════════════════════════════════════════════════════
     property bool _bounceDone: false
 
-    // Final scale: 1.0 (or slightly larger on hover, applied AFTER bounce)
+    // Final scale: 1.0 (or larger on hover, applied AFTER bounce).
     property real _targetScale: _hovering ? DockAnimation.iconHoverScale : 1.0
+    // Lift non-focused tasks to make pointer feedback unmistakable. The active
+    // task keeps its shared background vertically stable, while scale alone
+    // still makes its hover state clear.
+    readonly property real _hoverLift: _hovering && !showActiveBackground
+        ? -Math.max(2, Math.round(iconSize * 0.08)) : 0
     scale: _bounceDone ? _targetScale : 0.0
+    transform: Translate {
+        y: icon._hoverLift
+        Behavior on y {
+            NumberAnimation {
+                duration: DockAnimation.iconHoverDuration
+                easing.type: DockAnimation.iconHoverEasing
+            }
+        }
+    }
 
     // ── One-shot bounce animation ──
     SequentialAnimation {
@@ -165,7 +185,11 @@ Item {
         interval: 1000
         repeat: false
         onTriggered: {
-            if (icon._hovering && icon._previewWindowId) {
+            // A context menu owns the interaction for its icon. Do not let a
+            // hover timer replace it with a preview while the pointer moves
+            // between Dock icons to open another menu.
+            if (icon._hovering && icon._previewWindowId && !icon.editMode
+                    && !DockModelService.activeContextMenu) {
                 console.log("[DockIcon] preview request app=" + icon.appId
                     + " window=" + icon._previewWindowId);
                 preview.windowId = icon._previewWindowId
@@ -191,7 +215,7 @@ Item {
         repeat: false
         onTriggered: {
             if (!icon._hovering && !preview.pointerInside)
-                preview.visible = false
+                DockModelService.setDockPopupVisible(preview, false)
         }
     }
 
@@ -234,15 +258,36 @@ Item {
         z: -1
     }
 
-    IconImage {
+    // A faint white slot gives hover a little contrast on liquid glass without
+    // changing the icon's reserved geometry. Focused and urgent tasks already
+    // have stronger state backgrounds, so they intentionally do not stack it.
+    Rectangle {
+        id: hoverHighlight
+        width: icon.iconSize
+        height: icon.iconSize
+        anchors.centerIn: parent
+        radius: icon.iconSize * 0.30
+        color: Qt.rgba(1, 1, 1, 0.12)
+        opacity: icon._hovering && !icon.showActiveBackground
+            && !icon.showUrgentBackground ? 1.0 : 0.0
+        visible: opacity > 0.0
+        z: -1
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: DockAnimation.iconHoverDuration
+                easing.type: DockAnimation.iconHoverEasing
+            }
+        }
+    }
+
+    AppIcon {
         id: iconImage
         width: icon.iconSize
         height: icon.iconSize
         anchors.centerIn: parent
         source: icon.iconSource || ""
         visible: !icon.glyph
-        smooth: true
-        asynchronous: true
     }
 
     Text {
@@ -291,7 +336,11 @@ Item {
         // pinned apps; otherwise the wiggle animation starts but dragging cannot.
         preventStealing: !icon.editMode
         cursorShape: Qt.PointingHandCursor
-        onPressed: icon._heldForEdit = false
+        onPressed: {
+            icon._heldForEdit = false
+            if (icon.dismissAppLauncherOnInteraction && AppLauncherService.open)
+                AppLauncherService.hide()
+        }
         onPressAndHold: {
             if (!icon.allowEdit)
                 return
@@ -299,11 +348,21 @@ Item {
             icon.requestEdit()
         }
         onClicked: function(mouse) {
+            // Persistent Dock editing is spatial manipulation, not app
+            // activation. A tap on a pinned icon during this mode must remain
+            // harmless so users can place several icons before tapping away.
+            if (icon.editMode)
+                return
             if (mouse.button === Qt.RightButton) {
+                // A delayed preview may already be armed from pointer entry.
+                // Right-click is a distinct interaction and must own the
+                // shared popup coordinator until the menu is dismissed.
+                previewDelay.stop()
                 if (DockModelService.activeContextMenu
                         && DockModelService.activeContextMenu !== contextMenu) {
                     if (DockModelService.activeContextMenu.visible)
-                        DockModelService.activeContextMenu.visible = false
+                        DockModelService.dismissDockPopupImmediately(
+                            DockModelService.activeContextMenu)
                     else
                         DockModelService.activeContextMenu = null
                 }
@@ -318,7 +377,8 @@ Item {
         }
         onEntered: {
             icon._hovering = true
-            if (icon._previewWindowId && !icon.editMode)
+            if (icon._previewWindowId && !icon.editMode
+                    && !DockModelService.activeContextMenu)
                 previewDelay.restart()
         }
         onExited: {
@@ -353,7 +413,7 @@ Item {
                 DockModelService.activateApp(icon.appId)
                 break
             case "unpin":
-                DockModelService.unpinApp(icon.appId)
+                AppActionService.unpin(icon.appId)
                 break
             case "activate":
                 DockModelService.activateWindow(icon.windowId)
@@ -365,7 +425,7 @@ Item {
                 DockModelService.closeWindow(icon.windowId)
                 break
             case "pin":
-                DockModelService.pinApp(icon.appId)
+                AppActionService.pin(icon.appId)
                 break
             }
         }
@@ -382,7 +442,7 @@ Item {
         }
         onActivateRequested: {
             DockModelService.activateWindow(preview.windowId)
-            preview.visible = false
+            DockModelService.setDockPopupVisible(preview, false)
         }
         onVisibleChanged: {
             if (!visible)

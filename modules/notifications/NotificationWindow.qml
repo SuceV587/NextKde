@@ -103,7 +103,10 @@ PanelWindow {
                 readonly property color foregroundColor: Qt.rgba(1, 1, 1, 0.96)
                 readonly property color textOutlineColor: Qt.rgba(0.05, 0.08, 0.12, 0.38)
                 readonly property string iconSource: {
-                    AppIdentityService.revision
+                    // A notification is an immutable snapshot. Do not bind
+                    // its icon to the global app-identity revision: launcher
+                    // config loading or a custom icon save would otherwise
+                    // re-resolve every visible card and hitch its animation.
                     return AppIdentityService.iconSourceFor(
                         notification.desktopEntry || notification.appName,
                         notification.image || notification.appIcon

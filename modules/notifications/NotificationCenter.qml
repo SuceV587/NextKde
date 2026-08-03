@@ -1,5 +1,6 @@
 import Quickshell
 import Quickshell.Services.Notifications
+import qs.modules.bar
 
 // The session D-Bus permits only one org.freedesktop.Notifications owner.
 // When Plasma's daemon owns it, this server stays inactive, so notifications
@@ -20,8 +21,9 @@ Scope {
         keepOnReload: false
 
         onNotification: notification => {
-            // Tracking makes the notification available to the visual stack.
-            notification.tracked = true
+            // Do Not Disturb still accepts the notification at D-Bus level,
+            // but deliberately keeps it out of the visible QuickShell stack.
+            notification.tracked = !ControlCenterService.doNotDisturbEnabled
         }
     }
 

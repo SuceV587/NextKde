@@ -23,13 +23,15 @@ Item {
 
     // ── Derived ──
     readonly property real artSize: Math.min(iconSize, dockHeight - widget.vPadding * 2)
-    readonly property int vPadding: Math.round(iconSize * 0.20)
+    readonly property int vPadding: Math.round(iconSize * 0.25)
     readonly property bool isCompact: iconSize < 36
     readonly property real backgroundGap: iconSize * 0.1
     readonly property real contentWidth: iconSize * widthUnits
 
     // ── Player reference ──
     readonly property var player: DockMprisService.activePlayer
+    readonly property url artworkSource: player?.trackArtUrl
+        ? player.trackArtUrl : Qt.resolvedUrl("../../assets/defaultCover.png")
     property bool detailsHovered: false
     property bool musicPopupRequested: false
 
@@ -117,7 +119,7 @@ Item {
         y: -widget.backgroundGap
         width: widget.width
         height: widget.iconSize + widget.backgroundGap * 2
-        radius: widget.iconSize * 0.3
+        radius: widget.iconSize * 0.35
         color: "transparent"
         gradient: Gradient {
             orientation: Gradient.Horizontal
@@ -139,7 +141,7 @@ Item {
 
     ArtworkPalette {
         id: artworkPalette
-        source: widget.player?.trackArtUrl ?? ""
+        source: widget.artworkSource
     }
 
     Row {
@@ -167,7 +169,7 @@ Item {
             Image {
                 id: albumArt
                 anchors.fill: parent
-                source: widget.player?.trackArtUrl ?? ""
+                source: widget.artworkSource
                 asynchronous: true
                 cache: true
                 fillMode: Image.PreserveAspectCrop

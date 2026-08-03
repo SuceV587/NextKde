@@ -14,8 +14,41 @@ PanelWindow {
     // The module root passes this state explicitly (as QuickSearch does) so
     // every output-bound variant shares one reliable visibility binding.
     property bool open: false
+    // Keep the surface alive briefly after `open` becomes false. This is
+    // presentation-only: the launcher has already released focus, while its
+    // card can complete a natural return-to-Dock animation without clearing
+    // the grid midway through the exit.
+    property bool keepVisibleForExit: false
+    property real revealProgress: open ? 1.0 : 0.0
+    // Only the initial root-grid population participates in this reveal. A
+    // query or a later scroll must stay immediate because those are frequent
+    // interactions rather than a launcher-opening transition.
+    property bool gridEntranceActive: false
+    readonly property bool panelVisible:
+        (open || keepVisibleForExit) && AppLauncherService.dockWidth > 0
+
+    // The sheet clips from its bottom centre. Keeping this as one progress
+    // value lets width and height unfold in sync without reflowing the grid.
+    Behavior on revealProgress {
+        NumberAnimation {
+            duration: 170
+            easing.type: Easing.OutCubic
+        }
+    }
+
     Component.onCompleted: console.log("[AppLauncherWindow] created")
-    onOpenChanged: console.log("[AppLauncherWindow] received open=" + open)
+    onOpenChanged: {
+        console.log("[AppLauncherWindow] received open=" + open)
+        if (open) {
+            launcherExitTimer.stop()
+            keepVisibleForExit = true
+            gridEntranceActive = true
+            gridEntranceStopTimer.restart()
+        } else if (keepVisibleForExit) {
+            gridEntranceActive = false
+            launcherExitTimer.restart()
+        }
+    }
     onScreenChanged: console.log("[AppLauncherWindow] screen changed=" + !!screen)
     readonly property real minimumLauncherWidth: 600
     readonly property real minimumLauncherHeight: 500
@@ -27,59 +60,39 @@ PanelWindow {
         ? minimumLauncherWidth : AppLauncherService.dockWidth
     readonly property real launcherHeight: usesMinimumSize
         ? minimumLauncherHeight : Math.round(screen.height * 0.50)
-    // DesktopEntries is the authoritative installed-app source. Keep this
-    // module independent from Dock identity/window services: folders, search,
-    // and launcher-specific personalization will build on this raw catalog.
-    property int appCatalogRevision: 0
-    // Resolving every themed icon again after one app edit can stall a large
-    // launcher grid for seconds. Cache by requested source; a new custom icon
-    // naturally uses a new key and resolves once without blocking the UI.
-    property var _iconSourceCache: ({})
-    function resolveApplicationIcon(appId, requestedIcon) {
-        const value = String(requestedIcon ?? "")
-        const key = String(appId ?? "") + "\u0000" + value
-        if (_iconSourceCache[key] !== undefined)
-            return _iconSourceCache[key]
-        const resolved = Quickshell.iconPath(value, true) || value
-        _iconSourceCache[key] = resolved
-        return resolved
-    }
     readonly property var applications: {
         // This window stays instantiated while hidden. Do not enumerate every
         // desktop entry or resolve its icon until the launcher is actually
-        // opened; otherwise DesktopEntries updates rebuild the hidden grid and
+        // opened; otherwise application updates rebuild the hidden grid and
         // stall the whole shell.
-        if (!root.open)
+        if (!root.open && !root.keepVisibleForExit)
             return []
-        appCatalogRevision
-        const entries = DesktopEntries.applications?.values ?? []
+        AppPresentationService.catalogRevision
+        AppPresentationService.revision
+        const catalogue = AppPresentationService.catalog()
         const apps = []
-        for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i]
-            if (!entry || entry.noDisplay)
-                continue
-            const appId = entry.id ?? ""
+        for (let i = 0; i < catalogue.length; i++) {
+            const presentation = catalogue[i]
+            const appId = presentation.rawAppId
             if (!appId || AppLauncherConfigService.hiddenAppIds.indexOf(appId) >= 0)
                 continue
-            const defaultName = entry.name ?? appId ?? "应用程序"
-            const iconName = entry.icon ?? ""
-            const defaultIcon = Quickshell.iconPath(iconName, true) || iconName
-            const override = AppLauncherConfigService.appOverrides[appId] || ({})
-            const requestedIcon = override.icon || defaultIcon
             apps.push({
                 id: appId,
-                name: override.name || defaultName,
-                icon: root.resolveApplicationIcon(appId, requestedIcon),
-                defaultName: defaultName,
-                defaultIcon: defaultIcon,
-                entry: entry,
+                name: presentation.displayName,
+                icon: presentation.iconSource,
+                defaultName: presentation.defaultName,
+                defaultIcon: presentation.defaultIcon,
+                entry: presentation.entry,
             })
         }
-        apps.sort((left, right) => left.name.localeCompare(right.name))
         return apps
     }
     property string query: ""
     property int selectedIndex: 0
+    // Selection is shown only when it has keyboard/search intent. Leaving a
+    // permanent highlight on the first icon makes the resting grid look like
+    // it already has focus, especially on a translucent background.
+    property bool keyboardSelectionActive: false
     // Long press enters an iPadOS-like editing state. This is launcher-local:
     // it never changes the Dock's separate pinned-app edit mode.
     property bool editMode: false
@@ -114,28 +127,87 @@ PanelWindow {
     // the prospective slot while the pointer is moving.
     property int rootDragSourceIndex: -1
     property int rootDragTargetIndex: -1
+    // Folder contents use an independent preview state. The root grid stays
+    // frozen behind the modal, so sharing indices would make the two GridViews
+    // calculate offsets against incompatible cell geometry.
+    property int folderPreviewSourceIndex: -1
+    property int folderPreviewTargetIndex: -1
     // Folder creation is intentionally a slower gesture than sorting. A tile
     // only becomes a merge target after the dragged app rests on it briefly.
     property string folderMergeTargetKey: ""
     property bool folderMergeArmed: false
+    // This is visual-only feedback for the same 650ms dwell used by
+    // `folderMergeTimer`. It makes the distinction between "reorder" and
+    // "create/add to folder" explicit without adding a second gesture rule.
+    property real folderMergeProgress: 0
+    Behavior on folderMergeProgress {
+        NumberAnimation {
+            duration: 650
+            easing.type: Easing.Linear
+        }
+    }
+    // A short press acknowledgement belongs to the launcher presentation,
+    // not the app-launch operation. The app starts immediately; this keeps
+    // the UI responsive while still letting the user see what was activated.
+    property var launchFeedbackItem: null
+
+    function searchScore(app, needle) {
+        const name = String(app.name || "").toLowerCase()
+        const appId = String(app.id || "").toLowerCase()
+        if (name === needle)
+            return 0
+        if (name.startsWith(needle))
+            return 1
+        // Treat spaces and common desktop-entry separators as word breaks.
+        // This lets e.g. "code" find "Visual Studio Code" before a loose
+        // substring while still behaving sensibly for non-Latin app names.
+        const words = name.split(/[\\s._-]+/)
+        for (let i = 0; i < words.length; i++) {
+            if (words[i].startsWith(needle))
+                return 2
+        }
+        if (appId.startsWith(needle))
+            return 3
+        if (name.includes(needle))
+            return 4
+        return appId.includes(needle) ? 5 : 6
+    }
+
     readonly property var filteredApplications: {
         const needle = query.trim().toLowerCase()
         if (!needle)
             return rootGridItems
-        return orderedApplications.filter(function(app) {
-            return (app.name + " " + app.id).toLowerCase().includes(needle)
-        }).map(function(app) { return { type: "app", app: app } })
+        const ranked = []
+        for (let i = 0; i < orderedApplications.length; i++) {
+            const app = orderedApplications[i]
+            const score = searchScore(app, needle)
+            if (score < 6)
+                ranked.push({ app: app, score: score, originalIndex: i })
+        }
+        // Preserve the user's existing order whenever two results are equally
+        // relevant. Search ranking is therefore ephemeral presentation, not a
+        // hidden rewrite of the launcher layout.
+        ranked.sort(function(left, right) {
+            return left.score !== right.score
+                ? left.score - right.score
+                : left.originalIndex - right.originalIndex
+        })
+        return ranked.map(function(result) {
+            return { type: "app", app: result.app }
+        })
     }
 
-    function launchApplication(app) {
-        try {
-            dismissApplicationMenu()
-            app.entry.execute()
-            // Launching an app completes this first-stage launcher flow.
-            // Future settings can make this behavior configurable.
+    function launchApplication(app, feedbackItem) {
+        dismissApplicationMenu()
+        if (!AppActionService.launch(app))
+            return
+        // Launching an app completes this first-stage launcher flow.
+        // Future settings can make this behavior configurable.
+        if (feedbackItem) {
+            launchFeedbackItem = feedbackItem
+            launchFeedbackTimer.restart()
+        } else {
             AppLauncherService.hide()
-        } catch (error) {
-            console.warn("[AppLauncher] failed to launch " + app.id + ": " + error)
         }
     }
 
@@ -201,7 +273,7 @@ PanelWindow {
     function hideEditedApplication() {
         if (!editingApplication)
             return
-        AppLauncherConfigService.hideApplication(editingApplication.id)
+        AppActionService.hide(editingApplication.id)
         closeApplicationEditor()
     }
 
@@ -271,8 +343,21 @@ PanelWindow {
         const count = filteredApplications.length
         if (count === 0)
             return
-        selectedIndex = (selectedIndex + delta + count) % count
+        keyboardSelectionActive = true
+        // Grid navigation should stop at its edges. Wrapping from the first
+        // result to the final row is fast but surprising in an app launcher.
+        selectedIndex = Math.max(0, Math.min(count - 1, selectedIndex + delta))
         appGrid.positionViewAtIndex(selectedIndex, GridView.Contain)
+    }
+
+    function clearSearch() {
+        if (!query.length)
+            return false
+        searchInput.text = ""
+        query = ""
+        selectedIndex = 0
+        keyboardSelectionActive = false
+        return true
     }
 
     function activateSelected() {
@@ -298,7 +383,10 @@ PanelWindow {
     function rootPreviewOffset(index) {
         const source = rootDragSourceIndex
         const target = rootDragTargetIndex
-        if (source < 0 || target < 0 || source === target)
+        // A possible folder merge holds its target in place. This prevents the
+        // reorder preview from moving that target out from under the pointer;
+        // ordinary sorting resumes immediately when the pointer leaves it.
+        if (folderMergeTargetKey || source < 0 || target < 0 || source === target)
             return { x: 0, y: 0 }
         let previewIndex = index
         if (target > source && index > source && index <= target)
@@ -311,6 +399,25 @@ PanelWindow {
         const originalY = Math.floor(index / appGrid.columnCount) * appGrid.cellHeight
         const previewX = (previewIndex % appGrid.columnCount) * appGrid.cellWidth
         const previewY = Math.floor(previewIndex / appGrid.columnCount) * appGrid.cellHeight
+        return { x: previewX - originalX, y: previewY - originalY }
+    }
+
+    function folderPreviewOffset(index) {
+        const source = folderPreviewSourceIndex
+        const target = folderPreviewTargetIndex
+        if (source < 0 || target < 0 || source === target)
+            return { x: 0, y: 0 }
+        let previewIndex = index
+        if (target > source && index > source && index <= target)
+            previewIndex = index - 1
+        else if (target < source && index >= target && index < source)
+            previewIndex = index + 1
+        if (previewIndex === index)
+            return { x: 0, y: 0 }
+        const originalX = (index % folderGrid.columnCount) * folderGrid.cellWidth
+        const originalY = Math.floor(index / folderGrid.columnCount) * folderGrid.cellHeight
+        const previewX = (previewIndex % folderGrid.columnCount) * folderGrid.cellWidth
+        const previewY = Math.floor(previewIndex / folderGrid.columnCount) * folderGrid.cellHeight
         return { x: previewX - originalX, y: previewY - originalY }
     }
 
@@ -331,32 +438,40 @@ PanelWindow {
         const targetY = targetRow * appGrid.cellHeight + appGrid.cellHeight / 2
         const dragX = delegate.x + delegate.width / 2 + delegate.lastDragX
         const dragY = delegate.y + delegate.height / 2 + delegate.lastDragY
-        // Match the actual 82×96px icon card rather than using a tiny radial
-        // threshold. A drop visually over the target icon must never fall
-        // through to the ordinary reorder path.
-        const insideTargetCard = Math.abs(dragX - targetX)
-                <= Math.min(41, appGrid.cellWidth * 0.42)
+        // Sorting is the default operation. The target remains stationary
+        // while this centre zone is held, so a deliberate folder merge stays
+        // reachable instead of being moved away by the reorder preview.
+        const insideMergeCenter = Math.abs(dragX - targetX)
+                <= Math.min(36, appGrid.cellWidth * 0.36)
             && Math.abs(dragY - targetY)
-                <= Math.min(48, appGrid.cellHeight * 0.42)
-        return insideTargetCard ? candidate : null
+                <= Math.min(42, appGrid.cellHeight * 0.40)
+        return insideMergeCenter ? candidate : null
     }
 
     function updateFolderMergeCandidate(appId, delegate) {
         const candidate = potentialFolderDropTarget(appId, delegate)
         const key = _itemKey(candidate)
         if (key === folderMergeTargetKey)
-            return
+            return candidate
         folderMergeTargetKey = key
         folderMergeArmed = false
         folderMergeTimer.stop()
-        if (key)
+        // Restart the visual dwell together with the logical timer. Keeping
+        // this state at the launcher root ensures recycled grid delegates
+        // cannot leave a stale progress indicator behind.
+        folderMergeProgress = 0
+        if (key) {
+            folderMergeProgress = 1
             folderMergeTimer.restart()
+        }
+        return candidate
     }
 
     function clearFolderMergeCandidate() {
         folderMergeTimer.stop()
         folderMergeTargetKey = ""
         folderMergeArmed = false
+        folderMergeProgress = 0
     }
 
     function folderDropTarget(appId, delegate) {
@@ -422,12 +537,18 @@ PanelWindow {
     }
 
     function commitFolderApplicationDrag(appId, delegate) {
-        if (!openFolder)
+        if (!openFolder) {
+            folderPreviewSourceIndex = -1
+            folderPreviewTargetIndex = -1
             return
+        }
         const changed = AppLauncherConfigService.moveApplicationWithinFolder(
             appId, openFolder.id, folderDragTargetIndex(delegate))
-        if (!changed)
+        if (!changed) {
+            folderPreviewSourceIndex = -1
+            folderPreviewTargetIndex = -1
             return
+        }
         // The projection is regenerated from persisted data immediately after
         // every mutation; retain the dialog identity by its stable folder id.
         const refreshed = rootGridItems.find(function(item) {
@@ -435,6 +556,8 @@ PanelWindow {
         })
         openFolder = refreshed || null
         displayedFolder = refreshed || displayedFolder
+        folderPreviewSourceIndex = -1
+        folderPreviewTargetIndex = -1
         console.log("[AppLauncher] reordered folder app=" + appId)
     }
 
@@ -456,12 +579,13 @@ PanelWindow {
         }
     }
 
-    visible: root.open && AppLauncherService.dockWidth > 0
+    visible: root.panelVisible
     onVisibleChanged: {
         console.log("[AppLauncherWindow] visible=" + visible
             + " card=" + launcherWidth + "x" + launcherHeight)
         if (visible) {
             selectedIndex = 0
+            keyboardSelectionActive = false
             searchFocusTimer.restart()
         } else {
             dismissApplicationMenu()
@@ -477,7 +601,9 @@ PanelWindow {
     // A layer-shell Overlay is above ordinary xdg dialogs. Lower this one
     // only for the native icon chooser, then restore the launcher overlay.
     aboveWindows: !externalDialogOpen
-    focusable: !externalDialogOpen
+    // The closing card remains visible only as an animation; it must not
+    // continue to capture keyboard input after Escape or a click on Dock.
+    focusable: root.open && !externalDialogOpen
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape) {
             if (editingApplication) {
@@ -492,6 +618,10 @@ PanelWindow {
             }
             else if (editMode)
                 editMode = false
+            else if (clearSearch()) {
+                // Escape first returns to the complete app grid. A second
+                // Escape closes the launcher, matching native launchers.
+            }
             else
                 AppLauncherService.hide()
             event.accepted = true
@@ -503,6 +633,23 @@ PanelWindow {
         interval: 1
         repeat: false
         onTriggered: searchInput.forceActiveFocus()
+    }
+
+    Timer {
+        id: launcherExitTimer
+        interval: 180
+        repeat: false
+        onTriggered: root.keepVisibleForExit = false
+    }
+
+    Timer {
+        id: gridEntranceStopTimer
+        // Long enough for the initially visible rows to be constructed, but
+        // short enough that lazily created delegates while scrolling never
+        // animate into view.
+        interval: 360
+        repeat: false
+        onTriggered: root.gridEntranceActive = false
     }
 
     Timer {
@@ -520,7 +667,10 @@ PanelWindow {
 
     Timer {
         id: folderMergeTimer
-        interval: 450
+        // A short dwell makes ordinary cross-grid sorting reliable. Users who
+        // actually want a folder still receive a clear blue target cue before
+        // releasing, rather than creating folders accidentally in transit.
+        interval: 650
         repeat: false
         onTriggered: {
             if (root.folderMergeTargetKey) {
@@ -528,6 +678,18 @@ PanelWindow {
                 console.log("[AppLauncher] folder merge armed target="
                     + root.folderMergeTargetKey)
             }
+        }
+    }
+
+    Timer {
+        id: launchFeedbackTimer
+        // Enough to read as a tap response, but below the threshold where the
+        // launcher feels slower than directly launching an application.
+        interval: 90
+        repeat: false
+        onTriggered: {
+            root.launchFeedbackItem = null
+            AppLauncherService.hide()
         }
     }
 
@@ -586,9 +748,25 @@ PanelWindow {
             if (name === "open")
                 root.launchApplication(app)
             else if (name === "edit")
-                root.showApplicationEditor(app)
+                AppActionService.edit(app)
             else if (name === "pin")
-                AppLauncherService.requestPinToDock(app.id)
+                AppActionService.pin(app.id)
+        }
+    }
+
+    // AppActionService carries cross-surface intent; launcher-specific state
+    // remains here so the common module never owns launcher persistence/UI.
+    Connections {
+        target: AppActionService
+        function onEditRequested(application) {
+            // Edit can originate in QuickSearch. Open this module first so
+            // the editor is visible and owns focus rather than editing behind
+            // another shell surface.
+            AppLauncherService.show()
+            root.showApplicationEditor(application)
+        }
+        function onHideRequested(appId) {
+            AppLauncherConfigService.hideApplication(appId)
         }
     }
 
@@ -630,17 +808,8 @@ PanelWindow {
         }
     }
 
-    Connections {
-        target: DesktopEntries
-        function onApplicationsChanged() {
-            // A later open reads the current DesktopEntries model directly,
-            // so hidden launchers do not need to eagerly rebuild their grid.
-            if (root.open)
-                root.appCatalogRevision++
-        }
-    }
-
     anchors {
+        top: true
         left: true
         right: true
         bottom: true
@@ -650,19 +819,57 @@ PanelWindow {
     margins.bottom: AppLauncherService.dockHeight + 15
     implicitHeight: launcherHeight
 
+    // The layer-shell surface spans the output so this catcher can dismiss
+    // the launcher from any empty area, while the visible card remains the
+    // same Dock-anchored size below. Clicks inside the revealed card are
+    // ignored here and continue to its normal controls.
+    MouseArea {
+        id: outsideDismissArea
+        anchors.fill: parent
+        z: -1
+        enabled: root.open && !root.externalDialogOpen
+        acceptedButtons: Qt.LeftButton
+        onClicked: function(mouse) {
+            const insideCard = mouse.x >= launcherRevealClip.x
+                && mouse.x <= launcherRevealClip.x + launcherRevealClip.width
+                && mouse.y >= launcherRevealClip.y
+                && mouse.y <= launcherRevealClip.y + launcherRevealClip.height
+            if (!insideCard)
+                AppLauncherService.hide()
+        }
+    }
+
+    // A center/bottom-anchored viewport gives the launcher a sheet-like iOS
+    // reveal: it grows upward and outward together. The full card keeps its
+    // geometry inside this clip; do not animate its width/height directly,
+    // because that would reflow the grid and compress icons/text.
     Item {
-        id: launcherCard
+        id: launcherRevealClip
         anchors {
             horizontalCenter: parent.horizontalCenter
-            top: parent.top
             bottom: parent.bottom
         }
-        width: root.launcherWidth
+        width: root.launcherWidth * root.revealProgress
+        height: root.launcherHeight * root.revealProgress
+        clip: true
 
-        LiquidGlassSurface {
-            id: background
-            anchors.fill: parent
-            radius: 18
+        Item {
+            id: launcherCard
+            width: root.launcherWidth
+            height: root.launcherHeight
+            anchors {
+                horizontalCenter: parent.horizontalCenter
+                bottom: parent.bottom
+            }
+            enabled: root.open
+            // The material begins slightly transparent, then reaches its
+            // normal density as the sheet finishes unfolding.
+            opacity: 0.68 + root.revealProgress * 0.32
+
+            LiquidGlassSurface {
+                id: background
+                anchors.fill: parent
+                radius: 18
             // Keep the launcher and Dock in one material family. The only
             // intentional visual difference is the launcher's larger radius.
             baseColor: AppLauncherService.dockBackgroundColor
@@ -728,7 +935,7 @@ PanelWindow {
                             right: parent.right
                             verticalCenter: parent.verticalCenter
                             leftMargin: 32
-                            rightMargin: 10
+                            rightMargin: text.length > 0 ? 32 : 10
                         }
                         color: AppLauncherService.dockForegroundColor
                         selectionColor: Qt.rgba(1, 1, 1, 0.30)
@@ -740,6 +947,7 @@ PanelWindow {
                             root.dismissApplicationMenu()
                             root.query = text
                             root.selectedIndex = 0
+                            root.keyboardSelectionActive = text.length > 0
                         }
                         Keys.onPressed: function(event) {
                             const columns = appGrid.columnCount
@@ -755,16 +963,39 @@ PanelWindow {
                                     || event.key === Qt.Key_Enter) {
                                 root.activateSelected()
                             } else if (event.key === Qt.Key_Escape) {
-                                if (root.openFolder)
-                                    root.closeFolder()
-                                else if (root.editMode)
-                                    root.editMode = false
-                                else
+                                if (!root.clearSearch())
                                     AppLauncherService.hide()
                             } else {
                                 return
                             }
                             event.accepted = true
+                        }
+                    }
+
+                    // A visible clear affordance avoids forcing users to
+                    // select/backspace a long query. It only exists while a
+                    // query is active, keeping the resting search field calm.
+                    Text {
+                        anchors {
+                            right: parent.right
+                            rightMargin: 10
+                            verticalCenter: parent.verticalCenter
+                        }
+                        visible: searchInput.text.length > 0
+                        text: "×"
+                        color: AppLauncherService.dockForegroundColor
+                        opacity: searchClearMouse.containsMouse ? 0.95 : 0.58
+                        font {
+                            pixelSize: 17
+                            weight: Font.DemiBold
+                        }
+                        MouseArea {
+                            id: searchClearMouse
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.clearSearch()
                         }
                     }
 
@@ -781,24 +1012,44 @@ PanelWindow {
                     }
                 }
 
-                Text {
+                Rectangle {
+                    id: rootEditDoneButton
+                    width: 48
+                    height: 26
+                    radius: height / 2
                     anchors {
                         right: searchField.left
                         rightMargin: 14
                         verticalCenter: parent.verticalCenter
                     }
-                    visible: root.editMode
-                    text: "完成"
-                    color: AppLauncherService.dockForegroundColor
-                    style: Text.Outline
-                    styleColor: Qt.rgba(0, 0, 0, 0.38)
-                    font {
-                        pixelSize: 13
-                        weight: Font.Bold
+                    // Keep this chrome independent from layout and animate
+                    // only its presentation. Edit-mode mechanics stay
+                    // instantaneous, while the visual state feels deliberate.
+                    visible: opacity > 0.01
+                    opacity: root.editMode ? 1.0 : 0.0
+                    scale: root.editMode ? 1.0 : 0.82
+                    Behavior on opacity {
+                        NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+                    }
+                    Behavior on scale {
+                        NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+                    }
+                    // WeChat's recognisable action green makes the persistent
+                    // editing state easy to spot on the translucent launcher.
+                    color: Qt.rgba(0.027, 0.753, 0.376, 1.0) // #07C160
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "完成"
+                        color: "white"
+                        font {
+                            pixelSize: 13
+                            weight: Font.Bold
+                        }
                     }
                     MouseArea {
                         anchors.fill: parent
-                        anchors.margins: -8
+                        enabled: root.editMode
                         cursorShape: Qt.PointingHandCursor
                         onClicked: root.editMode = false
                     }
@@ -836,16 +1087,59 @@ PanelWindow {
                     property bool dragReorderStarted: false
                     property real lastDragX: 0
                     property real lastDragY: 0
+                    // Commit only after this visual drop has reached the
+                    // previewed slot. Updating GridView's model first would
+                    // recreate delegates and flash the source through its old
+                    // cell for one frame.
+                    property bool dropping: false
+                    property real dropOffsetX: 0
+                    property real dropOffsetY: 0
+                    readonly property bool launching:
+                        root.launchFeedbackItem === appDelegate
+                    readonly property real dropTargetOffsetX:
+                        (root.rootDragTargetIndex % appGrid.columnCount)
+                        * appGrid.cellWidth + appGrid.cellWidth / 2
+                        - (appDelegate.x + appDelegate.width / 2)
+                    readonly property real dropTargetOffsetY:
+                        Math.floor(root.rootDragTargetIndex / appGrid.columnCount)
+                        * appGrid.cellHeight + appGrid.cellHeight / 2
+                        - (appDelegate.y + appDelegate.height / 2)
+                    // Rows fade in together in a restrained cascade only
+                    // while the launcher initially opens. This remains a
+                    // visual layer and never changes GridView cell geometry.
+                    property bool entrancePending: root.gridEntranceActive
+                        && root.query.trim().length === 0
                     width: appGrid.cellWidth
                     height: appGrid.cellHeight
-                    z: dragging ? 10 : 0
-                    scale: dragging ? 1.10 : 1.0
-                    opacity: dragging ? 0.90 : 1.0
+                    readonly property bool manipulating: dragging || dropping
+                    z: manipulating ? 10 : 0
+                    scale: manipulating ? 1.10 : (launching ? 0.93 : 1.0)
+                    opacity: manipulating ? 0.90
+                        : (launching ? 0.82 : (entrancePending ? 0.0 : 1.0))
+
+                    Component.onCompleted: {
+                        if (entrancePending)
+                            entranceDelay.restart()
+                    }
+
+                    Timer {
+                        id: entranceDelay
+                        // Delay by row, not every individual app, so the grid
+                        // feels composed rather than like a typewriter.
+                        interval: Math.min(120, Math.floor(index
+                            / Math.max(1, appGrid.columnCount)) * 24)
+                        repeat: false
+                        onTriggered: appDelegate.entrancePending = false
+                    }
                     transform: Translate {
                         x: appDelegate.dragging ? reorderDrag.translation.x
-                            : root.rootPreviewOffset(index).x
+                            : (appDelegate.dropping
+                                ? appDelegate.dropOffsetX
+                                : root.rootPreviewOffset(index).x)
                         y: appDelegate.dragging ? reorderDrag.translation.y
-                            : root.rootPreviewOffset(index).y
+                            : (appDelegate.dropping
+                                ? appDelegate.dropOffsetY
+                                : root.rootPreviewOffset(index).y)
                         Behavior on x {
                             enabled: !appDelegate.dragging
                             NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
@@ -859,6 +1153,7 @@ PanelWindow {
                         NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
                     }
                     Behavior on opacity {
+                        enabled: !appDelegate.dragging
                         NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
                     }
 
@@ -871,14 +1166,22 @@ PanelWindow {
                         color: root.folderMergeArmed
                                 && root.folderMergeTargetKey === root._itemKey(modelData)
                             ? Qt.rgba(0.36, 0.68, 1, 0.30)
-                            : (index === root.selectedIndex
-                                ? Qt.rgba(1, 1, 1, 0.18)
-                                : (appMouse.containsMouse
-                                    ? Qt.rgba(1, 1, 1, 0.12) : "transparent"))
+                            : (root.folderMergeTargetKey === root._itemKey(modelData)
+                                ? Qt.rgba(0.36, 0.68, 1, 0.14)
+                                : (root.keyboardSelectionActive
+                                        && index === root.selectedIndex
+                                    ? Qt.rgba(1, 1, 1, 0.18)
+                                    : (appMouse.containsMouse
+                                        ? Qt.rgba(1, 1, 1, 0.12) : "transparent")))
+                        border.width: root.folderMergeTargetKey
+                                === root._itemKey(modelData) ? 1 : 0
+                        border.color: Qt.rgba(0.36, 0.68, 1,
+                            root.folderMergeTargetKey === root._itemKey(modelData)
+                                ? 0.20 + root.folderMergeProgress * 0.42 : 0)
                         rotation: 0
                         SequentialAnimation {
                             id: editWiggle
-                            running: root.editMode && !appDelegate.dragging
+                            running: root.editMode && !appDelegate.manipulating
                             loops: Animation.Infinite
                             NumberAnimation {
                                 target: appCard
@@ -898,7 +1201,27 @@ PanelWindow {
                             }
                         }
 
-                        IconImage {
+                        // Holding a dragged app over this card fills the
+                        // line during the folderMergeTimer dwell. The line is
+                        // deliberately light: it explains the gesture while
+                        // leaving the app artwork and glass treatment intact.
+                        Rectangle {
+                            visible: root.folderMergeTargetKey
+                                === root._itemKey(modelData)
+                            anchors {
+                                left: parent.left
+                                bottom: parent.bottom
+                                leftMargin: 13
+                                bottomMargin: 5
+                            }
+                            width: Math.max(0, (parent.width - 26)
+                                * root.folderMergeProgress)
+                            height: 2
+                            radius: height / 2
+                            color: Qt.rgba(0.48, 0.76, 1, 0.95)
+                        }
+
+                        AppIcon {
                             visible: modelData.type === "app"
                             width: 52
                             height: 52
@@ -908,8 +1231,6 @@ PanelWindow {
                                 topMargin: 8
                             }
                             source: modelData.type === "app" ? modelData.app.icon : ""
-                            smooth: true
-                            asynchronous: true
                         }
 
                         // Folder artwork is a compact 3×3 preview of its first
@@ -925,24 +1246,30 @@ PanelWindow {
                                 topMargin: 8
                             }
                             radius: 12
-                            color: Qt.rgba(1, 1, 1, 0.14)
+                            // A restrained neutral shade remains stable on
+                            // liquid glass regardless of the wallpaper/theme,
+                            // while still reading darker than hover feedback.
+                            color: Qt.rgba(0, 0, 0, 0.18)
 
                             Grid {
-                                anchors.centerIn: parent
+                                anchors {
+                                    top: parent.top
+                                    topMargin: 6
+                                    horizontalCenter: parent.horizontalCenter
+                                }
                                 columns: 3
-                                // 13×3 + 2×2 leaves a clear 4.5px inset
-                                // inside the 52px folder tile on every side.
+                                // Always fill top-to-bottom by rows. With all
+                                // nine apps, 12×3 + 2×2 leaves an even 6px
+                                // inset inside the 52px folder tile.
                                 spacing: 2
                                 Repeater {
                                     model: modelData.type === "folder"
                                         ? modelData.apps.slice(0, 9) : []
-                                    delegate: IconImage {
+                                    delegate: AppIcon {
                                         required property var modelData
-                                        width: 13
-                                        height: 13
+                                        width: 12
+                                        height: 12
                                         source: modelData.icon
-                                        smooth: true
-                                        asynchronous: true
                                     }
                                 }
                             }
@@ -993,15 +1320,27 @@ PanelWindow {
                                 root.editMode = true
                             }
                             onClicked: function(mouse) {
+                                if (appDelegate.heldForEdit)
+                                    return
+                                // Edit mode is spatial manipulation. Root apps
+                                // neither launch nor open a context menu while
+                                // it is active; folders still open so their
+                                // contained apps can be sorted/removed.
+                                if (root.editMode) {
+                                    if (mouse.button === Qt.LeftButton
+                                            && modelData.type === "folder")
+                                        root.showFolder(modelData)
+                                    return
+                                }
                                 if (mouse.button === Qt.RightButton
                                         && modelData.type === "app") {
                                     root.showApplicationMenu(modelData.app, appDelegate)
-                                } else if (!appDelegate.heldForEdit) {
+                                } else {
                                     root.dismissApplicationMenu()
                                     if (modelData.type === "folder")
                                         root.showFolder(modelData)
                                     else if (!root.editMode)
-                                        root.launchApplication(modelData.app)
+                                        root.launchApplication(modelData.app, appDelegate)
                                 }
                             }
                         }
@@ -1012,26 +1351,29 @@ PanelWindow {
                     // release; it never fights GridView's layout bindings.
                     DragHandler {
                         id: reorderDrag
-                        // Stay armed before the hold completes so the same
-                        // press can transition directly into a drag. Visual
-                        // movement and persistence remain gated by edit mode.
-                        enabled: root.editingApplication === null
+                        // Arm only after the long press has entered edit mode.
+                        // If this handler captures the initial press early,
+                        // `active` arrives before editMode becomes true and
+                        // the live slot-preview state is never initialized.
+                        enabled: root.editMode
+                            && root.editingApplication === null
+                            && !appDelegate.dropping
                         target: null
                         acceptedButtons: Qt.LeftButton
                         onActiveChanged: {
                             if (active) {
-                                appDelegate.dragReorderStarted = root.editMode
-                                if (appDelegate.dragReorderStarted) {
-                                    appDelegate.lastDragX = 0
-                                    appDelegate.lastDragY = 0
-                                    root.rootDragSourceIndex = index
-                                    root.rootDragTargetIndex = index
-                                    root.clearFolderMergeCandidate()
-                                }
+                                appDelegate.dragReorderStarted = true
+                                appDelegate.dropping = false
+                                appDelegate.lastDragX = 0
+                                appDelegate.lastDragY = 0
+                                root.rootDragSourceIndex = index
+                                root.rootDragTargetIndex = index
+                                root.clearFolderMergeCandidate()
                             } else if (appDelegate.dragReorderStarted) {
-                                root.commitRootItemDrag(modelData, appDelegate)
-                                appDelegate.dragReorderStarted = false
-                                appDelegate.heldForEdit = false
+                                appDelegate.dropOffsetX = appDelegate.lastDragX
+                                appDelegate.dropOffsetY = appDelegate.lastDragY
+                                appDelegate.dropping = true
+                                rootDropAnimation.restart()
                             }
                         }
                         onTranslationChanged: {
@@ -1039,12 +1381,42 @@ PanelWindow {
                                 appDelegate.lastDragX = translation.x
                                 appDelegate.lastDragY = translation.y
                                 root.rootDragTargetIndex = root.dragTargetIndex(appDelegate)
-                                if (modelData.type === "app")
+                                if (modelData.type === "app") {
                                     root.updateFolderMergeCandidate(
                                         modelData.app.id, appDelegate)
-                                else
+                                    // `rootPreviewOffset` uses this candidate
+                                    // to hold the target still until merge is
+                                    // armed or the pointer leaves it.
+                                } else {
                                     root.clearFolderMergeCandidate()
+                                }
                             }
+                        }
+                    }
+
+                    ParallelAnimation {
+                        id: rootDropAnimation
+                        NumberAnimation {
+                            target: appDelegate
+                            property: "dropOffsetX"
+                            to: appDelegate.dropTargetOffsetX
+                            duration: 180
+                            easing.type: Easing.OutCubic
+                        }
+                        NumberAnimation {
+                            target: appDelegate
+                            property: "dropOffsetY"
+                            to: appDelegate.dropTargetOffsetY
+                            duration: 180
+                            easing.type: Easing.OutCubic
+                        }
+                        onFinished: {
+                            // At this point the old visual preview exactly
+                            // matches the new persisted GridView order.
+                            root.commitRootItemDrag(modelData, appDelegate)
+                            appDelegate.dropping = false
+                            appDelegate.dragReorderStarted = false
+                            appDelegate.heldForEdit = false
                         }
                     }
                 }
@@ -1195,7 +1567,15 @@ PanelWindow {
                                 right: parent.right
                                 verticalCenter: parent.verticalCenter
                             }
-                            visible: root.folderEditMode
+                            visible: opacity > 0.01
+                            opacity: root.folderEditMode ? 1.0 : 0.0
+                            scale: root.folderEditMode ? 1.0 : 0.82
+                            Behavior on opacity {
+                                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+                            }
+                            Behavior on scale {
+                                NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+                            }
                             text: "完成"
                             color: AppLauncherService.dockForegroundColor
                             style: Text.Outline
@@ -1207,6 +1587,7 @@ PanelWindow {
                             MouseArea {
                                 anchors.fill: parent
                                 anchors.margins: -8
+                                enabled: root.folderEditMode
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
                                     root.commitFolderRename()
@@ -1237,22 +1618,59 @@ PanelWindow {
                         delegate: Item {
                             id: folderAppDelegate
                             required property var modelData
+                            required property int index
                             property bool dragging: folderReorderDrag.active
                             property bool heldForEdit: false
                             property bool dragReorderStarted: false
                             property real lastDragX: 0
                             property real lastDragY: 0
+                            readonly property bool launching:
+                                root.launchFeedbackItem === folderAppDelegate
+                            // As in the root grid, delay the persistent model
+                            // update until this tile has visually landed in its
+                            // preview slot. That removes the old-cell flash.
+                            property bool dropping: false
+                            property real dropOffsetX: 0
+                            property real dropOffsetY: 0
+                            readonly property real dropTargetOffsetX:
+                                (root.folderPreviewTargetIndex % folderGrid.columnCount)
+                                * folderGrid.cellWidth + folderGrid.cellWidth / 2
+                                - (folderAppDelegate.x + folderAppDelegate.width / 2)
+                            readonly property real dropTargetOffsetY:
+                                Math.floor(root.folderPreviewTargetIndex
+                                    / folderGrid.columnCount) * folderGrid.cellHeight
+                                + folderGrid.cellHeight / 2
+                                - (folderAppDelegate.y + folderAppDelegate.height / 2)
                             width: folderGrid.cellWidth
                             height: folderGrid.cellHeight
-                            z: dragging ? 10 : 0
-                            scale: dragging ? 1.10 : 1.0
+                            readonly property bool manipulating: dragging || dropping
+                            z: manipulating ? 10 : 0
+                            scale: manipulating ? 1.10 : (launching ? 0.93 : 1.0)
+                            opacity: manipulating ? 0.90 : (launching ? 0.82 : 1.0)
                             transform: Translate {
                                 x: folderAppDelegate.dragging
-                                    ? folderReorderDrag.translation.x : 0
+                                    ? folderReorderDrag.translation.x
+                                    : (folderAppDelegate.dropping
+                                        ? folderAppDelegate.dropOffsetX
+                                        : root.folderPreviewOffset(index).x)
                                 y: folderAppDelegate.dragging
-                                    ? folderReorderDrag.translation.y : 0
+                                    ? folderReorderDrag.translation.y
+                                    : (folderAppDelegate.dropping
+                                        ? folderAppDelegate.dropOffsetY
+                                        : root.folderPreviewOffset(index).y)
+                                Behavior on x {
+                                    enabled: !folderAppDelegate.dragging
+                                    NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+                                }
+                                Behavior on y {
+                                    enabled: !folderAppDelegate.dragging
+                                    NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+                                }
                             }
                             Behavior on scale {
+                                NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+                            }
+                            Behavior on opacity {
                                 NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
                             }
 
@@ -1272,7 +1690,7 @@ PanelWindow {
                                 SequentialAnimation {
                                     id: folderEditWiggle
                                     running: root.folderEditMode
-                                        && !folderAppDelegate.dragging
+                                        && !folderAppDelegate.manipulating
                                     loops: Animation.Infinite
                                     NumberAnimation {
                                         target: folderAppCard
@@ -1292,7 +1710,7 @@ PanelWindow {
                                     }
                                 }
 
-                                IconImage {
+                                AppIcon {
                                     width: 52
                                     height: 52
                                     anchors {
@@ -1301,8 +1719,6 @@ PanelWindow {
                                         topMargin: 8
                                     }
                                     source: modelData.icon
-                                    smooth: true
-                                    asynchronous: true
                                 }
 
                                 Text {
@@ -1326,7 +1742,25 @@ PanelWindow {
                                 }
 
                                 Rectangle {
-                                    visible: root.folderEditMode
+                                    // Removal is an edit-only control. It
+                                    // follows the same restrained entrance as
+                                    // the Done actions rather than popping on
+                                    // top of the folder artwork.
+                                    visible: opacity > 0.01
+                                    opacity: root.folderEditMode ? 1.0 : 0.0
+                                    scale: root.folderEditMode ? 1.0 : 0.76
+                                    Behavior on opacity {
+                                        NumberAnimation {
+                                            duration: 140
+                                            easing.type: Easing.OutCubic
+                                        }
+                                    }
+                                    Behavior on scale {
+                                        NumberAnimation {
+                                            duration: 140
+                                            easing.type: Easing.OutCubic
+                                        }
+                                    }
                                     width: 21
                                     height: 21
                                     radius: width / 2
@@ -1348,6 +1782,7 @@ PanelWindow {
                                     }
                                     MouseArea {
                                         anchors.fill: parent
+                                        enabled: root.folderEditMode
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: root.removeFolderApplication(modelData.id)
                                     }
@@ -1369,7 +1804,7 @@ PanelWindow {
                                 onClicked: {
                                     if (!root.folderEditMode
                                             && !folderAppDelegate.heldForEdit)
-                                        root.launchApplication(modelData)
+                                        root.launchApplication(modelData, folderAppDelegate)
                                 }
                             }
 
@@ -1377,25 +1812,56 @@ PanelWindow {
                                 id: folderReorderDrag
                                 enabled: root.folderEditMode
                                     && root.editingApplication === null
+                                    && !folderAppDelegate.dropping
                                 target: null
                                 acceptedButtons: Qt.LeftButton
                                 onActiveChanged: {
                                     if (active) {
                                         folderAppDelegate.dragReorderStarted = true
+                                        folderAppDelegate.dropping = false
                                         folderAppDelegate.lastDragX = 0
                                         folderAppDelegate.lastDragY = 0
+                                        root.folderPreviewSourceIndex = index
+                                        root.folderPreviewTargetIndex = index
                                     } else if (folderAppDelegate.dragReorderStarted) {
-                                        root.commitFolderApplicationDrag(
-                                            modelData.id, folderAppDelegate)
-                                        folderAppDelegate.dragReorderStarted = false
-                                        folderAppDelegate.heldForEdit = false
+                                        folderAppDelegate.dropOffsetX = folderAppDelegate.lastDragX
+                                        folderAppDelegate.dropOffsetY = folderAppDelegate.lastDragY
+                                        folderAppDelegate.dropping = true
+                                        folderDropAnimation.restart()
                                     }
                                 }
                                 onTranslationChanged: {
                                     if (active) {
                                         folderAppDelegate.lastDragX = translation.x
                                         folderAppDelegate.lastDragY = translation.y
+                                        root.folderPreviewTargetIndex = root.folderDragTargetIndex(
+                                            folderAppDelegate)
                                     }
+                                }
+                            }
+
+                            ParallelAnimation {
+                                id: folderDropAnimation
+                                NumberAnimation {
+                                    target: folderAppDelegate
+                                    property: "dropOffsetX"
+                                    to: folderAppDelegate.dropTargetOffsetX
+                                    duration: 180
+                                    easing.type: Easing.OutCubic
+                                }
+                                NumberAnimation {
+                                    target: folderAppDelegate
+                                    property: "dropOffsetY"
+                                    to: folderAppDelegate.dropTargetOffsetY
+                                    duration: 180
+                                    easing.type: Easing.OutCubic
+                                }
+                                onFinished: {
+                                    root.commitFolderApplicationDrag(
+                                        modelData.id, folderAppDelegate)
+                                    folderAppDelegate.dropping = false
+                                    folderAppDelegate.dragReorderStarted = false
+                                    folderAppDelegate.heldForEdit = false
                                 }
                             }
                         }
@@ -1480,12 +1946,11 @@ PanelWindow {
                             width: parent.width
                             height: 56
                             spacing: 12
-                            IconImage {
+                            AppIcon {
                                 width: 52
                                 height: 52
-                                source: Quickshell.iconPath(root.editorIcon, true)
+                                source: AppPresentationService.iconSource(root.editorIcon)
                                     || root.editorIcon || "application-x-executable"
-                                asynchronous: true
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
@@ -1695,14 +2160,14 @@ PanelWindow {
             }
         }
 
+        }
     }
 
     // BackgroundEffect is a Wayland window attachment, so it belongs to this
-    // PanelWindow root. Use the direct child `launcherCard` as its geometry
-    // source, matching Dock's pattern; a nested surface item can map to a
-    // narrower blur region on some compositors.
+    // PanelWindow root. The reveal viewport is the actual visible geometry;
+    // using it keeps compositor blur confined to the expanding sheet.
     BackgroundEffect.blurRegion: RoundedBlurRegion {
-        item: launcherCard
+        item: launcherRevealClip
         radius: background.radius
     }
 }

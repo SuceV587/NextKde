@@ -15,6 +15,9 @@ PopupWindow {
     property string appId: ""
     property string windowId: ""
     property Item anchorItem: null
+    property real revealProgress: 0.0
+    property bool closing: false
+    property string pendingAction: ""
 
     signal action(string name)
 
@@ -48,6 +51,87 @@ PopupWindow {
     color: "transparent"
     grabFocus: true
 
+    // PopupWindow itself must remain visible until the card's exit animation
+    // completes. Callers use this method through DockModelService instead of
+    // writing `visible` directly, so separate Wayland popup surfaces retain a
+    // natural close transition without changing their anchor geometry.
+    function setDockPopupVisible(shouldOpen) {
+        if (shouldOpen) {
+            revealOut.stop()
+            closing = false
+            pendingAction = ""
+            menu.visible = true
+            revealProgress = 0.0
+            // PopupWindow positions its own Wayland surface asynchronously.
+            // Delay drawing by one frame so a rapidly replaced menu never
+            // exposes its old/default screen-edge geometry.
+            revealStart.restart()
+            return
+        }
+        if (!menu.visible || closing)
+            return
+        closing = true
+        revealOut.restart()
+    }
+
+    function dismissDockPopupImmediately() {
+        revealStart.stop()
+        revealIn.stop()
+        revealOut.stop()
+        closing = false
+        pendingAction = ""
+        revealProgress = 0.0
+        menu.visible = false
+    }
+
+    // Dispatch destructive/model-changing actions only after the exit has
+    // finished. Otherwise an unpin or window close can destroy the anchor
+    // while this independent Wayland popup is still animating.
+    function dismissWithAction(name) {
+        pendingAction = name
+        setDockPopupVisible(false)
+    }
+
+    Timer {
+        id: revealStart
+        interval: 16
+        repeat: false
+        onTriggered: {
+            if (menu.visible && !menu.closing)
+                revealIn.restart()
+        }
+    }
+
+    NumberAnimation {
+        id: revealIn
+        target: menu
+        property: "revealProgress"
+        to: 1.0
+        duration: 110
+        easing.type: Easing.OutCubic
+    }
+
+    SequentialAnimation {
+        id: revealOut
+        NumberAnimation {
+            target: menu
+            property: "revealProgress"
+            to: 0.0
+            duration: 90
+            easing.type: Easing.InCubic
+        }
+        ScriptAction {
+            script: {
+                menu.closing = false
+                menu.visible = false
+                const name = menu.pendingAction
+                menu.pendingAction = ""
+                if (name)
+                    menu.action(name)
+            }
+        }
+    }
+
     // The Dock is at the bottom of the screen, so open upward from the icon.
     // PopupWindow keeps this separate from the Dock's adaptive height.
     anchor {
@@ -67,6 +151,13 @@ PopupWindow {
     LiquidGlassSurface {
         id: background
         anchors.fill: parent
+        opacity: menu.revealProgress
+        transform: Translate {
+            // The Dock sits below the menu: emerge upward from the icon, then
+            // return toward it on dismissal. This only moves card contents,
+            // never the PopupWindow anchor used for hit testing.
+            y: (1.0 - menu.revealProgress) * 6
+        }
         radius: 12
         // The base Dock tint is intentionally only 10% opaque. A popup needs
         // a thicker material layer or the compositor blur remains invisible
@@ -134,8 +225,7 @@ PopupWindow {
                             // Dismiss this grab surface before dispatching the
                             // action. That prevents the stale popup from
                             // retaining input while the Dock model reflows.
-                            menu.visible = false
-                            menu.action(modelData.name)
+                            menu.dismissWithAction(modelData.name)
                         }
                     }
                 }

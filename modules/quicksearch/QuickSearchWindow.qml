@@ -14,6 +14,14 @@ PanelWindow {
     property string viewMode: "list"
     property string query: ""
     property int selectedIndex: 0
+    // Keep this deliberately minimal: QuickSearch is a high-frequency
+    // shortcut surface, so a brief fade is clearer and faster than a sheet
+    // transition or scale animation.
+    property real revealProgress: open ? 1.0 : 0.0
+
+    Behavior on revealProgress {
+        NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
+    }
 
     signal closeRequested
     signal modeCycleRequested
@@ -45,28 +53,25 @@ PanelWindow {
         return matches;
     }
     readonly property var appResults: {
-        AppIdentityService.revision;
+        AppPresentationService.catalogRevision;
+        AppPresentationService.revision;
         const needle = query.trim().toLowerCase();
         const matches = [];
-        const entries = DesktopEntries.applications?.values || [];
-        for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i];
-            if (!entry || entry.noDisplay)
-                continue;
-            const title = entry.name ?? entry.id ?? "";
-            const haystack = (title + " " + (entry.id ?? "")).toLowerCase();
+        const catalogue = AppPresentationService.catalog();
+        for (let i = 0; i < catalogue.length; i++) {
+            const presentation = catalogue[i];
+            const title = presentation.displayName;
+            const haystack = (title + " " + presentation.desktopId).toLowerCase();
             if (!needle || haystack.includes(needle)) {
-                const identity = AppIdentityService.resolve(entry.id);
                 matches.push({
                     kind: "app",
                     title: title,
-                    subtitle: entry.id ?? "",
-                    icon: identity.iconSource,
-                    entry: entry
+                    subtitle: presentation.desktopId,
+                    icon: presentation.iconSource,
+                    entry: presentation.entry
                 });
             }
         }
-        matches.sort((left, right) => left.title.localeCompare(right.title));
         return matches;
     }
     readonly property var clipboardResults: {
@@ -140,11 +145,7 @@ PanelWindow {
         } else if (result.kind === "clipboard") {
             ClipboardService.copy(result.selectionRecord);
         } else {
-            try {
-                result.entry.execute();
-            } catch (e) {
-                console.warn("[QuickSearch] failed to launch " + result.title + ": " + e);
-            }
+            AppActionService.launch(result.entry);
         }
         closeRequested();
     }
@@ -165,7 +166,6 @@ PanelWindow {
         if (selectedIndex >= resultCount)
             selectedIndex = Math.max(0, resultCount - 1);
     }
-
     Timer {
         id: focusTimer
         interval: 1
@@ -219,6 +219,7 @@ PanelWindow {
         }
         radius: 18
         color: "transparent"
+        opacity: root.revealProgress
 
         LiquidGlassSurface {
             anchors.fill: parent
@@ -395,7 +396,7 @@ PanelWindow {
                     border.color: Qt.rgba(0.66, 0.82, 1, 0.42)
                 }
 
-                IconImage {
+                AppIcon {
                     width: resultItem.modelData.isImage ? 20 : 30
                     height: width
                     anchors {
@@ -404,8 +405,6 @@ PanelWindow {
                         verticalCenter: parent.verticalCenter
                     }
                     source: resultItem.modelData.icon ?? ""
-                    smooth: true
-                    asynchronous: true
                 }
 
                 Column {
@@ -543,7 +542,7 @@ PanelWindow {
                     border.color: Qt.rgba(0.66, 0.82, 1, 0.42)
                 }
 
-                IconImage {
+                AppIcon {
                     width: gridResultItem.modelData.isImage ? 34 : 42
                     height: width
                     anchors {
@@ -552,8 +551,6 @@ PanelWindow {
                         topMargin: gridResultItem.modelData.isImage ? 13 : 9
                     }
                     source: gridResultItem.modelData.icon ?? ""
-                    smooth: true
-                    asynchronous: true
                 }
 
                 Text {

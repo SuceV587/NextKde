@@ -1,7 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
-import qs.modules.applauncher
+import qs.modules.common
 
 // AppIdentityService — the single identity boundary for applications.
 //
@@ -25,49 +25,14 @@ QtObject {
 
     // Normalized comparison key. This is not persisted; desktopId is.
     function normalize(value) {
-        return String(value ?? "")
-            .replace(/<\d+>$/, "")
-            .replace(/\.desktop$/i, "")
-            .toLowerCase()
-            .replace(/[-_\s.]/g, "");
-    }
-
-    function _isDirectIconSource(value) {
-        const source = String(value ?? "").trim();
-        return source.startsWith("/")
-            || source.startsWith(":/")
-            || /^[a-z][a-z0-9+.-]*:/i.test(source);
+        return AppPresentationService.normalize(value);
     }
 
     function _iconPath(candidate) {
-        const value = String(candidate ?? "").trim();
-        if (!value)
-            return "";
-        // Use the same icon-provider path as AppLauncher for custom files.
-        // A raw file:// URL loads through Qt's generic image path, while
-        // Quickshell.iconPath can select the high-quality icon provider used
-        // by the launcher. Only fall back to file:// when it cannot resolve.
-        if (value.startsWith("/")) {
-            try {
-                const resolvedFile = Quickshell.iconPath(value, true);
-                if (resolvedFile)
-                    return resolvedFile;
-            } catch (e) {}
-            return "file://" + value;
-        }
-        if (_isDirectIconSource(value))
-            return value;
-
-        try {
-            // `hasThemeIcon()` can reject a valid hicolor fallback before Qt
-            // has fully indexed the active icon theme. iconPath(..., true)
-            // performs the authoritative lookup and returns an empty source
-            // when it truly cannot resolve the name, so use it directly for
-            // every consumer (Dock, QuickSearch, and future providers).
-            return Quickshell.iconPath(value, true) || "";
-        } catch (e) {
-            return "";
-        }
+        // Identity matching chooses an entry; presentation owns every icon
+        // lookup so Dock, QuickSearch, notifications and AppLauncher render
+        // the exact same source for that entry or custom image.
+        return AppPresentationService.iconSource(candidate);
     }
 
     function _candidates(rawId) {
@@ -95,11 +60,7 @@ QtObject {
     }
 
     function _normalizedLookup(value) {
-        return String(value ?? "")
-            .replace(/<\d+>$/, "")
-            .replace(/\.desktop$/i, "")
-            .toLowerCase()
-            .replace(/[-_\s.]/g, "");
+        return normalize(value);
     }
 
     function _entryHasIcon(entry) {
@@ -212,24 +173,6 @@ QtObject {
         return /\.desktop$/i.test(value) ? value : value + ".desktop";
     }
 
-    // A launcher stores desktop-entry IDs, while Wayland/KWin may report an
-    // appId or startup class. Resolve the explicit forms first, then compare
-    // normalised aliases so one custom PNG reaches both launcher and Dock.
-    function _overrideFor(overrides, desktopId, rawId) {
-        const values = overrides || ({});
-        const direct = values[desktopId] ?? values[rawId] ?? "";
-        if (direct)
-            return direct;
-        const wantedDesktop = normalize(desktopId);
-        const wantedRaw = normalize(rawId);
-        for (const key in values) {
-            const normalized = normalize(key);
-            if (normalized && (normalized === wantedDesktop || normalized === wantedRaw))
-                return values[key] || "";
-        }
-        return "";
-    }
-
     function resolve(rawId) {
         const raw = String(rawId ?? "").trim();
         const cacheKey = _key(raw);
@@ -238,19 +181,13 @@ QtObject {
 
         const entry = _findEntry(raw);
         const desktopId = _canonicalId(raw, entry);
-        // Launcher edits are the user-facing source of truth for icon
-        // presentation. Keep the older Dock config as a compatibility
-        // fallback for pre-launcher overrides.
-        const launcherOverrides = AppLauncherService.appIconOverrides || ({});
-        const dockOverrides = ConfigService.iconOverrides || ({});
-        const launcherOverride = _overrideFor(launcherOverrides, desktopId, raw);
-        const override = launcherOverride
-            || _overrideFor(dockOverrides, desktopId, raw);
-        if (launcherOverride) {
-            console.log("[AppIdentity] launcher icon override raw=" + raw
-                + " desktop=" + desktopId + " source=" + launcherOverride);
-        }
-        const iconCandidates = [override, entry?.icon ?? "", raw];
+        // The runtime provider may call this app "Code" while its desktop
+        // entry is code.desktop. Resolve that alias here, then use the shared
+        // presentation contract for names/icons/custom user edits.
+        const presentation = AppPresentationService.descriptor(entry, raw);
+        const presentationOverride = AppPresentationService.overrideFor(desktopId, raw);
+        const iconCandidates = [presentationOverride.icon,
+                                presentation.defaultIcon, raw];
         const candidates = _candidates(raw);
         for (let i = 0; i < candidates.length; i++)
             iconCandidates.push(candidates[i].replace(/\.desktop$/i, ""));
@@ -269,9 +206,9 @@ QtObject {
             desktopId: desktopId,
             normalizedId: normalize(desktopId),
             rawAppId: raw,
-            name: entry?.name ?? raw,
+            name: presentationOverride.name || presentation.defaultName,
             iconSource: icon,
-            hasIconOverride: !!_iconPath(override),
+            hasIconOverride: !!_iconPath(presentationOverride.icon),
             hasPreferredIcon: hasPreferredIcon,
             entry: entry,
         };
@@ -303,23 +240,26 @@ QtObject {
         svc.revision++;
     }
 
+    // DesktopEntries emits several model updates while it scans installed
+    // .desktop files. A cache clear causes WindowService to rebuild every
+    // live window, so coalesce that burst into one post-scan refresh instead
+    // of competing with notification entrance animations on the UI thread.
+    property Timer _desktopEntryRefreshTimer: Timer {
+        interval: 180
+        repeat: false
+        onTriggered: svc.clearCache()
+    }
+
     property Connections _desktopEntryConnections: Connections {
         target: DesktopEntries
         function onApplicationsChanged() {
-            svc.clearCache();
+            svc._desktopEntryRefreshTimer.restart();
         }
     }
 
-    property Connections _configConnections: Connections {
-        target: ConfigService
-        function onIconOverridesChanged() {
-            svc.clearCache();
-        }
-    }
-
-    property Connections _launcherIconConnections: Connections {
-        target: AppLauncherService
-        function onAppIconOverridesRevisionChanged() {
+    property Connections _presentationConnections: Connections {
+        target: AppPresentationService
+        function onRevisionChanged() {
             // Re-resolve live windows and pinned apps immediately after an
             // editor save; no Quickshell restart should be necessary.
             svc.clearCache();

@@ -12,6 +12,8 @@ PopupWindow {
     property Item anchorItem: null
     property string windowId: ""
     property string title: ""
+    property real revealProgress: 0.0
+    property bool closing: false
     // Exposed to the owning DockIcon so it can bridge pointer movement across
     // the gap between two separate Wayland popup surfaces.
     property bool pointerInside: previewMouse.containsMouse
@@ -22,6 +24,69 @@ PopupWindow {
     implicitHeight: 232
     color: "transparent"
     grabFocus: false
+
+    // Preview is a high-frequency hover surface. Animate only a short fade
+    // and upward settle; the PopupWindow itself stays alive until exit ends so
+    // crossing the icon-to-preview gap cannot produce a hard disappearance.
+    function setDockPopupVisible(shouldOpen) {
+        if (shouldOpen) {
+            previewExit.stop()
+            closing = false
+            preview.visible = true
+            revealProgress = 0.0
+            previewRevealStart.restart()
+            return
+        }
+        if (!preview.visible || closing)
+            return
+        closing = true
+        previewExit.restart()
+    }
+
+    function dismissDockPopupImmediately() {
+        previewRevealStart.stop()
+        previewEntrance.stop()
+        previewExit.stop()
+        closing = false
+        revealProgress = 0.0
+        preview.visible = false
+    }
+
+    Timer {
+        id: previewRevealStart
+        interval: 16
+        repeat: false
+        onTriggered: {
+            if (preview.visible && !preview.closing)
+                previewEntrance.restart()
+        }
+    }
+
+    NumberAnimation {
+        id: previewEntrance
+        target: preview
+        property: "revealProgress"
+        to: 1.0
+        duration: 120
+        easing.type: Easing.OutCubic
+    }
+
+    SequentialAnimation {
+        id: previewExit
+        NumberAnimation {
+            target: preview
+            property: "revealProgress"
+            to: 0.0
+            duration: 90
+            easing.type: Easing.InCubic
+        }
+        ScriptAction {
+            script: {
+                preview.closing = false
+                preview.visible = false
+            }
+        }
+    }
 
     anchor {
         item: preview.anchorItem
@@ -43,6 +108,12 @@ PopupWindow {
     LiquidGlassSurface {
         id: background
         anchors.fill: parent
+        opacity: preview.revealProgress
+        transform: Translate {
+            // The preview is anchored above Dock: begin nearer the icon and
+            // settle upward without changing its input/anchor geometry.
+            y: (1.0 - preview.revealProgress) * 7
+        }
         radius: 14
         baseColor: ThemeService.backgroundColor
         surfaceOpacity: 0.88

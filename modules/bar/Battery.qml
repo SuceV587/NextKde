@@ -7,8 +7,8 @@ import qs.modules.dock
 Item {
     id: root
 
-    implicitWidth: 23
-    implicitHeight: 13
+    implicitWidth: 22
+    implicitHeight: 12
     width: implicitWidth
     height: implicitHeight
 
@@ -18,8 +18,8 @@ Item {
             left: parent.left
             verticalCenter: parent.verticalCenter
         }
-        width: 19
-        height: 11
+        width: 18
+        height: 10
         radius: 3
         color: "transparent"
         border {
@@ -34,7 +34,7 @@ Item {
             verticalCenter: outline.verticalCenter
         }
         width: 2
-        height: 4
+        height: 3.5
         radius: 1
         color: ThemeService.foregroundColor
     }
