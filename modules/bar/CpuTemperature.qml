@@ -161,6 +161,9 @@ Item {
             frequency: cpuFrequencyHistory,
             current: {
                 cpuUsage: cpuUsage,
+                cpuFrequencyMhz: cpuFrequencyMhz,
+                averageMilliC: averageMilliC,
+                maximumMilliC: maximumMilliC,
                 memoryUsedBytes: memoryUsedBytes,
                 memoryTotalBytes: memoryTotalBytes,
                 diskUsedBytes: diskUsedBytes,
@@ -234,6 +237,22 @@ Item {
         return Math.round(value / 1024) + " KiB"
     }
 
+    function publishSharedMetrics() {
+        SystemMetricsService.publish({
+            averageMilliC: averageMilliC,
+            maximumMilliC: maximumMilliC,
+            cpuUsage: cpuUsage,
+            cpuFrequencyMhz: cpuFrequencyMhz,
+            memoryUsedBytes: memoryUsedBytes,
+            memoryTotalBytes: memoryTotalBytes,
+            diskUsedBytes: diskUsedBytes,
+            diskTotalBytes: diskTotalBytes,
+            memoryHistory: memoryHistory,
+            cpuHistory: cpuHistory,
+            frequencyHistory: cpuFrequencyHistory
+        })
+    }
+
     function refresh() {
         if (_refreshProcess)
             return
@@ -281,6 +300,7 @@ Item {
                 root.maximumMilliC = root.recordPeakSample(maximum)
                 root.updateSensorReadings(proc.stdout?.text ?? "")
                 root.updateUsage(proc.stdout?.text ?? "")
+                root.publishSharedMetrics()
             } else {
                 root.averageMilliC = -1
                 root.maximumMilliC = -1
@@ -291,6 +311,7 @@ Item {
                 root.cpuFrequencyHistory = []
                 root._lastCpuTotal = -1
                 root._lastCpuIdle = -1
+                root.publishSharedMetrics()
             }
             proc.destroy()
         })

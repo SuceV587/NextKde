@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 
 // Selects two distinct colours from Quickshell's asynchronous image
 // quantizer. It works for both MPRIS artwork and local wallpaper files.
@@ -12,6 +13,9 @@ Item {
     property color primary: fallbackPrimary
     property color secondary: fallbackSecondary
     property bool ready: false
+    property url quantizerSource: ""
+    property var _downloadProcess: null
+    readonly property string cacheDirectory: Quickshell.stateDir + "/artwork-palette"
     // Consumers that already animate their own material can set this to 0 so
     // there is one deliberate colour transition rather than two retargeting
     // animations chasing one another.
@@ -56,19 +60,57 @@ Item {
         ready = true
     }
 
-    onSourceChanged: {
+    function _cacheName(url) {
+        const text = url.toString()
+        let hash = 2166136261
+        for (let index = 0; index < text.length; ++index) {
+            hash ^= text.charCodeAt(index)
+            hash = Math.imul(hash, 16777619)
+        }
+        return (hash >>> 0).toString(16) + ".img"
+    }
+
+    function _refreshQuantizerSource() {
         ready = false
+        const remote = source.toString().match(/^https?:\/\//i)
         if (!source) {
+            quantizerSource = ""
             primary = fallbackPrimary
             secondary = fallbackSecondary
+            return
         }
+        if (!remote) {
+            quantizerSource = source
+            return
+        }
+        const requestedSource = source.toString()
+        const cachePath = cacheDirectory + "/" + _cacheName(requestedSource)
+        quantizerSource = ""
+        const process = processFactory.createObject(root, {
+            command: ["sh", "-c",
+                "mkdir -p \"$1\" && if [ ! -s \"$2\" ]; then curl --fail --location --silent --show-error --max-time 15 --output \"$2.$$.tmp\" \"$3\" && mv \"$2.$$.tmp\" \"$2\"; fi",
+                "artwork-palette-cache", cacheDirectory, cachePath, requestedSource]
+        })
+        _downloadProcess = process
+        process.exited.connect(function(exitCode) {
+            if (root._downloadProcess === process)
+                root._downloadProcess = null
+            if (exitCode === 0 && root.source.toString() === requestedSource)
+                root.quantizerSource = "file://" + cachePath
+            process.destroy()
+        })
+        process.running = true
     }
+
+    onSourceChanged: _refreshQuantizerSource()
+    Component.onCompleted: _refreshQuantizerSource()
 
     ColorQuantizer {
         id: quantizer
-        source: root.source
+        source: root.quantizerSource
         depth: 8
         rescaleSize: 48
         onColorsChanged: root._apply(colors)
     }
+    property Component processFactory: Component { Process { stderr: StdioCollector {} } }
 }

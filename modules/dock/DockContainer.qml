@@ -1,4 +1,5 @@
 import QtQuick
+import Qt.labs.platform as Platform
 import Quickshell
 import "./AdaptiveMath.mjs" as AdaptiveMath
 import qs.modules.applauncher
@@ -26,7 +27,7 @@ Item {
     // The app launcher is a permanent visual slot before persisted pinned apps.
     // Include it in adaptive width fitting, but never in the model used for
     // drag-reordering or persistence.
-    readonly property int pinnedCount: DockModelService.pinnedCount + 1
+    readonly property int pinnedCount: DockModelService.pinnedCount + 2
     readonly property int windowCount: DockModelService.windowCount
     readonly property bool hasPlayer: DockMprisService.hasPlayer
     readonly property bool hasPlayingMusic: DockMprisService.hasPlayingPlayer
@@ -231,6 +232,30 @@ Item {
         moveDuration: 260
     }
 
+    Platform.Menu {
+        id: trashContextMenu
+        function setDockPopupVisible(shouldOpen) {
+            if (shouldOpen)
+                open()
+            else
+                close()
+        }
+        function dismissDockPopupImmediately() { close() }
+        Platform.MenuItem {
+            text: "清空回收站"
+            onTriggered: DockModelService.openDockPopup(trashConfirmPopup)
+        }
+        onAboutToHide: {
+            if (DockModelService.activeDockPopup === trashContextMenu)
+                DockModelService.releaseDockPopup(trashContextMenu)
+        }
+    }
+
+    DockTrashConfirmPopup {
+        id: trashConfirmPopup
+        anchorItem: trashIcon
+    }
+
     // A Dock panel cannot receive pointer events from the rest of the
     // desktop. WindowService does observe focus changes, which lets an edit
     // session end naturally when the user clicks any other application.
@@ -294,6 +319,34 @@ Item {
                         DockModelService.activeDockPopup, false)
                 console.log("[DockContainer] app launcher requested")
                 AppLauncherService.toggle()
+            }
+        }
+
+        // Permanent shell control, kept on the left with the app launcher and
+        // intentionally outside the pinned-app model and its drag ordering.
+        DockIcon {
+            id: trashIcon
+            iconSize: container.iconSize
+            activeBackgroundGap: container.activeBackgroundGap
+            iconSource: AppPresentationService.iconSource("user-trash")
+            displayName: "回收站"
+            showContextMenu: false
+            customContextMenu: true
+            allowEdit: false
+            isPinnedItem: false
+            bounceKey: ""
+            onActivate: {
+                if (!container.isEditing)
+                    DockTrashService.open()
+            }
+            onContextRequested: DockModelService.openDockPopup(trashContextMenu)
+        }
+
+        Connections {
+            target: DockTrashService
+            function onDepositReceived() {
+                console.log("[DockTrash] DockContainer received deposit signal")
+                trashIcon.acknowledgeAttention()
             }
         }
 

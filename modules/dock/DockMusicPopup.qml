@@ -12,8 +12,10 @@ PopupWindow {
 
     property Item anchorItem: null
     property var player: DockMprisService.activePlayer
-    readonly property url artworkSource: player?.trackArtUrl
-        ? player.trackArtUrl : Qt.resolvedUrl("../../assets/defaultCover.png")
+    readonly property url artworkSource: {
+        const revision = DockMprisService.metadataRevision
+        return player?.trackArtUrl ? player.trackArtUrl : Qt.resolvedUrl("../../assets/defaultCover.png")
+    }
     property bool pointerInside: popupMouse.containsMouse
 
     readonly property real safeLength: player?.lengthSupported

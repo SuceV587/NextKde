@@ -1,9 +1,14 @@
 import QtQuick
+import QtCore
+import Qt.labs.platform as Platform
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Widgets
+import Qt5Compat.GraphicalEffects
 import qs.modules.applauncher
 import qs.modules.bar
+import qs.modules.common
 import qs.modules.dock
 import qs.modules.weather
 
@@ -17,6 +22,9 @@ PanelWindow {
     exclusionMode: ExclusionMode.Ignore
     exclusiveZone: 0
     WlrLayershell.layer: WlrLayer.Background
+    // A desktop needs shortcuts only after the user explicitly clicks it.
+    // OnDemand keeps active applications' Ctrl+C/V untouched otherwise.
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
 
     anchors { top: true; left: true; right: true; bottom: true }
     implicitWidth: screen?.width ?? 1920
@@ -39,7 +47,14 @@ PanelWindow {
     property bool timerRunning: false
     property bool timerHasStarted: false
     property bool timerView: false
+    // Referencing the singleton starts the shared activity recorder once the
+    // desktop surface is available.
+    readonly property var activityUsage: ActivityUsageService
+    // File metadata is supplied by shell-data-service; this surface only
+    // lays it out as a right-aligned desktop grid.
+    readonly property var desktopFiles: DesktopFilesService
     property var systemMetrics: ({})
+    property var systemHistory: ({ memory: [], cpu: [], frequency: [] })
     property var systemMetricsReadProcess: null
     readonly property string systemMetricsPath: Quickshell.stateDir + "/bar/usage-history.json"
 
@@ -76,6 +91,19 @@ PanelWindow {
         return Math.round(bytes / 1048576) + " MB"
     }
 
+    function formatDuration(seconds) {
+        const total = Math.max(0, Math.round(seconds || 0))
+        const hours = Math.floor(total / 3600)
+        const minutes = Math.floor((total % 3600) / 60)
+        return hours > 0 ? hours + "小时" + (minutes ? minutes + "分" : "") : minutes + "分"
+    }
+
+    function metricHistoryValues(name) {
+        const samples = systemHistory[name] ?? []
+        return samples.map(sample => Number(sample.value))
+            .filter(value => Number.isFinite(value))
+    }
+
     function reloadSystemMetrics() {
         if (systemMetricsReadProcess)
             return
@@ -88,6 +116,11 @@ PanelWindow {
                 const saved = JSON.parse((process.stdout?.text ?? "").trim())
                 if (saved.current)
                     systemMetrics = saved.current
+                systemHistory = {
+                    memory: Array.isArray(saved.memory) ? saved.memory : [],
+                    cpu: Array.isArray(saved.cpu) ? saved.cpu : [],
+                    frequency: Array.isArray(saved.frequency) ? saved.frequency : []
+                }
             } catch (_) {
                 // The top bar has not saved its first sample yet.
             }
@@ -175,8 +208,13 @@ PanelWindow {
         { id: "calendar", title: "", columns: 2, rows: 1, priority: 80, row: 1, column: 2,
             startColor: "#ffffff", endColor: "#f2f2f4", surface: false },
         { id: "system", title: "", columns: 2, rows: 1, priority: 70, row: 1, column: 0,
-            startColor: "#f5f3f6", endColor: "#e9e6eb", surface: false }
+            startColor: "#f5f3f6", endColor: "#e9e6eb", surface: false },
+        { id: "activity", title: "", columns: 2, rows: 1, priority: 60, row: 2, column: 0,
+            startColor: "#29252f", endColor: "#17151c", surface: true },
+        { id: "music", title: "", columns: 2, rows: 1, priority: 50, row: 2, column: 2,
+            startColor: "#101010", endColor: "#101010", surface: false }
     ]
+    readonly property var weatherTheme: WeatherTheme.theme(WeatherService.weatherCode, WeatherService.isDay)
 
     function packWidgets(definitions, columnCount, rowCount) {
         const sorted = definitions.slice().sort(function(a, b) {
@@ -197,9 +235,14 @@ PanelWindow {
             for (let row = firstRow; row <= lastRow && !placed; row++) {
                 for (let column = firstColumn; column <= lastColumn && !placed; column++) {
                     let fits = true
-                    for (let y = row; y < row + widget.rows && fits; y++)
+                    for (let y = row; y < row + widget.rows && fits; y++) {
+                        if (y < 0 || y >= rowCount) {
+                            fits = false
+                            break
+                        }
                         for (let x = column; x < column + widget.columns; x++)
                             if (occupied[y][x]) { fits = false; break }
+                    }
                     if (!fits)
                         continue
                     for (let y = row; y < row + widget.rows; y++)
@@ -237,8 +280,8 @@ PanelWindow {
             readonly property var placement: root.placementFor(modelData.id)
             visible: placement !== null
             title: modelData.title
-            startColor: modelData.startColor
-            endColor: modelData.endColor
+            startColor: modelData.id === "weather" ? root.weatherTheme.primary : modelData.startColor
+            endColor: modelData.id === "weather" ? root.weatherTheme.secondary : modelData.endColor
             showSurface: modelData.surface
             x: root.sideMargin + (placement?.column ?? 0) * (root.cellSize + root.gap)
             y: root.topInset + (placement?.row ?? 0) * (root.cellSize + root.gap)
@@ -518,6 +561,21 @@ PanelWindow {
                 anchors.fill: parent
                 visible: card.modelData.id === "weather"
 
+                // The card-level gradient establishes the theme, while this
+                // explicit content-layer wash keeps that transition visible
+                // beneath the weather artwork on every compositor.
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 26
+                    color: "transparent"
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0; color: root.weatherTheme.primary }
+                        GradientStop { position: 0.58; color: root.weatherTheme.secondary }
+                        GradientStop { position: 1; color: Qt.darker(root.weatherTheme.secondary, 1.16) }
+                    }
+                }
+
                 // Keep the weather artwork static. Continuous transforms on
                 // this always-visible background card force redraws even when
                 // the desktop is otherwise idle.
@@ -529,7 +587,7 @@ PanelWindow {
 
                     Item {
                         id: deskSunLayer
-                        visible: WeatherService.weatherCode === 0 && WeatherService.isDay
+                        visible: WeatherTheme.category(WeatherService.weatherCode) === "clear" && WeatherService.isDay
                         width: 70
                         height: 70
                         anchors { right: parent.right; top: parent.top; rightMargin: 20; topMargin: 5 }
@@ -552,9 +610,8 @@ PanelWindow {
                     Item {
                         id: deskCloudLayer
                         anchors.fill: parent
-                        visible: WeatherService.weatherCode === 1 || WeatherService.weatherCode === 2
-                            || WeatherService.weatherCode === 3 || WeatherService.weatherCode === 45
-                            || WeatherService.weatherCode === 48
+                        visible: WeatherTheme.category(WeatherService.weatherCode) === "partlyCloudy"
+                            || WeatherTheme.category(WeatherService.weatherCode) === "overcast"
                         Image {
                             id: deskCloudBack
                             width: parent.width * 0.34
@@ -580,8 +637,8 @@ PanelWindow {
                     Item {
                         id: deskRainLayer
                         anchors.fill: parent
-                        visible: (WeatherService.weatherCode >= 51 && WeatherService.weatherCode <= 67)
-                            || (WeatherService.weatherCode >= 80 && WeatherService.weatherCode <= 82)
+                        visible: WeatherTheme.isRain(WeatherService.weatherCode)
+                            || WeatherTheme.isStorm(WeatherService.weatherCode)
                         Repeater {
                             model: 9
                             delegate: Rectangle {
@@ -594,6 +651,51 @@ PanelWindow {
                                 rotation: -13
                             }
                         }
+                    }
+
+                    Item {
+                        id: deskFogLayer
+                        anchors.fill: parent
+                        visible: WeatherTheme.isFog(WeatherService.weatherCode)
+                        Repeater {
+                            model: 3
+                            delegate: Rectangle {
+                                required property int index
+                                width: deskFogLayer.width * (0.54 + index * 0.09)
+                                height: 10
+                                radius: height / 2
+                                x: -width * 0.15 + index * 24
+                                y: 16 + index * 26
+                                color: Qt.rgba(1, 1, 1, 0.20 - index * 0.035)
+                            }
+                        }
+                    }
+
+                    Item {
+                        id: deskSnowLayer
+                        anchors.fill: parent
+                        visible: WeatherTheme.isSnow(WeatherService.weatherCode)
+                        Repeater {
+                            model: 14
+                            delegate: Rectangle {
+                                required property int index
+                                width: index % 3 === 0 ? 4 : 2
+                                height: width
+                                radius: width / 2
+                                x: deskSnowLayer.width * ((index * 37) % 100) / 100
+                                y: 8 + (index * 19) % Math.max(1, deskSnowLayer.height - 12)
+                                color: Qt.rgba(1, 1, 1, 0.62)
+                            }
+                        }
+                    }
+
+                    Text {
+                        anchors { right: parent.right; top: parent.top; rightMargin: 26; topMargin: 8 }
+                        visible: WeatherTheme.isStorm(WeatherService.weatherCode)
+                        text: "ϟ"
+                        color: "#e0ccff"
+                        opacity: 0.68
+                        font { family: "SF Pro Display"; pixelSize: 42; weight: Font.DemiBold }
                     }
                 }
                 Text {
@@ -611,7 +713,7 @@ PanelWindow {
                 Text {
                     anchors { right: parent.right; top: parent.top; rightMargin: 18; topMargin: 14 }
                     text: WeatherService.conditionSymbol(WeatherService.weatherCode, WeatherService.isDay)
-                    color: "#ffd23f"
+                    color: root.weatherTheme.accent
                     font.pixelSize: Math.min(34, parent.height * 0.26)
                 }
                 Text {
@@ -649,7 +751,7 @@ PanelWindow {
                             Text {
                                 anchors { horizontalCenter: parent.horizontalCenter; verticalCenter: parent.verticalCenter }
                                 text: WeatherService.conditionSymbol(modelData.code, true)
-                                color: "#ffd23f"
+                                color: root.weatherTheme.accent
                                 font.pixelSize: 22
                             }
                             Text {
@@ -736,114 +838,360 @@ PanelWindow {
                 id: systemContent
                 anchors.fill: parent
                 visible: card.modelData.id === "system"
-                // A 2×1 tile has very different physical pixels on a 1080p
-                // and a 4K display. Size every visual from the card itself,
-                // rather than leaving desktop-scale content at 54px.
-                readonly property real ringSize: Math.min(width * 0.28, height * 0.58)
-                Row {
-                    id: systemUsageRow
-                    anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: systemContent.height * 0.07 }
-                    spacing: systemContent.ringSize * 0.45
-                    Repeater {
-                        model: [
-                            { label: "CPU", icon: "", value: root.systemMetrics.cpuUsage ?? 0, color: "#30a46c" },
-                            { label: "内存", icon: "󰍛", value: root.systemMetrics.memoryTotalBytes > 0 ? root.systemMetrics.memoryUsedBytes / root.systemMetrics.memoryTotalBytes : 0, color: "#30a46c" }
-                        ]
-                        delegate: Item {
-                            required property var modelData
-                            width: systemContent.ringSize
-                            height: systemContent.ringSize
-                            Canvas {
-                                id: usageRing
-                                property real amount: modelData.value
-                                anchors { horizontalCenter: parent.horizontalCenter; top: parent.top }
-                                width: systemContent.ringSize
-                                height: systemContent.ringSize
-                                onAmountChanged: requestPaint()
-                                onPaint: {
-                                    const ctx = getContext("2d")
-                                    const value = Math.max(0, Math.min(1, amount))
-                                    ctx.reset()
-                                    ctx.lineWidth = Math.min(20, width * 0.11)
-                                    ctx.lineCap = "round"
-                                    ctx.strokeStyle = "#dedbe1"
-                                    ctx.beginPath()
-                                    ctx.arc(width / 2, height / 2, width * 0.39, -Math.PI / 2, Math.PI * 1.5)
-                                    ctx.stroke()
-                                    ctx.strokeStyle = modelData.color
-                                    ctx.beginPath()
-                                    ctx.arc(width / 2, height / 2, width * 0.39, -Math.PI / 2,
-                                        -Math.PI / 2 + Math.PI * 2 * value)
-                                    ctx.stroke()
-                                }
-                                Component.onCompleted: requestPaint()
+                // The Bar publishes the live snapshot directly. Disk state
+                // remains a cold-start fallback until that first sample lands.
+                readonly property var metrics: SystemMetricsService.ready
+                    ? SystemMetricsService : root.systemMetrics
+                function historyValues(name) {
+                    if (SystemMetricsService.ready) {
+                        const live = name === "memory" ? SystemMetricsService.memoryHistory
+                            : name === "cpu" ? SystemMetricsService.cpuHistory
+                            : SystemMetricsService.frequencyHistory
+                        return live.map(sample => Number(sample.value))
+                            .filter(value => Number.isFinite(value))
+                    }
+                    return root.metricHistoryValues(name)
+                }
+                // The system card is a 4:6 split: the Activity rings use the
+                // left 40%, while hover details have a calm 60% reading area.
+                Item {
+                    id: activityRings
+                    anchors { left: parent.left; leftMargin: parent.width * 0.02; top: parent.top; topMargin: parent.height * 0.035 }
+                    width: Math.min(parent.width * 0.36, parent.height * 0.7)
+                    height: width
+                    property int hoveredMetric: -1
+                    readonly property real cpuValue: systemContent.metrics.cpuUsage ?? 0
+                    readonly property real memoryValue: systemContent.metrics.memoryTotalBytes > 0
+                        ? systemContent.metrics.memoryUsedBytes / systemContent.metrics.memoryTotalBytes : 0
+                    readonly property real storageValue: systemContent.metrics.diskTotalBytes > 0
+                        ? systemContent.metrics.diskUsedBytes / systemContent.metrics.diskTotalBytes : 0
+                    readonly property var labels: ["CPU", "内存", "存储"]
+                    readonly property var icons: ["", "󰍛", "󰋊"]
+                    readonly property var values: [cpuValue, memoryValue, storageValue]
+                    readonly property var colors: ["#ff375f", "#30d158", "#64d2ff"]
+
+                    function detailFor(metric) {
+                        if (metric === 0)
+                            return "实时使用率"
+                        if (metric === 1)
+                            return root.formatMetricBytes(systemContent.metrics.memoryUsedBytes)
+                                + " / " + root.formatMetricBytes(systemContent.metrics.memoryTotalBytes)
+                        return root.formatMetricBytes(systemContent.metrics.diskUsedBytes)
+                            + " / " + root.formatMetricBytes(systemContent.metrics.diskTotalBytes)
+                    }
+
+                    Canvas {
+                        id: activityCanvas
+                        anchors.fill: parent
+
+                        function drawRing(ctx, radius, value, color) {
+                            const center = width / 2
+                            const amount = Math.max(0, Math.min(1, value))
+                            const start = -Math.PI / 2
+                            ctx.lineWidth = Math.max(5, width * 0.065)
+                            ctx.lineCap = "round"
+                            ctx.strokeStyle = Qt.rgba(0.19, 0.17, 0.2, 0.12)
+                            ctx.beginPath()
+                            ctx.arc(center, center, radius, 0, Math.PI * 2)
+                            ctx.stroke()
+                            ctx.strokeStyle = color
+                            ctx.beginPath()
+                            ctx.arc(center, center, radius, start, start + Math.PI * 2 * amount)
+                            ctx.stroke()
+                        }
+
+                        onPaint: {
+                            const ctx = getContext("2d")
+                            ctx.reset()
+                            drawRing(ctx, width * 0.39, activityRings.cpuValue, activityRings.colors[0])
+                            drawRing(ctx, width * 0.285, activityRings.memoryValue, activityRings.colors[1])
+                            drawRing(ctx, width * 0.18, activityRings.storageValue, activityRings.colors[2])
+                        }
+                        Component.onCompleted: requestPaint()
+                        Connections {
+                            target: activityRings
+                            function onCpuValueChanged() { activityCanvas.requestPaint() }
+                            function onMemoryValueChanged() { activityCanvas.requestPaint() }
+                            function onStorageValueChanged() { activityCanvas.requestPaint() }
+                        }
+                    }
+
+                    Column {
+                        anchors.centerIn: parent
+                        visible: activityRings.hoveredMetric >= 0
+                        spacing: -2
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: activityRings.icons[activityRings.hoveredMetric]
+                            color: "#7d7782"
+                            font { family: "LXGW WenKai Mono Nerd Font"; pixelSize: Math.max(10, activityRings.width * 0.1) }
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: activityRings.labels[activityRings.hoveredMetric] + " "
+                                + Math.round(activityRings.values[activityRings.hoveredMetric] * 100) + "%"
+                            color: "#7d7782"
+                            font { family: "SF Pro Display"; pixelSize: Math.max(8, activityRings.width * 0.075); weight: Font.DemiBold }
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onEntered: activityRings.hoveredMetric = 0
+                        onPositionChanged: function(mouse) {
+                            const dx = mouse.x - width / 2
+                            const dy = mouse.y - height / 2
+                            const distance = Math.sqrt(dx * dx + dy * dy) / width
+                            if (distance >= 0.335)
+                                activityRings.hoveredMetric = 0
+                            else if (distance >= 0.23)
+                                activityRings.hoveredMetric = 1
+                            else
+                                activityRings.hoveredMetric = 2
+                        }
+                        onExited: activityRings.hoveredMetric = -1
+                    }
+                }
+
+                // The lower two tenths of the left 4/10 column reuse the
+                // Bar sampler's cached temperatures; no second sensor poll.
+                Item {
+                    id: temperatureSummary
+                    anchors { left: parent.left; leftMargin: parent.width * 0.02; bottom: parent.bottom; bottomMargin: parent.height * 0.045 }
+                    width: parent.width * 0.36
+                    height: parent.height * 0.17
+                    readonly property real averageC: Number(systemContent.metrics.averageMilliC ?? -1) / 1000
+                    readonly property real maximumC: Number(systemContent.metrics.maximumMilliC ?? -1) / 1000
+                    readonly property bool available: averageC >= 0 && maximumC >= 0
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: Math.max(4, temperatureSummary.width * 0.04)
+                        Text {
+                            text: ""
+                            color: "#7d7782"
+                            font { family: "LXGW WenKai Mono Nerd Font"; pixelSize: Math.max(12, temperatureSummary.height * 0.54) }
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Column {
+                            spacing: -1
+                            Text {
+                                text: temperatureSummary.available ? Math.round(temperatureSummary.averageC) + "°" : "--"
+                                color: "#7d7782"
+                                font { family: "SF Pro Display"; pixelSize: Math.max(10, temperatureSummary.height * 0.42); weight: Font.DemiBold }
                             }
-                            Column {
-                                anchors.centerIn: usageRing
-                                spacing: 6
-                                Text {
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    text: Math.round(modelData.value * 100) + "%"
-                                    color: "#302c34"
-                                    font { family: "SF Pro Display"; pixelSize: 18; weight: Font.Bold }
-                                }
-                                Item {
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    width: metricIcon.width + 3 + metricLabel.implicitWidth
-                                    height: metricLabel.implicitHeight
-                                    Text {
-                                        id: metricIcon
-                                        anchors { left: parent.left; baseline: metricLabel.baseline }
-                                        width: 12
-                                        text: modelData.icon
-                                        horizontalAlignment: Text.AlignHCenter
-                                        color: "#5d5761"
-                                        font { family: "LXGW WenKai Mono Nerd Font"; pixelSize: 12 }
-                                    }
-                                    Text {
-                                        id: metricLabel
-                                        anchors { left: metricIcon.right; leftMargin: 3; verticalCenter: parent.verticalCenter }
-                                        text: modelData.label
-                                        color: "#5d5761"
-                                        font { pixelSize: 12; weight: Font.DemiBold }
+                            Text {
+                                text: "当前"
+                                color: Qt.rgba(0.49, 0.47, 0.51, 0.76)
+                                font.pixelSize: Math.max(8, temperatureSummary.height * 0.25)
+                            }
+                        }
+                        Rectangle {
+                            width: 1
+                            height: temperatureSummary.height * 0.56
+                            color: Qt.rgba(0.19, 0.17, 0.2, 0.12)
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Column {
+                            spacing: -1
+                            Text {
+                                text: temperatureSummary.available ? Math.round(temperatureSummary.maximumC) + "°" : "--"
+                                color: "#7d7782"
+                                font { family: "SF Pro Display"; pixelSize: Math.max(10, temperatureSummary.height * 0.42); weight: Font.DemiBold }
+                            }
+                            Text {
+                                text: "最高"
+                                color: Qt.rgba(0.49, 0.47, 0.51, 0.76)
+                                font.pixelSize: Math.max(8, temperatureSummary.height * 0.25)
+                            }
+                        }
+                    }
+                }
+
+                Column {
+                    anchors { left: parent.left; right: parent.right; leftMargin: parent.width * 0.47; rightMargin: parent.width * 0.07; verticalCenter: parent.verticalCenter }
+                    height: parent.height * 0.76
+                    spacing: Math.max(2, height * 0.035)
+
+                    Item {
+                        width: parent.width
+                        height: (parent.height - parent.spacing * 2) / 3
+                        Text {
+                            id: memoryTrendLabel
+                            anchors { left: parent.left; top: parent.top }
+                            text: "内存  " + Math.round(activityRings.memoryValue * 100) + "%"
+                            color: activityRings.hoveredMetric === 1
+                                ? Qt.rgba(0.12, 0.50, 0.31, 0.84) : Qt.rgba(0.30, 0.29, 0.33, 0.78)
+                            font { pixelSize: Math.max(8, systemContent.height * 0.06); weight: Font.DemiBold }
+                        }
+                        UsageSparkline {
+                            anchors { left: parent.left; right: parent.right; top: memoryTrendLabel.bottom; topMargin: 1; bottom: parent.bottom }
+                            values: systemContent.historyValues("memory")
+                            lineColor: "#30d158"
+                            adaptiveRange: true
+                            maxPoints: 36
+                            smoothingWindow: 5
+                        }
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: (parent.height - parent.spacing * 2) / 3
+                        Text {
+                            id: cpuTrendLabel
+                            anchors { left: parent.left; top: parent.top }
+                            text: "CPU  " + Math.round(activityRings.cpuValue * 100) + "%"
+                            color: activityRings.hoveredMetric === 0
+                                ? Qt.rgba(0.76, 0.14, 0.23, 0.84) : Qt.rgba(0.30, 0.29, 0.33, 0.78)
+                            font { pixelSize: Math.max(8, systemContent.height * 0.06); weight: Font.DemiBold }
+                        }
+                        UsageSparkline {
+                            anchors { left: parent.left; right: parent.right; top: cpuTrendLabel.bottom; topMargin: 1; bottom: parent.bottom }
+                            values: systemContent.historyValues("cpu")
+                            lineColor: "#ff375f"
+                            maxPoints: 36
+                            smoothingWindow: 5
+                        }
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: (parent.height - parent.spacing * 2) / 3
+                        Text {
+                            id: frequencyTrendLabel
+                            anchors { left: parent.left; top: parent.top }
+                            text: "平均频率  " + Math.round(systemContent.metrics.cpuFrequencyMhz ?? 0) + " MHz"
+                            color: Qt.rgba(0.30, 0.29, 0.33, 0.78)
+                            font { pixelSize: Math.max(8, systemContent.height * 0.06); weight: Font.DemiBold }
+                        }
+                        UsageSparkline {
+                            anchors { left: parent.left; right: parent.right; top: frequencyTrendLabel.bottom; topMargin: 1; bottom: parent.bottom }
+                            values: systemContent.historyValues("frequency")
+                            lineColor: "#64d2ff"
+                            adaptiveRange: true
+                            maxPoints: 36
+                            smoothingWindow: 5
+                        }
+                    }
+                }
+            }
+
+            Item {
+                id: activityContent
+                anchors.fill: parent
+                visible: card.modelData.id === "activity"
+
+                Item {
+                    id: activityBody
+                    anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; leftMargin: 15; rightMargin: 15; topMargin: 15; bottomMargin: 15 }
+                    clip: true
+                    readonly property real paneGap: 20
+
+                    Item {
+                        id: activityLeftPane
+                        x: 0
+                        y: 0
+                        width: (activityBody.width - activityBody.paneGap) / 2
+                        height: activityBody.height
+
+                        Item {
+                            id: activityUptimeHeader
+                            x: 0
+                            y: 0
+                            width: activityLeftPane.width
+                            height: activityLeftPane.height * 0.3
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: uptimeHeatmap.hoveredDay
+                                    ? uptimeHeatmap.hoveredDay.key + " · 开机时长："
+                                        + root.formatDuration(uptimeHeatmap.hoveredDay.seconds)
+                                    : "已开机：" + root.formatDuration(
+                                        root.activityUsage.uptimeByDay[root.activityUsage.dayKey(Date.now())] ?? 0)
+                                color: Qt.rgba(1, 1, 1, 0.86)
+                                font { family: "SF Pro Display"; pixelSize: 14; weight: Font.DemiBold }
+                            }
+                        }
+                        Item {
+                            id: uptimeHeatmap
+                            x: 0
+                            y: activityUptimeHeader.height
+                            width: activityLeftPane.width
+                            height: activityLeftPane.height - y
+                            property var hoveredDay: null
+                            Grid {
+                                x: 0
+                                y: 0
+                                width: uptimeHeatmap.width
+                                columns: 10
+                                rowSpacing: 3
+                                columnSpacing: 3
+                                Repeater {
+                                    model: root.activityUsage.recentUptimeDays(60)
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        width: Math.max(4, (uptimeHeatmap.width - 27) / 10)
+                                        height: width
+                                        radius: 2
+                                        readonly property real level: Math.min(1, modelData.seconds / (8 * 3600))
+                                        color: level <= 0 ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0.33, 0.84, 0.58, 0.22 + level * 0.72)
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            onEntered: uptimeHeatmap.hoveredDay = modelData
+                                            onExited: uptimeHeatmap.hoveredDay = null
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
-                Item {
-                    id: diskUsage
-                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: systemContent.width * 0.06; rightMargin: systemContent.width * 0.06; bottomMargin: systemContent.height * 0.08 }
-                    height: systemContent.height * 0.18
-                    readonly property real amount: root.systemMetrics.diskTotalBytes > 0
-                        ? root.systemMetrics.diskUsedBytes / root.systemMetrics.diskTotalBytes : 0
-                    Text {
-                        id: diskLabel
-                        anchors { left: parent.left; bottom: parent.bottom }
-                        text: "磁盘"
-                        color: "#4e4954"
-                        font { pixelSize: systemContent.height * 0.075; weight: Font.DemiBold }
-                    }
-                    Text {
-                        id: diskDetail
-                        anchors { right: parent.right; bottom: parent.bottom }
-                        text: root.formatMetricBytes(root.systemMetrics.diskUsedBytes)
-                            + " / " + root.formatMetricBytes(root.systemMetrics.diskTotalBytes)
-                        color: "#4e4954"
-                        font { family: "SF Pro Display"; pixelSize: systemContent.height * 0.075; weight: Font.DemiBold }
-                    }
-                    Rectangle {
-                        anchors { left: parent.left; right: parent.right; top: parent.top }
-                        height: systemContent.height * 0.045
-                        radius: height / 2
-                        color: "#dedbe1"
-                        Rectangle {
-                            width: parent.width * Math.max(0, Math.min(1, diskUsage.amount))
-                            height: parent.height
-                            radius: parent.radius
-                            color: "#30a46c"
-                            Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+
+                    Item {
+                        id: activityRightPane
+                        x: activityLeftPane.width + activityBody.paneGap
+                        y: 0
+                        width: activityLeftPane.width
+                        height: activityBody.height
+                        readonly property var entries: root.activityUsage.todayApps().slice(0, 8)
+
+                        Column {
+                            id: appUsageList
+                            width: activityRightPane.width
+                            anchors.verticalCenter: activityRightPane.verticalCenter
+                            spacing: 2
+                            Repeater {
+                                model: activityRightPane.entries
+                                delegate: Item {
+                                    id: appUsageRow
+                                    required property var modelData
+                                    width: activityRightPane.width
+                                    height: 16
+                                    IconImage {
+                                        id: appUsageIcon
+                                        width: 12
+                                        height: 12
+                                        source: modelData.icon || ""
+                                        smooth: true
+                                        asynchronous: true
+                                        anchors { left: appUsageRow.left; verticalCenter: appUsageRow.verticalCenter }
+                                    }
+                                    Text {
+                                        id: appDurationText
+                                        anchors { right: appUsageRow.right; verticalCenter: appUsageRow.verticalCenter }
+                                        text: root.formatDuration(modelData.seconds)
+                                        color: Qt.rgba(1, 1, 1, 0.46)
+                                        font { family: "SF Pro Display"; pixelSize: 9 }
+                                    }
+                                    Text {
+                                        anchors { left: appUsageIcon.right; right: appDurationText.left; verticalCenter: appUsageRow.verticalCenter; leftMargin: 6; rightMargin: 6 }
+                                        text: modelData.name || modelData.id
+                                        elide: Text.ElideRight
+                                        color: Qt.rgba(1, 1, 1, 0.78)
+                                        font.pixelSize: 10
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -890,46 +1238,235 @@ PanelWindow {
             }
 
             Item {
+                id: musicContent
                 anchors.fill: parent
                 visible: card.modelData.id === "music"
-                Image {
-                    id: musicArtwork
-                    width: 58
-                    height: 58
-                    anchors { left: parent.left; top: parent.top; leftMargin: 11; topMargin: 12 }
-                    source: DockMprisService.activePlayer?.trackArtUrl || "../../assets/defaultCover.png"
-                    fillMode: Image.PreserveAspectCrop
+                readonly property var player: DockMprisService.activePlayer
+                readonly property bool hasPlayer: player !== null
+                readonly property url artworkSource: {
+                    const revision = DockMprisService.metadataRevision
+                    return player?.trackArtUrl ? player.trackArtUrl : Qt.resolvedUrl("../../assets/defaultCover.png")
                 }
-                Text {
-                    text: DockMprisService.activePlayer?.trackTitle || "没有正在播放的内容"
-                    elide: Text.ElideRight
-                    color: "white"
-                    anchors { left: musicArtwork.right; right: parent.right; top: parent.top; leftMargin: 10; rightMargin: 10; topMargin: 15 }
-                    font { pixelSize: 12; weight: Font.DemiBold }
+                readonly property real safeLength: player?.lengthSupported && player.length > 0
+                    ? player.length : 0
+                readonly property real progress: safeLength > 0
+                    ? Math.max(0, Math.min(1, (player?.position ?? 0) / safeLength)) : 0
+
+                function artworkTint(color, alpha) {
+                    return Qt.rgba(color.r, color.g, color.b, alpha)
                 }
-                Text {
-                    text: DockMprisService.activePlayer?.trackArtist || "媒体控制"
-                    elide: Text.ElideRight
-                    color: Qt.rgba(1, 1, 1, 0.68)
-                    anchors { left: musicArtwork.right; right: parent.right; top: parent.top; leftMargin: 10; rightMargin: 10; topMargin: 34 }
-                    font.pixelSize: 10
+                function formatPlaybackTime(seconds) {
+                    const value = Math.max(0, Math.floor(seconds || 0))
+                    return Math.floor(value / 60) + ":" + String(value % 60).padStart(2, "0")
+                }
+
+                Timer {
+                    interval: 250
+                    repeat: true
+                    running: musicContent.visible && musicContent.player?.isPlaying
+                    onTriggered: {
+                        if (musicContent.player)
+                            musicContent.player.positionChanged()
+                    }
+                }
+                ArtworkPalette {
+                    id: musicArtworkPalette
+                    source: musicContent.artworkSource
                 }
                 Rectangle {
-                    height: 4
-                    radius: 2
-                    color: Qt.rgba(1, 1, 1, 0.28)
-                    anchors { left: musicArtwork.right; right: parent.right; bottom: parent.bottom; leftMargin: 10; rightMargin: 10; bottomMargin: 15 }
-                    Rectangle { width: parent.width * 0.42; height: parent.height; radius: parent.radius; color: "#eaa5a4" }
-                    Text {
-                        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.top; bottomMargin: 8 }
-                        text: "◀   " + (DockMprisService.activePlayer?.isPlaying ? "❚❚" : "▶") + "   ▶"
-                        color: "white"
-                        font { pixelSize: 13; weight: Font.DemiBold }
+                    anchors.fill: parent
+                    visible: musicContent.hasPlayer
+                    radius: 26
+                    clip: true
+                    color: "transparent"
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0; color: musicContent.artworkTint(musicArtworkPalette.primary, 0.82) }
+                        GradientStop { position: 0.52; color: musicContent.artworkTint(musicArtworkPalette.secondary, 0.64) }
+                        GradientStop { position: 1; color: musicContent.artworkTint(musicArtworkPalette.primary, 0.38) }
                     }
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: DockMprisService.togglePlayPause()
+                    z: 0
+                }
+                Item {
+                    id: musicNotes
+                    anchors { right: parent.right; top: parent.top; rightMargin: 24; topMargin: 17 }
+                    width: 72
+                    height: 62
+                    clip: true
+                    z: 2
+                    readonly property bool running: musicContent.player?.isPlaying ?? false
+                    visible: running
+                    Repeater {
+                        model: ["♪", "♫", "♪"]
+                        delegate: Text {
+                            required property var modelData
+                            required property int index
+                            readonly property var offsets: [4, 34, 54]
+                            x: offsets[index]
+                            text: modelData
+                            color: Qt.rgba(1, 1, 1, 0.60)
+                            font { family: "SF Pro Display"; pixelSize: index === 1 ? 18 : 14; weight: Font.DemiBold }
+                            SequentialAnimation on y {
+                                running: musicNotes.running
+                                loops: Animation.Infinite
+                                PauseAnimation { duration: index * 620 }
+                                NumberAnimation { from: musicNotes.height - 14; to: -20; duration: 2200 + index * 180; easing.type: Easing.OutSine }
+                            }
+                            SequentialAnimation on opacity {
+                                running: musicNotes.running
+                                loops: Animation.Infinite
+                                PauseAnimation { duration: index * 620 }
+                                NumberAnimation { from: 0; to: 0.64; duration: 360 }
+                                NumberAnimation { from: 0.64; to: 0; duration: 1840 + index * 180; easing.type: Easing.InSine }
+                            }
+                        }
+                    }
+                }
+
+                Item {
+                    id: musicBody
+                    anchors { fill: parent; margins: 16 }
+                    readonly property real splitGap: 20
+                    z: 1
+
+                    Item {
+                        id: musicCoverPane
+                        x: 0
+                        y: 0
+                        width: (musicBody.width - musicBody.splitGap) * 0.3
+                        height: musicBody.height
+                        Rectangle {
+                            id: musicArtwork
+                            anchors.centerIn: parent
+                            width: Math.min(musicCoverPane.width, musicCoverPane.height)
+                            height: width
+                            radius: width * 0.1
+                            color: Qt.rgba(1, 1, 1, 0.10)
+                            Image {
+                                id: musicArtworkSource
+                                anchors.fill: parent
+                                visible: false
+                                source: musicContent.artworkSource
+                                fillMode: Image.PreserveAspectCrop
+                            }
+                            OpacityMask {
+                                anchors.fill: parent
+                                visible: musicContent.hasPlayer
+                                source: musicArtworkSource
+                                maskSource: Rectangle {
+                                    width: musicArtwork.width
+                                    height: musicArtwork.height
+                                    radius: musicArtwork.width * 0.1
+                                }
+                            }
+                            Text {
+                                anchors.centerIn: parent
+                                visible: !musicContent.hasPlayer
+                                text: "♫"
+                                color: Qt.rgba(1, 1, 1, 0.46)
+                                font { family: "SF Pro Display"; pixelSize: musicArtwork.width * 0.42 }
+                            }
+                        }
+                    }
+
+                    Item {
+                        id: musicDetailsPane
+                        x: musicCoverPane.width + musicBody.splitGap
+                        y: 0
+                        width: musicBody.width - x
+                        height: musicBody.height
+                        Text {
+                            id: musicTitle
+                            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; verticalCenterOffset: -22 }
+                            text: musicContent.player?.trackTitle || "暂无播放内容"
+                            elide: Text.ElideRight
+                            horizontalAlignment: Text.AlignHCenter
+                            color: "white"
+                            font { pixelSize: 14; weight: Font.DemiBold }
+                        }
+                        Text {
+                            id: musicArtist
+                            anchors { left: parent.left; right: parent.right; top: musicTitle.bottom; topMargin: 3 }
+                            text: musicContent.player?.trackArtist || ""
+                            elide: Text.ElideRight
+                            horizontalAlignment: Text.AlignHCenter
+                            color: Qt.rgba(1, 1, 1, 0.68)
+                            font.pixelSize: 10
+                        }
+                        Item {
+                            id: musicProgressTrack
+                            anchors { left: parent.left; right: parent.right; top: musicArtist.bottom; topMargin: 12 }
+                            height: 5
+                            visible: musicContent.safeLength > 0
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: height / 2
+                                color: Qt.rgba(1, 1, 1, 0.20)
+                            }
+                            Rectangle {
+                                width: parent.width * musicContent.progress
+                                height: parent.height
+                                radius: height / 2
+                                color: Qt.rgba(1, 1, 1, 0.82)
+                            }
+                        }
+                        Item {
+                            id: musicProgressTimes
+                            anchors { left: parent.left; right: parent.right; top: musicProgressTrack.bottom; topMargin: 4 }
+                            height: 11
+                            visible: musicProgressTrack.visible
+                            Text {
+                                anchors.left: parent.left
+                                text: musicContent.formatPlaybackTime(musicContent.player?.position ?? 0)
+                                color: Qt.rgba(1, 1, 1, 0.60)
+                                font.pixelSize: 8
+                            }
+                            Text {
+                                anchors.right: parent.right
+                                text: musicContent.formatPlaybackTime(musicContent.safeLength)
+                                color: Qt.rgba(1, 1, 1, 0.60)
+                                font.pixelSize: 8
+                            }
+                        }
+                        Row {
+                            anchors { horizontalCenter: parent.horizontalCenter; top: musicProgressTimes.visible ? musicProgressTimes.bottom : musicArtist.bottom; topMargin: 8 }
+                            height: 34
+                            spacing: 16
+                            Repeater {
+                                model: ["⏮", musicContent.player?.isPlaying ? "⏸" : "▶", "⏭"]
+                                delegate: Rectangle {
+                            required property var modelData
+                            required property int index
+                            readonly property bool controlEnabled: musicContent.hasPlayer
+                                && (index === 0 ? (musicContent.player?.canGoPrevious ?? false)
+                                    : index === 2 ? (musicContent.player?.canGoNext ?? false)
+                                    : (musicContent.player?.canTogglePlaying ?? false))
+                            width: index === 1 ? 34 : 28
+                            height: width
+                            y: (parent.height - height) / 2
+                            radius: width / 2
+                            color: index === 1
+                                ? Qt.rgba(1, 1, 1, controlEnabled ? 0.24 : 0.10)
+                                : Qt.rgba(1, 1, 1, controlEnabled ? 0.12 : 0.055)
+                            Text {
+                                anchors.centerIn: parent
+                                text: modelData
+                                color: Qt.rgba(1, 1, 1, parent.controlEnabled ? 0.88 : 0.28)
+                                font { family: "SF Pro Display"; pixelSize: index === 1 ? 18 : 13; weight: Font.DemiBold }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: parent.controlEnabled
+                                cursorShape: parent.controlEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: {
+                                    if (index === 0) DockMprisService.previous()
+                                    else if (index === 1) DockMprisService.togglePlayPause()
+                                    else DockMprisService.next()
+                                }
+                            }
+                        }
+                    }
+                        }
                     }
                 }
             }
@@ -1087,5 +1624,837 @@ PanelWindow {
                 }
             }
         }
+    }
+
+    // The file area intentionally has no panel background. It uses the empty
+    // right side of the desktop as a calm, macOS-like icon field, filling
+    // columns from right to left and rows from top to bottom.
+    Item {
+        id: desktopFileGrid
+        x: root.sideMargin + 4 * (root.cellSize + root.gap)
+        y: root.topInset
+        width: root.width - x - root.sideMargin
+        height: root.height - y - root.bottomInset
+        clip: true
+        readonly property int iconSize: desktopLayout.iconSize
+        // Keep the label optically paired with the three user-selectable
+        // icon sizes instead of leaving it at a fixed desktop-small size.
+        readonly property int fileNameFontSize: iconSize === 72 ? 14
+            : iconSize === 56 ? 11 : 9
+        readonly property int fileNameFontWeight: iconSize === 72 ? Font.Bold
+            : iconSize === 56 ? Font.DemiBold : Font.Medium
+        readonly property int preferredItemWidth: iconSize + 56
+        readonly property int columnCount: Math.max(1, Math.floor(width / preferredItemWidth))
+        readonly property real itemWidth: width / columnCount
+        readonly property real itemHeight: iconSize + 48
+        readonly property int rowCount: Math.max(1, Math.floor(height / itemHeight))
+        property var selectedPaths: []
+        property var contextEntry: null
+        property string renamingPath: ""
+        property string pendingRenamePath: ""
+        property bool selectionBoxActive: false
+        property real selectionStartX: 0
+        property real selectionStartY: 0
+        property real selectionEndX: 0
+        property real selectionEndY: 0
+        property var selectionBase: []
+        readonly property var orderedEntries: ordered(root.desktopFiles.entries)
+
+        Settings {
+            id: desktopLayout
+            location: "file://" + Quickshell.stateDir + "/deskcenter-desktop-files.ini"
+            category: "DesktopFiles"
+            property string orderJson: "[]"
+            property int iconSize: 56
+            property bool showExtensions: true
+        }
+
+        function ordered(source) {
+            let saved = []
+            try { saved = JSON.parse(desktopLayout.orderJson) } catch (_) {}
+            const positions = ({})
+            for (let index = 0; index < saved.length; ++index)
+                positions[saved[index]] = index
+            return source.slice().sort(function(left, right) {
+                const leftIndex = positions[left.path]
+                const rightIndex = positions[right.path]
+                // Manually placed icons always stay put. New paths have no
+                // saved slot yet, so append them in a stable, visible order
+                // instead of relying on an ambiguous comparator result.
+                if (leftIndex === undefined && rightIndex === undefined) {
+                    const leftTime = Number(left.modifiedAt) || 0
+                    const rightTime = Number(right.modifiedAt) || 0
+                    if (leftTime !== rightTime)
+                        return leftTime - rightTime
+                    return (left.name || "").localeCompare(right.name || "")
+                }
+                if (leftIndex === undefined) return 1
+                if (rightIndex === undefined) return -1
+                return leftIndex - rightIndex
+            })
+        }
+
+        function reorder(path, destinationIndex) {
+            const next = orderedEntries.slice()
+            const sourceIndex = next.findIndex(function(entry) { return entry.path === path })
+            if (sourceIndex < 0)
+                return
+            const targetIndex = Math.max(0, Math.min(next.length - 1, destinationIndex))
+            if (sourceIndex === targetIndex)
+                return
+            const entry = next.splice(sourceIndex, 1)[0]
+            next.splice(targetIndex, 0, entry)
+            saveOrder(next)
+        }
+
+        function saveOrder(entries) {
+            desktopLayout.orderJson = JSON.stringify(entries.map(function(item) { return item.path }))
+            desktopLayout.sync()
+        }
+
+        function arrangeByName() {
+            const next = root.desktopFiles.entries.slice().sort(function(left, right) {
+                const leftIsFolder = left.kind === "folder"
+                const rightIsFolder = right.kind === "folder"
+                if (leftIsFolder !== rightIsFolder)
+                    return leftIsFolder ? -1 : 1
+                return left.name.localeCompare(right.name)
+            })
+            saveOrder(next)
+        }
+
+        function resetLayout() {
+            desktopLayout.orderJson = "[]"
+            desktopLayout.sync()
+            clearDesktopSelection()
+        }
+
+        function setIconSize(size) {
+            if (size !== 40 && size !== 56 && size !== 72)
+                return
+            desktopLayout.iconSize = size
+            desktopLayout.sync()
+        }
+
+        function displayName(entry) {
+            const name = entry?.title || entry?.name || ""
+            if (desktopLayout.showExtensions || entry?.kind === "folder")
+                return name
+            const extensionIndex = name.lastIndexOf(".")
+            return extensionIndex > 0 ? name.slice(0, extensionIndex) : name
+        }
+
+        function beginInlineRename(entry) {
+            if (!entry?.path)
+                return
+            root.desktopFiles.lastError = ""
+            renamingPath = entry.path
+        }
+
+        function createNewFolder() {
+            pendingRenamePath = ""
+            root.desktopFiles.createUntitledFolder(function(path) {
+                desktopFileGrid.pendingRenamePath = path
+            })
+        }
+
+        function startPendingRename() {
+            if (!pendingRenamePath)
+                return
+            const entry = orderedEntries.find(function(candidate) {
+                return candidate.path === pendingRenamePath
+            })
+            if (!entry)
+                return
+            pendingRenamePath = ""
+            selectOnly(entry.path)
+            beginInlineRename(entry)
+        }
+
+        function renameSelectionEnd(entry) {
+            const name = entry?.name ?? ""
+            if (entry?.kind === "folder")
+                return name.length
+            const extensionIndex = name.lastIndexOf(".")
+            // Finder keeps the suffix in the editor but initially selects
+            // only the base name, so typing does not accidentally change the
+            // file type.
+            return extensionIndex > 0 ? extensionIndex : name.length
+        }
+
+        function isSelected(path) {
+            return selectedPaths.indexOf(path) >= 0
+        }
+
+        function selectedEntries() {
+            return orderedEntries.filter(function(entry) {
+                return isSelected(entry.path)
+            })
+        }
+
+        function activateKeyboard() {
+            desktopKeyboard.forceActiveFocus()
+        }
+
+        function handleClipboardShortcut(event) {
+            if (!(event.modifiers & Qt.ControlModifier))
+                return false
+            if (event.key === Qt.Key_C) {
+                root.desktopFiles.copyEntries(selectedEntries(), "copy")
+            } else if (event.key === Qt.Key_X) {
+                root.desktopFiles.copyEntries(selectedEntries(), "cut")
+            } else if (event.key === Qt.Key_V) {
+                root.desktopFiles.pasteIntoDesktop()
+            } else {
+                return false
+            }
+            event.accepted = true
+            return true
+        }
+
+        function setSelectedPaths(paths) {
+            selectedPaths = paths.slice()
+        }
+
+        function selectOnly(path) {
+            setSelectedPaths(path ? [path] : [])
+        }
+
+        function toggleSelection(path) {
+            const next = selectedPaths.slice()
+            const index = next.indexOf(path)
+            if (index >= 0)
+                next.splice(index, 1)
+            else
+                next.push(path)
+            setSelectedPaths(next)
+        }
+
+        function selectInBox(left, top, right, bottom, additive) {
+            const minX = Math.min(left, right)
+            const maxX = Math.max(left, right)
+            const minY = Math.min(top, bottom)
+            const maxY = Math.max(top, bottom)
+            const next = additive ? selectionBase.slice() : []
+            for (let index = 0; index < orderedEntries.length; ++index) {
+                const entry = orderedEntries[index]
+                const column = columnCount - 1 - Math.floor(index / rowCount)
+                const row = index % rowCount
+                if (column < 0)
+                    continue
+                const itemX = column * itemWidth
+                const itemY = row * itemHeight
+                const intersects = itemX < maxX && itemX + itemWidth > minX
+                    && itemY < maxY && itemY + itemHeight > minY
+                if (intersects && next.indexOf(entry.path) < 0)
+                    next.push(entry.path)
+            }
+            setSelectedPaths(next)
+        }
+
+        function gridPoint(pointer, mouse) {
+            return pointer.mapToItem(desktopFileGrid, mouse.x, mouse.y)
+        }
+
+        function iconFor(kind) {
+            if (kind === "folder") return ""
+            if (kind === "image") return ""
+            if (kind === "pdf") return ""
+            if (kind === "code") return ""
+            if (kind === "text") return "󰈙"
+            if (kind === "launcher") return ""
+            return ""
+        }
+
+        function canChooseOpenWith(entry) {
+            return entry?.kind !== "folder" && entry?.kind !== "launcher"
+        }
+
+        function applicationName(id) {
+            // Resolve through the same desktop-entry identity layer used by
+            // the Dock.  gio returns filenames (for example nvim.desktop),
+            // while the visible label must be the entry's Name field.
+            try { return AppIdentityService.resolve(id)?.name || id } catch (_) { return id || "默认应用" }
+        }
+
+        function openWithIdAt(index) {
+            return root.desktopFiles.openWith.handlers[index] || ""
+        }
+
+        function defaultOpenText() {
+            const handler = root.desktopFiles.openWith.defaultId
+            return handler ? "使用 " + applicationName(handler) + " 打开" : "打开"
+        }
+
+        function showMenu(_mouseX, _mouseY, entry) {
+            // Platform menus are positioned by the window system at the
+            // current pointer position and own their outside-click behavior.
+            // Do not make displaying the context menu depend on an external
+            // gio query.  Apart from feeling laggy, a failed/slow query used
+            // to make a right click appear to do nothing at all.
+            desktopContextMenu.open()
+            if (canChooseOpenWith(entry))
+                root.desktopFiles.queryOpenWith(entry)
+        }
+
+        function clearDesktopSelection() {
+            selectedPaths = []
+            desktopContextMenu.close()
+            contextEntry = null
+        }
+
+        function triggerContextAction(kind) {
+            const entry = contextEntry
+            desktopContextMenu.close()
+            contextEntry = null
+            if (kind === "folder")
+                createNewFolder()
+            else if (kind === "openEntry")
+                root.desktopFiles.openEntry(entry)
+            else if (kind === "rename")
+                beginInlineRename(entry)
+            else if (kind === "openWithMore")
+                openWithDialog.show(entry)
+            else if (kind === "trash") {
+                const entries = selectedEntries()
+                selectedPaths = []
+                root.desktopFiles.trashEntries(entries, function() {
+                    console.log("[DesktopTrash] delete completed count=" + entries.length)
+                    DockTrashService.celebrateDeposit()
+                })
+            }
+            else if (kind === "copy")
+                root.desktopFiles.copyEntries(selectedEntries(), "copy")
+            else if (kind === "cut")
+                root.desktopFiles.copyEntries(selectedEntries(), "cut")
+            else if (kind === "paste")
+                root.desktopFiles.pasteIntoDesktop()
+            else if (kind === "open")
+                root.desktopFiles.openDirectory()
+            else if (kind === "arrange")
+                arrangeByName()
+            else if (kind === "resetLayout")
+                resetLayout()
+            else if (kind === "refresh")
+                root.desktopFiles.reload()
+        }
+
+        function indexAt(pointX, pointY) {
+            const column = Math.max(0, Math.min(columnCount - 1, Math.floor(pointX / itemWidth)))
+            const row = Math.max(0, Math.min(rowCount - 1, Math.floor(pointY / itemHeight)))
+            const index = (columnCount - 1 - column) * rowCount + row
+            return Math.max(0, Math.min(orderedEntries.length - 1, index))
+        }
+
+        Item {
+            id: desktopKeyboard
+            anchors.fill: parent
+            focus: true
+            Keys.onPressed: function(event) {
+                if (desktopFileGrid.handleClipboardShortcut(event))
+                    return
+                if (event.key === Qt.Key_Return && !desktopFileGrid.renamingPath
+                        && desktopFileGrid.selectedEntries().length === 1) {
+                    desktopFileGrid.beginInlineRename(desktopFileGrid.selectedEntries()[0])
+                    event.accepted = true
+                }
+            }
+        }
+
+        Connections {
+            target: root.desktopFiles
+            function onEntriesChanged() {
+                desktopFileGrid.startPendingRename()
+            }
+        }
+
+        MouseArea {
+            id: desktopBackgroundPointer
+            anchors.fill: parent
+            acceptedButtons: Qt.RightButton | Qt.LeftButton
+            onPressed: function(mouse) {
+                if (mouse.button === Qt.RightButton) {
+                    // Right-click is pointer-only: requesting focus here can
+                    // interfere with the platform menu's dismissal path.
+                    desktopFileGrid.setSelectedPaths([])
+                    desktopFileGrid.contextEntry = null
+                    desktopFileGrid.showMenu(mouse.x, mouse.y, null)
+                    return
+                }
+                desktopContextMenu.close()
+                desktopFileGrid.contextEntry = null
+                const point = desktopFileGrid.gridPoint(desktopBackgroundPointer, mouse)
+                desktopFileGrid.selectionStartX = point.x
+                desktopFileGrid.selectionStartY = point.y
+                desktopFileGrid.selectionEndX = point.x
+                desktopFileGrid.selectionEndY = point.y
+                desktopFileGrid.selectionBoxActive = false
+                desktopFileGrid.selectionBase = (mouse.modifiers & Qt.ControlModifier)
+                    ? desktopFileGrid.selectedPaths.slice() : []
+                desktopFileGrid.activateKeyboard()
+            }
+            onPositionChanged: function(mouse) {
+                if (!pressed || !(mouse.buttons & Qt.LeftButton))
+                    return
+                const point = desktopFileGrid.gridPoint(desktopBackgroundPointer, mouse)
+                desktopFileGrid.selectionEndX = point.x
+                desktopFileGrid.selectionEndY = point.y
+                if (!desktopFileGrid.selectionBoxActive
+                        && (Math.abs(point.x - desktopFileGrid.selectionStartX) > 4
+                            || Math.abs(point.y - desktopFileGrid.selectionStartY) > 4))
+                    desktopFileGrid.selectionBoxActive = true
+                if (desktopFileGrid.selectionBoxActive)
+                    desktopFileGrid.selectInBox(
+                        desktopFileGrid.selectionStartX, desktopFileGrid.selectionStartY,
+                        point.x, point.y, !!(mouse.modifiers & Qt.ControlModifier))
+            }
+            onReleased: function(mouse) {
+                if (mouse.button !== Qt.LeftButton)
+                    return
+                const wasBoxSelection = desktopFileGrid.selectionBoxActive
+                desktopFileGrid.selectionBoxActive = false
+                // A plain empty click clears the selection only after it is
+                // known not to have become a drag-selection gesture.
+                if (!wasBoxSelection && !(mouse.modifiers & Qt.ControlModifier))
+                    desktopFileGrid.setSelectedPaths([])
+            }
+        }
+
+        Rectangle {
+            x: Math.min(desktopFileGrid.selectionStartX, desktopFileGrid.selectionEndX)
+            y: Math.min(desktopFileGrid.selectionStartY, desktopFileGrid.selectionEndY)
+            width: Math.abs(desktopFileGrid.selectionEndX - desktopFileGrid.selectionStartX)
+            height: Math.abs(desktopFileGrid.selectionEndY - desktopFileGrid.selectionStartY)
+            opacity: desktopFileGrid.selectionBoxActive ? 1 : 0
+            visible: opacity > 0.01
+            color: Qt.rgba(0, 0, 0, 0.20)
+            border { width: 1; color: Qt.rgba(1, 1, 1, 0.34) }
+            z: 1
+            Behavior on opacity {
+                NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+            }
+        }
+
+        Repeater {
+            model: desktopFileGrid.orderedEntries
+            delegate: Item {
+                id: fileDelegate
+                required property var modelData
+                required property int index
+                readonly property int gridColumn: desktopFileGrid.columnCount - 1
+                    - Math.floor(index / desktopFileGrid.rowCount)
+                readonly property int gridRow: index % desktopFileGrid.rowCount
+                property bool dragMoved: false
+                property bool dragEnabled: true
+                property bool opening: false
+                property double previousClickTime: 0
+                property real dropCenterX: 0
+                property real dropCenterY: 0
+                readonly property bool isRenaming: desktopFileGrid.renamingPath === modelData.path
+                x: gridColumn * desktopFileGrid.itemWidth
+                y: gridRow * desktopFileGrid.itemHeight
+                width: desktopFileGrid.itemWidth
+                height: desktopFileGrid.itemHeight
+                visible: gridColumn >= 0 && y + height <= desktopFileGrid.height
+                z: filePointer.drag.active ? 10 : 0
+
+                Rectangle {
+                    anchors { fill: parent; margins: 3 }
+                    radius: 10
+                    // Hover is intentionally quieter than selection: both
+                    // use the neutral black material introduced above.
+                    opacity: desktopFileGrid.isSelected(modelData.path) ? 1
+                        : filePointer.containsMouse ? 0.38 : 0
+                    color: Qt.rgba(0, 0, 0, 0.46)
+                    border { width: 1; color: Qt.rgba(1, 1, 1, 0.28) }
+                    Behavior on opacity {
+                        NumberAnimation { duration: 130; easing.type: Easing.OutCubic }
+                    }
+                }
+                Item {
+                    anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 8 }
+                    width: desktopFileGrid.iconSize
+                    height: desktopFileGrid.iconSize
+                    scale: (filePointer.containsMouse ? 1.035 : 1)
+                        * (fileDelegate.opening ? 0.96 : 1)
+                    transform: Translate {
+                        y: filePointer.containsMouse ? -2 : 0
+                        Behavior on y {
+                            NumberAnimation { duration: 130; easing.type: Easing.OutCubic }
+                        }
+                    }
+                    Behavior on scale {
+                        NumberAnimation { duration: 130; easing.type: Easing.OutCubic }
+                    }
+                    Item {
+                        id: imageThumbnailFrame
+                        anchors { fill: parent; margins: 4 }
+                        visible: modelData.kind === "image" && imageThumbnail.status === Image.Ready
+                        Image {
+                            id: imageThumbnail
+                            anchors.fill: parent
+                            source: modelData.kind === "image" ? "file://" + modelData.path : ""
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            smooth: true
+                            // OpacityMask below renders this source. A plain
+                            // Rectangle.clip only clips to a rectangle and
+                            // cannot apply radius to the image pixels.
+                            visible: false
+                        }
+                        Rectangle {
+                            id: imageThumbnailMask
+                            anchors.fill: parent
+                            radius: 5
+                            visible: false
+                        }
+                        OpacityMask {
+                            anchors.fill: parent
+                            source: imageThumbnail
+                            maskSource: imageThumbnailMask
+                        }
+                    }
+                    IconImage {
+                        id: launcherIcon
+                        anchors.fill: parent
+                        source: modelData.kind === "launcher"
+                            ? AppPresentationService.iconSource(modelData.icon) : ""
+                        asynchronous: true
+                        visible: source !== "" && status === Image.Ready
+                    }
+                    Text {
+                        anchors.centerIn: parent
+                        // A broken or unsupported image still behaves like a
+                        // normal desktop file instead of becoming invisible.
+                        visible: (modelData.kind !== "image" || imageThumbnail.status !== Image.Ready)
+                            && (modelData.kind !== "launcher" || launcherIcon.status !== Image.Ready)
+                        text: desktopFileGrid.iconFor(modelData.kind)
+                        color: modelData.kind === "folder" ? "#70b6ff" : Qt.rgba(1, 1, 1, 0.88)
+                        style: Text.Outline
+                        styleColor: Qt.rgba(0, 0, 0, 0.50)
+                        font { family: "LXGW WenKai Mono Nerd Font"; pixelSize: desktopFileGrid.iconSize * 0.75 }
+                    }
+                }
+                Text {
+                    anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: desktopFileGrid.iconSize + 12; leftMargin: 5; rightMargin: 5 }
+                    opacity: fileDelegate.isRenaming ? 0 : 1
+                    visible: opacity > 0.01
+                    text: desktopFileGrid.displayName(modelData)
+                    elide: Text.ElideRight
+                    maximumLineCount: 2
+                    wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignHCenter
+                    color: "white"
+                    style: Text.Outline
+                    styleColor: Qt.rgba(0, 0, 0, 0.72)
+                    font { pixelSize: desktopFileGrid.fileNameFontSize; weight: desktopFileGrid.fileNameFontWeight }
+                    Behavior on opacity {
+                        NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+                    }
+                }
+                MouseArea {
+                    id: filePointer
+                    anchors.fill: parent
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    hoverEnabled: true
+                    drag.target: parent.dragEnabled ? fileDelegate : null
+                    drag.axis: Drag.XAndYAxis
+                    drag.threshold: 7
+                    drag.minimumX: 0
+                    drag.maximumX: desktopFileGrid.width - fileDelegate.width
+                    drag.minimumY: 0
+                    drag.maximumY: desktopFileGrid.height - fileDelegate.height
+                    onPressed: function(mouse) {
+                        if (mouse.button === Qt.RightButton) {
+                            if (!desktopFileGrid.isSelected(modelData.path))
+                                desktopFileGrid.selectOnly(modelData.path)
+                            desktopFileGrid.contextEntry = modelData
+                            desktopFileGrid.showMenu(parent.x + mouse.x, parent.y + mouse.y, modelData)
+                        } else {
+                            parent.dragEnabled = !(mouse.modifiers & Qt.ControlModifier)
+                            if (mouse.modifiers & Qt.ControlModifier)
+                                desktopFileGrid.toggleSelection(modelData.path)
+                            else if (!desktopFileGrid.isSelected(modelData.path))
+                                desktopFileGrid.selectOnly(modelData.path)
+                            parent.dragMoved = false
+                            parent.dropCenterX = parent.x + parent.width / 2
+                            parent.dropCenterY = parent.y + parent.height / 2
+                            desktopFileGrid.activateKeyboard()
+                        }
+                    }
+                    onPositionChanged: function(mouse) {
+                        if (!pressed || !drag.active)
+                            return
+                        parent.dragMoved = true
+                        parent.dropCenterX = parent.x + parent.width / 2
+                        parent.dropCenterY = parent.y + parent.height / 2
+                    }
+                    onReleased: function(mouse) {
+                        parent.dragEnabled = true
+                        if (mouse.button !== Qt.LeftButton || !parent.dragMoved)
+                            return
+                        const target = desktopFileGrid.indexAt(
+                            parent.dropCenterX, parent.dropCenterY)
+                        // Native dragging writes x/y directly, so restore the
+                        // declarative grid bindings before changing the model.
+                        fileDelegate.x = Qt.binding(function() {
+                            return fileDelegate.gridColumn * desktopFileGrid.itemWidth
+                        })
+                        fileDelegate.y = Qt.binding(function() {
+                            return fileDelegate.gridRow * desktopFileGrid.itemHeight
+                        })
+                        desktopFileGrid.reorder(modelData.path, target)
+                    }
+                    onClicked: function(mouse) {
+                        if (mouse.button !== Qt.LeftButton || (mouse.modifiers & Qt.ControlModifier))
+                            return
+                        if (!desktopFileGrid.isSelected(modelData.path)) {
+                            desktopFileGrid.selectOnly(modelData.path)
+                            return
+                        }
+                        // Finder icon view enters rename after a second,
+                        // deliberately slow click on an already selected item.
+                        const now = Date.now()
+                        const elapsed = now - previousClickTime
+                        previousClickTime = now
+                        if (!parent.dragMoved && elapsed >= 350 && elapsed <= 1200)
+                            desktopFileGrid.beginInlineRename(modelData)
+                    }
+                    onDoubleClicked: {
+                        parent.opening = true
+                        openFeedback.restart()
+                    }
+                }
+                Timer {
+                    id: openFeedback
+                    interval: 90
+                    repeat: false
+                    onTriggered: {
+                        fileDelegate.opening = false
+                        root.desktopFiles.openEntry(modelData)
+                    }
+                }
+                Rectangle {
+                    id: inlineRenameFrame
+                    anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: desktopFileGrid.iconSize + 10 }
+                    width: Math.min(parent.width - 10, Math.max(68, inlineRenameInput.contentWidth + 18))
+                    height: 23
+                    radius: 5
+                    opacity: fileDelegate.isRenaming ? 1 : 0
+                    visible: opacity > 0.01
+                    color: "#ffffff"
+                    border { width: 1; color: "#0a84ff" }
+                    z: 2
+                    transform: Translate {
+                        y: fileDelegate.isRenaming ? 0 : 2
+                        Behavior on y {
+                            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+                        }
+                    }
+                    Behavior on opacity {
+                        NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+                    }
+                    function commit() {
+                        if (desktopFileGrid.renamingPath !== modelData.path)
+                            return
+                        if (root.desktopFiles.renameEntry(modelData, inlineRenameInput.text))
+                            desktopFileGrid.renamingPath = ""
+                    }
+                    onVisibleChanged: {
+                        if (!visible)
+                            return
+                        inlineRenameInput.text = modelData.name
+                        inlineRenameInput.forceActiveFocus()
+                        inlineRenameInput.select(0, desktopFileGrid.renameSelectionEnd(modelData))
+                    }
+                    TextInput {
+                        id: inlineRenameInput
+                        anchors { fill: parent; leftMargin: 6; rightMargin: 6 }
+                        color: "#1d1d1f"
+                        selectByMouse: true
+                        selectionColor: "#252529"
+                        selectedTextColor: "white"
+                        verticalAlignment: TextInput.AlignVCenter
+                        horizontalAlignment: TextInput.AlignHCenter
+                        font { pixelSize: desktopFileGrid.fileNameFontSize; weight: desktopFileGrid.fileNameFontWeight }
+                        onActiveFocusChanged: {
+                            if (!activeFocus && fileDelegate.isRenaming)
+                                inlineRenameFrame.commit()
+                        }
+                        Keys.onReturnPressed: function(event) {
+                            inlineRenameFrame.commit()
+                            event.accepted = true
+                        }
+                        Keys.onEscapePressed: function(event) {
+                            desktopFileGrid.renamingPath = ""
+                            event.accepted = true
+                        }
+                    }
+                }
+            }
+        }
+
+        Platform.Menu {
+            id: desktopContextMenu
+            Platform.MenuItem { text: desktopFileGrid.defaultOpenText(); visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("openEntry") }
+            Platform.MenuItem { text: "重命名"; visible: desktopFileGrid.selectedEntries().length === 1; onTriggered: desktopFileGrid.triggerContextAction("rename") }
+            Platform.Menu {
+                title: "打开方式"
+                visible: desktopFileGrid.contextEntry !== null
+                    && desktopFileGrid.canChooseOpenWith(desktopFileGrid.contextEntry)
+                Platform.MenuItem { text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(0)); visible: desktopFileGrid.openWithIdAt(0) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(0)) }
+                Platform.MenuItem { text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(1)); visible: desktopFileGrid.openWithIdAt(1) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(1)) }
+                Platform.MenuItem { text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(2)); visible: desktopFileGrid.openWithIdAt(2) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(2)) }
+                Platform.MenuItem { text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(3)); visible: desktopFileGrid.openWithIdAt(3) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(3)) }
+                Platform.MenuItem { text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(4)); visible: desktopFileGrid.openWithIdAt(4) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(4)) }
+                Platform.MenuItem { text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(5)); visible: desktopFileGrid.openWithIdAt(5) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(5)) }
+                // Keep this entry available even when gio has not returned
+                // association results yet (or when the MIME type has none).
+                Platform.MenuItem { text: "其他应用程序…"; onTriggered: root.desktopFiles.showKdeOpenWith(desktopFileGrid.contextEntry) }
+            }
+            Platform.MenuItem { text: "复制"; visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("copy") }
+            Platform.MenuItem { text: "剪切"; visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("cut") }
+            Platform.MenuItem { text: "移到废纸篓"; visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("trash") }
+            Platform.MenuItem { text: "在文件管理器中打开"; onTriggered: desktopFileGrid.triggerContextAction("open") }
+            Platform.MenuItem { text: "新建文件夹"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("folder") }
+            Platform.MenuItem { text: "粘贴"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("paste") }
+            Platform.MenuItem { text: "按名称自动整理"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("arrange") }
+            Platform.MenuItem { text: "重置图标排序"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("resetLayout") }
+            Platform.MenuItem {
+                text: "显示文件扩展名"
+                visible: desktopFileGrid.contextEntry === null
+                checkable: true
+                checked: desktopLayout.showExtensions
+                onTriggered: {
+                    desktopLayout.showExtensions = !desktopLayout.showExtensions
+                    desktopLayout.sync()
+                }
+            }
+            Platform.Menu {
+                title: "图标大小"
+                visible: desktopFileGrid.contextEntry === null
+                Platform.MenuItem { text: "小"; checkable: true; checked: desktopFileGrid.iconSize === 40; onTriggered: desktopFileGrid.setIconSize(40) }
+                Platform.MenuItem { text: "中"; checkable: true; checked: desktopFileGrid.iconSize === 56; onTriggered: desktopFileGrid.setIconSize(56) }
+                Platform.MenuItem { text: "大"; checkable: true; checked: desktopFileGrid.iconSize === 72; onTriggered: desktopFileGrid.setIconSize(72) }
+            }
+            Platform.MenuItem { text: "刷新"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("refresh") }
+        }
+
+        Rectangle {
+            id: desktopDialogScrim
+            anchors.fill: parent
+            visible: openWithDialog.visible
+            color: Qt.rgba(0, 0, 0, 0.22)
+            z: 29
+            // Modal prompts should never let an outside click activate or
+            // rearrange a desktop icon underneath them.
+            MouseArea { anchors.fill: parent }
+        }
+
+        Rectangle {
+            id: openWithDialog
+            anchors.centerIn: parent
+            width: 340
+            height: 250
+            radius: 16
+            visible: false
+            color: Qt.rgba(0.12, 0.12, 0.15, 0.98)
+            border { width: 1; color: Qt.rgba(1, 1, 1, 0.18) }
+            z: 31
+            property var entry: null
+            property string selectedHandler: ""
+            function appName(id) {
+                try { return AppIdentityService.resolve(id)?.name || id } catch (_) { return id }
+            }
+            function show(target) {
+                entry = target
+                visible = false
+                root.desktopFiles.queryOpenWith(target, function(info) {
+                    if (openWithDialog.entry?.path !== target?.path)
+                        return
+                    openWithDialog.selectedHandler = info.defaultId || info.handlers[0] || ""
+                    openWithDialog.visible = true
+                })
+            }
+            Text {
+                anchors { left: parent.left; top: parent.top; leftMargin: 16; topMargin: 14 }
+                text: "打开方式"
+                color: "white"
+                font { pixelSize: 13; weight: Font.DemiBold }
+            }
+            Text {
+                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 16; rightMargin: 16; topMargin: 36 }
+                text: "“" + (openWithDialog.entry?.name ?? "") + "”"
+                color: Qt.rgba(1, 1, 1, 0.54)
+                elide: Text.ElideRight
+                font.pixelSize: 10
+            }
+            Text {
+                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 16; rightMargin: 16; topMargin: 57 }
+                text: root.desktopFiles.openWith.mime || "未能识别文件类型"
+                color: Qt.rgba(1, 1, 1, 0.42)
+                font.pixelSize: 9
+            }
+            Column {
+                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; leftMargin: 16; rightMargin: 16; topMargin: 78; bottomMargin: 46 }
+                spacing: 4
+                Repeater {
+                    model: root.desktopFiles.openWith.handlers
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: parent.width
+                        height: 28
+                        radius: 7
+                        color: openWithDialog.selectedHandler === modelData
+                            ? Qt.rgba(0, 0, 0, 0.54) : Qt.rgba(1, 1, 1, 0.07)
+                        Text {
+                            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 9; rightMargin: 9 }
+                            text: openWithDialog.appName(modelData)
+                            color: "white"
+                            elide: Text.ElideRight
+                            font.pixelSize: 10
+                        }
+                        MouseArea { anchors.fill: parent; onClicked: openWithDialog.selectedHandler = modelData }
+                    }
+                }
+                Text {
+                    visible: root.desktopFiles.openWith.handlers.length === 0
+                    text: "系统没有找到可用的关联应用。"
+                    color: Qt.rgba(1, 1, 1, 0.52)
+                    font.pixelSize: 10
+                }
+            }
+            Row {
+                anchors { right: parent.right; bottom: parent.bottom; rightMargin: 14; bottomMargin: 12 }
+                spacing: 8
+                Repeater {
+                    model: ["取消", "仅此一次", "设为默认"]
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: modelData === "设为默认" ? 64 : modelData === "仅此一次" ? 64 : 52
+                        height: 26
+                        radius: 7
+                        color: modelData === "设为默认" ? "#4385dc" : Qt.rgba(1, 1, 1, 0.10)
+                        opacity: modelData === "取消" || openWithDialog.selectedHandler ? 1 : 0.45
+                        Text { anchors.centerIn: parent; text: modelData; color: "white"; font.pixelSize: 10 }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                if (modelData === "取消") openWithDialog.visible = false
+                                else if (openWithDialog.selectedHandler) {
+                                    if (modelData === "仅此一次")
+                                        root.desktopFiles.launchWith(openWithDialog.entry, openWithDialog.selectedHandler)
+                                    else
+                                        root.desktopFiles.setDefaultOpenWith(root.desktopFiles.openWith.mime, openWithDialog.selectedHandler)
+                                    openWithDialog.visible = false
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Keys.onEscapePressed: openWithDialog.visible = false
+        }
+
     }
 }

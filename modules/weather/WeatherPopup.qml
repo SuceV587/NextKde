@@ -26,8 +26,8 @@ PopupWindow {
         anchors.fill: parent
         radius: 18
         baseColor: ThemeService.backgroundColor
-        ambientPrimary: WeatherService.isDay ? "#78b7ec" : "#495d9c"
-        ambientSecondary: "#8799b8"
+        ambientPrimary: WeatherTheme.theme(WeatherService.weatherCode, WeatherService.isDay).primary
+        ambientSecondary: WeatherTheme.theme(WeatherService.weatherCode, WeatherService.isDay).secondary
         ambientStrength: 0.45
 
         MouseArea {

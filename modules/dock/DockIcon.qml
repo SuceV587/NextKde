@@ -43,6 +43,9 @@ Item {
     // Shell controls can use the standard left-click activation pipeline while
     // opting out of application-specific right-click context-menu actions.
     property bool   showContextMenu: true
+    // Fixed shell controls can keep DockIcon's complete visual/hover behavior
+    // while routing their right click to a dedicated native menu.
+    property bool   customContextMenu: false
     // The fixed launcher is not a persisted pinned app, so holding it must not
     // enter the pinned-app edit/reorder state.
     property bool   allowEdit: true
@@ -74,6 +77,7 @@ Item {
 
     signal activate()
     signal requestEdit()
+    signal contextRequested()
     property bool _heldForEdit: false
 
     // Reserve the background's outer slot for every app icon. Only the active
@@ -97,9 +101,12 @@ Item {
     // still makes its hover state clear.
     readonly property real _hoverLift: _hovering && !showActiveBackground
         ? -Math.max(2, Math.round(iconSize * 0.08)) : 0
-    scale: _bounceDone ? _targetScale : 0.0
+    property real _attentionScale: 1.0
+    property real _attentionLift: 0
+    property real _attentionGlow: 0
+    scale: (_bounceDone ? _targetScale : 0.0) * _attentionScale
     transform: Translate {
-        y: icon._hoverLift
+        y: icon._hoverLift + icon._attentionLift
         Behavior on y {
             NumberAnimation {
                 duration: DockAnimation.iconHoverDuration
@@ -138,6 +145,29 @@ Item {
             icon._bounceDone = true
         }
         _reportActiveIndicator()
+    }
+    function acknowledgeAttention() {
+        console.log("[DockTrash] attention animation started")
+        // Fixed shell controls never use the launch bounce, so an external
+        // acknowledgement must not be gated on that unrelated startup flag.
+        _bounceDone = true
+        _attentionScale = 1.0
+        _attentionLift = 0
+        _attentionGlow = 0
+        attentionPulse.restart()
+    }
+    SequentialAnimation {
+        id: attentionPulse
+        ParallelAnimation {
+            NumberAnimation { target: icon; property: "_attentionScale"; to: 1.18; duration: 115; easing.type: Easing.OutCubic }
+            NumberAnimation { target: icon; property: "_attentionLift"; to: -6; duration: 115; easing.type: Easing.OutCubic }
+            NumberAnimation { target: icon; property: "_attentionGlow"; to: 1.0; duration: 115; easing.type: Easing.OutCubic }
+        }
+        ParallelAnimation {
+            NumberAnimation { target: icon; property: "_attentionScale"; to: 1.0; duration: 210; easing.type: Easing.OutBack }
+            NumberAnimation { target: icon; property: "_attentionLift"; to: 0; duration: 210; easing.type: Easing.OutBounce }
+            NumberAnimation { target: icon; property: "_attentionGlow"; to: 0; duration: 210; easing.type: Easing.OutCubic }
+        }
     }
 
     function _reportActiveIndicator() {
@@ -258,6 +288,21 @@ Item {
         z: -1
     }
 
+    // External shell actions need feedback that stays visible even when the
+    // Dock's internal scale transform is constrained by its layout. This ring
+    // is a separate painted layer behind the icon.
+    Rectangle {
+        width: icon.iconSlotSize * 1.28
+        height: width
+        anchors.centerIn: parent
+        radius: width / 2
+        color: Qt.rgba(1, 1, 1, 0.72)
+        opacity: icon._attentionGlow * 0.48
+        scale: 0.80 + icon._attentionGlow * 0.35
+        visible: opacity > 0
+        z: -2
+    }
+
     // A faint white slot gives hover a little contrast on liquid glass without
     // changing the icon's reserved geometry. Focused and urgent tasks already
     // have stronger state backgrounds, so they intentionally do not stack it.
@@ -329,7 +374,7 @@ Item {
         anchors.fill: parent
         enabled: icon.interactive
         hoverEnabled: true
-        acceptedButtons: icon.showContextMenu
+        acceptedButtons: (icon.showContextMenu || icon.customContextMenu)
             ? Qt.LeftButton | Qt.RightButton : Qt.LeftButton
         // Normal clicks stay owned by the icon.  Once a long press enables dock
         // edit mode, let the parent DragHandler take the pointer to reorder
@@ -354,6 +399,10 @@ Item {
             if (icon.editMode)
                 return
             if (mouse.button === Qt.RightButton) {
+                if (icon.customContextMenu) {
+                    icon.contextRequested()
+                    return
+                }
                 // A delayed preview may already be armed from pointer entry.
                 // Right-click is a distinct interaction and must own the
                 // shared popup coordinator until the menu is dismissed.
@@ -366,10 +415,9 @@ Item {
                     else
                         DockModelService.activeContextMenu = null
                 }
-                // PopupWindow may overwrite a QML binding on `visible` when
-                // it closes itself. Open it imperatively on every request so
-                // a prior dismissal can never leave the menu disconnected
-                // from this icon's state.
+                // Platform menus are opened imperatively at the current
+                // pointer position; the shared coordinator still ensures one
+                // Dock menu or preview surface owns the interaction at once.
                 DockModelService.activeContextMenu = contextMenu
                 DockModelService.openDockPopup(contextMenu)
             } else if (!icon._heldForEdit)
@@ -396,11 +444,9 @@ Item {
         isPinned: icon.isPinnedItem || DockModelService.isAppPinned(icon.appId)
         appId: icon.appId
         windowId: icon.windowId
-        anchorItem: icon
-        onVisibleChanged: {
-            if (visible) {
-                hasBeenVisible = true
-            } else if (hasBeenVisible) {
+        onAboutToShow: hasBeenVisible = true
+        onAboutToHide: {
+            if (hasBeenVisible) {
                 hasBeenVisible = false
                 if (DockModelService.activeContextMenu === contextMenu)
                     DockModelService.activeContextMenu = null

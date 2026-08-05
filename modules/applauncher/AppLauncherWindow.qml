@@ -198,7 +198,6 @@ PanelWindow {
     }
 
     function launchApplication(app, feedbackItem) {
-        dismissApplicationMenu()
         if (!AppActionService.launch(app))
             return
         // Launching an app completes this first-stage launcher flow.
@@ -211,37 +210,26 @@ PanelWindow {
         }
     }
 
-    function showApplicationMenu(app, anchorItem) {
-        if (!app || !anchorItem)
+    function showApplicationMenu(app, _anchorItem) {
+        if (!app)
             return
-        // PopupWindow calculates its Wayland anchor when it becomes visible.
-        // Reassigning `anchor.item` while visible leaves many compositors at
-        // the old position, so always close then reopen on the next frame.
-        if (appContextMenu.visible
+        if (appContextMenu.menuOpen
                 && appContextMenu.application
                 && appContextMenu.application.id === app.id) {
             dismissApplicationMenu()
             return
         }
-        appContextMenu.visible = false
         appContextMenu.application = app
-        appContextMenu.anchorItem = anchorItem
-        applicationMenuOpenTimer.restart()
-        console.log("[AppLauncher] menu request app=" + app.id)
+        appContextMenu.open()
     }
 
     function dismissApplicationMenu() {
-        applicationMenuOpenTimer.stop()
-        if (appContextMenu.visible)
-            console.log("[AppLauncher] menu dismiss app="
-                + (appContextMenu.application?.id || ""))
-        appContextMenu.visible = false
+        appContextMenu.close()
     }
 
     function showApplicationEditor(app) {
         if (!app)
             return
-        dismissApplicationMenu()
         editingApplication = app
         editorName = app.name
         // Store the editable source form, not the resolved theme path, so an
@@ -292,7 +280,6 @@ PanelWindow {
     }
 
     function showFolder(folder) {
-        dismissApplicationMenu()
         displayedFolder = folder
         openFolder = folder
         // Opening a folder from root edit mode continues the same editing
@@ -724,23 +711,8 @@ PanelWindow {
         }
     }
 
-    Timer {
-        id: applicationMenuOpenTimer
-        interval: 1
-        repeat: false
-        onTriggered: {
-            if (appContextMenu.application && appContextMenu.anchorItem) {
-                appContextMenu.visible = true
-                console.log("[AppLauncher] menu show app="
-                    + appContextMenu.application.id)
-            }
-        }
-    }
-
     AppLauncherContextMenu {
         id: appContextMenu
-        onVisibleChanged: console.log("[AppLauncher] menu visible=" + visible
-            + " app=" + (application?.id || ""))
         onAction: function(name) {
             const app = application
             if (!app)
@@ -944,7 +916,6 @@ PanelWindow {
                         clip: true
                         enabled: !root.editMode && !root.openFolder
                         onTextEdited: {
-                            root.dismissApplicationMenu()
                             root.query = text
                             root.selectedIndex = 0
                             root.keyboardSelectionActive = text.length > 0
@@ -1076,7 +1047,6 @@ PanelWindow {
                 cellWidth: width > 0 ? width / columnCount : 96
                 cellHeight: Math.max(106, Math.round(cellWidth * 1.06))
                 model: root.open ? root.filteredApplications : []
-                onMovementStarted: root.dismissApplicationMenu()
 
                 delegate: Item {
                     id: appDelegate
@@ -1316,7 +1286,6 @@ PanelWindow {
                                 // App settings remain a deliberate right-click
                                 // menu action so the two gestures never clash.
                                 appDelegate.heldForEdit = true
-                                root.dismissApplicationMenu()
                                 root.editMode = true
                             }
                             onClicked: function(mouse) {
@@ -1336,7 +1305,6 @@ PanelWindow {
                                         && modelData.type === "app") {
                                     root.showApplicationMenu(modelData.app, appDelegate)
                                 } else {
-                                    root.dismissApplicationMenu()
                                     if (modelData.type === "folder")
                                         root.showFolder(modelData)
                                     else if (!root.editMode)
@@ -1613,7 +1581,6 @@ PanelWindow {
                         cellWidth: width > 0 ? width / columnCount : 96
                         cellHeight: Math.max(100, Math.round(cellWidth * 1.08))
                         model: root.displayedFolder ? root.displayedFolder.apps : []
-                        onMovementStarted: root.dismissApplicationMenu()
 
                         delegate: Item {
                             id: folderAppDelegate
@@ -2146,18 +2113,6 @@ PanelWindow {
                 }
             }
 
-            // A passive handler on the launcher background observes left
-            // clicks without stealing them from icon cards, text inputs, or
-            // GridView. Any click away from a context menu dismisses it.
-            TapHandler {
-                enabled: root.editingApplication === null
-                target: null
-                acceptedButtons: Qt.LeftButton
-                onPressedChanged: {
-                    if (pressed)
-                        root.dismissApplicationMenu()
-                }
-            }
         }
 
         }
