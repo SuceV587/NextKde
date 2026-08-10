@@ -83,6 +83,7 @@ struct RefractionSettings
     float refractionRGBFringing;
     float refractionOffsetStrength;
     float refractionBevelIntensity;
+    float highlightWidthPx;
     bool physicallyBased;
 };
 

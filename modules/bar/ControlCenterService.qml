@@ -24,6 +24,12 @@ QtObject {
     // This is consumed by NotificationCenter. Keep the policy state in the
     // control service so future notification surfaces have one shared source.
     property bool doNotDisturbEnabled: false
+    // Notification history: snapshots of dismissed/expired notifications,
+    // populated by NotificationGroupService. Lives here (not in
+    // NotificationGroupService) so the ControlCenter panel -- which already
+    // binds this singleton -- can read it without a cross-module reference.
+    property ListModel notificationHistory: ListModel {}
+    property int notificationHistoryMax: 50
     property bool screenshotInProgress: false
     property bool logoutInProgress: false
     property var _refreshProcess: null

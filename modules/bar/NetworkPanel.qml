@@ -46,15 +46,7 @@ PopupWindow {
 
     // This is intentionally a single compact list card. The active network
     // remains one row in that list instead of being repeated in a status card.
-    BackgroundEffect.blurRegion: Region {
-        RoundedBlurRegion { item: networkListCard; coordinateSpace: blurCoordinateSpace; radius: networkListCard.radius }
-    }
-
-    Item {
-        id: blurCoordinateSpace
-        anchors.fill: parent
-        enabled: false
-    }
+    BackgroundEffect.blurRegion: null
 
     function toggle(item) {
         anchorItem = item
@@ -270,7 +262,7 @@ PopupWindow {
             }
         }
 
-        LiquidGlassSurface {
+        EnhancedGlassSurface {
             id: connectionCard
             visible: false
             width: parent.width
@@ -279,9 +271,9 @@ PopupWindow {
             baseColor: ThemeService.backgroundColor
             ambientPrimary: WallpaperPaletteService.primary
             ambientSecondary: WallpaperPaletteService.secondary
-            ambientStrength: 0.55
-            surfaceOpacity: 0.92
-            materialDepth: 1.2
+            ambientStrength: 0.72
+            surfaceOpacity: 0.94
+            materialDepth: 1.8
             border.width: 1
             border.color: Qt.rgba(0.74, 0.95, 1, 0.30)
             Column {
@@ -363,7 +355,7 @@ PopupWindow {
             }
         }
 
-        LiquidGlassSurface {
+        EnhancedGlassSurface {
             id: networkListCard
             width: parent.width
             height: parent.height
@@ -371,9 +363,9 @@ PopupWindow {
             baseColor: ThemeService.backgroundColor
             ambientPrimary: WallpaperPaletteService.primary
             ambientSecondary: WallpaperPaletteService.secondary
-            ambientStrength: 0.55
-            surfaceOpacity: 0.92
-            materialDepth: 1.2
+            ambientStrength: 0.72
+            surfaceOpacity: 0.94
+            materialDepth: 1.8
             border.width: 1
             border.color: Qt.rgba(0.74, 0.95, 1, 0.28)
 

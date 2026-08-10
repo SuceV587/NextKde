@@ -14,26 +14,21 @@ PanelWindow {
     // The module root passes this state explicitly (as QuickSearch does) so
     // every output-bound variant shares one reliable visibility binding.
     property bool open: false
-    // Keep the surface alive briefly after `open` becomes false. This is
-    // presentation-only: the launcher has already released focus, while its
-    // card can complete a natural return-to-Dock animation without clearing
-    // the grid midway through the exit.
+    // Keep the card state explicit. The launcher currently opens and closes
+    // without a reveal animation so compositor blur receives a static region.
     property bool keepVisibleForExit: false
     property real revealProgress: open ? 1.0 : 0.0
-    // Only the initial root-grid population participates in this reveal. A
-    // query or a later scroll must stay immediate because those are frequent
-    // interactions rather than a launcher-opening transition.
+    property real contentRevealProgress: open ? 1.0 : 0.0
     property bool gridEntranceActive: false
     readonly property bool panelVisible:
         (open || keepVisibleForExit) && AppLauncherService.dockWidth > 0
 
-    // The sheet clips from its bottom centre. Keeping this as one progress
-    // value lets width and height unfold in sync without reflowing the grid.
-    Behavior on revealProgress {
-        NumberAnimation {
-            duration: 170
-            easing.type: Easing.OutCubic
-        }
+    Behavior on contentRevealProgress {
+        // The compositor backdrop cannot fade in lockstep with a QML layer.
+        // Keep the small foreground fade for opening only; closing is atomic
+        // so a blank glass card never lingers over the reappearing Dock.
+        enabled: root.open
+        NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
     }
 
     Component.onCompleted: console.log("[AppLauncherWindow] created")
@@ -42,11 +37,11 @@ PanelWindow {
         if (open) {
             launcherExitTimer.stop()
             keepVisibleForExit = true
-            gridEntranceActive = true
-            gridEntranceStopTimer.restart()
-        } else if (keepVisibleForExit) {
             gridEntranceActive = false
-            launcherExitTimer.restart()
+        } else {
+            gridEntranceActive = false
+            launcherExitTimer.stop()
+            keepVisibleForExit = false
         }
     }
     onScreenChanged: console.log("[AppLauncherWindow] screen changed=" + !!screen)
@@ -622,21 +617,13 @@ PanelWindow {
         onTriggered: searchInput.forceActiveFocus()
     }
 
+    // Reserved for future compositor-synchronised transitions. Closing is
+    // currently immediate, because KWin backdrop blur cannot fade with QML.
     Timer {
         id: launcherExitTimer
-        interval: 180
+        interval: 150
         repeat: false
         onTriggered: root.keepVisibleForExit = false
-    }
-
-    Timer {
-        id: gridEntranceStopTimer
-        // Long enough for the initially visible rows to be constructed, but
-        // short enough that lazily created delegates while scrolling never
-        // animate into view.
-        interval: 360
-        repeat: false
-        onTriggered: root.gridEntranceActive = false
     }
 
     Timer {
@@ -811,18 +798,16 @@ PanelWindow {
         }
     }
 
-    // A center/bottom-anchored viewport gives the launcher a sheet-like iOS
-    // reveal: it grows upward and outward together. The full card keeps its
-    // geometry inside this clip; do not animate its width/height directly,
-    // because that would reflow the grid and compress icons/text.
+    // Keep a fixed card geometry while testing the compositor path: changing
+    // this clip every frame is precisely what used to exercise the artefact.
     Item {
         id: launcherRevealClip
         anchors {
             horizontalCenter: parent.horizontalCenter
             bottom: parent.bottom
         }
-        width: root.launcherWidth * root.revealProgress
-        height: root.launcherHeight * root.revealProgress
+        width: root.launcherWidth
+        height: root.launcherHeight
         clip: true
 
         Item {
@@ -834,20 +819,19 @@ PanelWindow {
                 bottom: parent.bottom
             }
             enabled: root.open
-            // The material begins slightly transparent, then reaches its
-            // normal density as the sheet finishes unfolding.
-            opacity: 0.68 + root.revealProgress * 0.32
+            opacity: 1.0
 
-            LiquidGlassSurface {
+            Item {
                 id: background
                 anchors.fill: parent
-                radius: 18
-            // Keep the launcher and Dock in one material family. The only
-            // intentional visual difference is the launcher's larger radius.
-            baseColor: AppLauncherService.dockBackgroundColor
-            ambientPrimary: AppLauncherService.dockAmbientPrimary
-            ambientSecondary: AppLauncherService.dockAmbientSecondary
-            ambientStrength: 0.82
+                property real radius: 28
+
+            // This foreground layer deliberately excludes the backdrop
+            // material. Its animation cannot change the Wayland blur region.
+            Item {
+                id: launcherContent
+                anchors.fill: parent
+                opacity: root.contentRevealProgress
 
             Item {
                 id: header
@@ -2113,14 +2097,14 @@ PanelWindow {
                 }
             }
 
+            }
         }
 
         }
     }
 
     // BackgroundEffect is a Wayland window attachment, so it belongs to this
-    // PanelWindow root. The reveal viewport is the actual visible geometry;
-    // using it keeps compositor blur confined to the expanding sheet.
+    // PanelWindow root. The fixed card viewport supplies one stable region.
     BackgroundEffect.blurRegion: RoundedBlurRegion {
         item: launcherRevealClip
         radius: background.radius

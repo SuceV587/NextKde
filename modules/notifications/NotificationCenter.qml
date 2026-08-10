@@ -1,6 +1,7 @@
 import Quickshell
 import Quickshell.Services.Notifications
 import qs.modules.bar
+import qs.modules.notifications
 
 // The session D-Bus permits only one org.freedesktop.Notifications owner.
 // When Plasma's daemon owns it, this server stays inactive, so notifications
@@ -15,9 +16,10 @@ Scope {
         id: server
         bodySupported: true
         bodyMarkupSupported: false
-        actionsSupported: false
+        actionsSupported: true
         imageSupported: true
         bodyImagesSupported: true
+        inlineReplySupported: true
         keepOnReload: false
 
         onNotification: notification => {
@@ -27,13 +29,21 @@ Scope {
         }
     }
 
+    // Groups trackedNotifications by desktopEntry into a project-owned
+    // ListModel. The popup and history views bind to this, not to the raw
+    // read-only server model.
+    NotificationGroupService {
+        id: notifGroupService
+        sourceModel: server.trackedNotifications
+    }
+
     Variants {
         model: root.targetScreen ? [root.targetScreen] : []
 
         NotificationWindow {
             required property var modelData
             screen: modelData
-            notifications: server.trackedNotifications
+            groupService: notifGroupService
         }
     }
 }

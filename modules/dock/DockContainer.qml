@@ -242,6 +242,7 @@ Item {
         }
         function dismissDockPopupImmediately() { close() }
         Platform.MenuItem {
+            icon.name: "user-trash"
             text: "清空回收站"
             onTriggered: DockModelService.openDockPopup(trashConfirmPopup)
         }
@@ -335,6 +336,7 @@ Item {
             allowEdit: false
             isPinnedItem: false
             bounceKey: ""
+            statusBadge: DockTrashService.hasItems
             onActivate: {
                 if (!container.isEditing)
                     DockTrashService.open()
@@ -345,7 +347,6 @@ Item {
         Connections {
             target: DockTrashService
             function onDepositReceived() {
-                console.log("[DockTrash] DockContainer received deposit signal")
                 trashIcon.acknowledgeAttention()
             }
         }

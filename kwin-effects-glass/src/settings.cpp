@@ -92,6 +92,7 @@ void BlurSettings::read()
     roundedCorners.dynamicCornersExcludeMenus = BlurConfig::dynamicCornersExcludeMenus();
 
     refraction.edgeSizePixels = BlurConfig::refractionEdgeSize() * 10;
+    refraction.highlightWidthPx = BlurConfig::highlightWidthPx();
     refraction.refractionStrength = BlurConfig::refractionStrength() / 20.0;
     refraction.refractionNormalPow = BlurConfig::refractionNormalPow() / 2.0;
     refraction.refractionRGBFringing = BlurConfig::refractionRGBFringing() / 20.0;

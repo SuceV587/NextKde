@@ -530,9 +530,10 @@ QtObject {
         proc.running = true
     }
 
-    // Intentionally no connect/disconnect/forget implementation yet. Future
-    // write operations must be explicit and return a result to their caller,
-    // so a Bar icon never silently changes system network configuration.
+    // Wi-Fi write operations (connect / connectEnterprise / disconnectActive /
+    // forgetWifiProfile / setWifiEnabled) are implemented above. Each runs an
+    // explicit nmcli call and reports success/failure back to its caller, so a
+    // Bar icon never silently changes system network configuration.
     property Component processFactory: Component {
         Process {
             stdout: StdioCollector {}

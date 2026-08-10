@@ -38,14 +38,15 @@ PanelWindow {
         width: dockContainer.computedDockWidth
         height: dockContainer.computedDockHeight
 
-        LiquidGlassSurface {
-            anchors.fill: parent
-            radius: dockContainer.pillRadius
-            baseColor: ThemeService.backgroundColor
-            ambientPrimary: WallpaperPaletteService.primary
-            ambientSecondary: WallpaperPaletteService.secondary
-            ambientStrength: 0.82
-        }
+        // LiquidGlassSurface temporarily disabled to isolate KWin effect rendering.
+        // LiquidGlassSurface {
+        //     anchors.fill: parent
+        //     radius: dockContainer.pillRadius
+        //     baseColor: ThemeService.backgroundColor
+        //     ambientPrimary: WallpaperPaletteService.primary
+        //     ambientSecondary: WallpaperPaletteService.secondary
+        //     ambientStrength: 0.82
+        // }
 
         DockContainer {
             id: dockContainer

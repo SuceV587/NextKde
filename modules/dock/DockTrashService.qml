@@ -9,12 +9,28 @@ QtObject {
     id: service
 
     property bool emptying: false
+    property bool hasItems: false
     signal depositReceived()
     property Component processFactory: Component {
-        Process {}
+        Process { stdout: StdioCollector {} }
+    }
+
+    function refreshContentState() {
+        const process = processFactory.createObject(service, {
+            command: ["sh", "-c",
+                "data=${XDG_DATA_HOME:-$HOME/.local/share}; "
+                + "find \"$data/Trash/files\" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null",
+                "dock-trash-state"]
+        })
+        process.exited.connect(function(exitCode) {
+            hasItems = exitCode === 0 && (process.stdout?.text ?? "").trim().length > 0
+            process.destroy()
+        })
+        process.running = true
     }
 
     function open() {
+        refreshContentState()
         const process = processFactory.createObject(service, {
             // KDE exposes its Trash view as trash:/; the local GIO backend
             // does not implement the cross-desktop trash:/// URI here.
@@ -45,13 +61,17 @@ QtObject {
             emptying = false
             if (exitCode !== 0)
                 console.warn("[DockTrash] unable to empty trash")
+            else
+                hasItems = false
             process.destroy()
         })
         process.running = true
     }
 
     function celebrateDeposit() {
-        console.log("[DockTrash] deposit signal emitted")
+        hasItems = true
         depositReceived()
     }
+
+    Component.onCompleted: refreshContentState()
 }

@@ -195,6 +195,28 @@ QtObject {
         process.running = true
     }
 
+    function createUntitledFile(callback) {
+        if (!directory)
+            return
+        lastError = ""
+        const script = "dir=$1; base='untitled file.txt'; stem='untitled file'; extension='.txt'; target=\"$dir/$base\"; index=2; while test -e \"$target\"; do target=\"$dir/$stem $index$extension\"; index=$((index + 1)); done; touch -- \"$target\" && printf '%s' \"$target\""
+        const process = processFactory.createObject(service, {
+            command: ["sh", "-c", script, "desktop-new-file", directory]
+        })
+        process.exited.connect(function(exitCode) {
+            const createdPath = (process.stdout?.text ?? "").trim()
+            if (exitCode === 0 && createdPath) {
+                service.requestDesktopRefresh()
+                if (callback)
+                    callback(createdPath)
+            } else {
+                service.lastError = "无法创建文件"
+            }
+            process.destroy()
+        })
+        process.running = true
+    }
+
     function renameEntry(entry, name) {
         if (!entry?.path || !directory || !validName(name)) {
             lastError = "名称不能为空，且不能包含 /"
@@ -204,7 +226,59 @@ QtObject {
         if (target === entry.path)
             return true
         lastError = ""
-        run(["mv", "--", entry.path, target], requestDesktopRefresh)
+        // Guard against name collisions: mv on an existing directory target
+        // would move the source inside it instead of failing, silently
+        // nesting folders. Use a dedicated process (not run()) so the error
+        // message is specific instead of the generic "操作未完成".
+        const process = processFactory.createObject(service, {
+            command: ["sh", "-c", "test -e \"$2\" && exit 1; mv -- \"$1\" \"$2\"",
+                      "desktop-rename", entry.path, target]
+        })
+        process.exited.connect(function(exitCode) {
+            if (exitCode !== 0)
+                service.lastError = "该名称已被占用"
+            else
+                requestDesktopRefresh()
+            process.destroy()
+        })
+        process.running = true
+        return true
+    }
+
+    function moveEntriesToFolder(entries, folder, onSuccess) {
+        const paths = (entries ?? []).map(function(entry) { return entry?.path })
+            .filter(function(path, index, source) {
+                return !!path && path !== folder?.path && source.indexOf(path) === index
+            })
+        if (paths.length === 0 || !folder?.path || folder.kind !== "folder") {
+            lastError = "无法移动到该文件夹"
+            return false
+        }
+        if (paths.some(function(path) {
+            return folder.path.indexOf(path + "/") === 0
+        })) {
+            lastError = "不能移动到自身的子文件夹"
+            return false
+        }
+        lastError = ""
+        // Keep the same collision rule as paste: never overwrite an existing
+        // entry; instead give the incoming item a deterministic copy suffix.
+        const script = "destination=$1; shift\n"
+            + "for source do\n"
+            + "  test -e \"$source\" || continue\n"
+            + "  base=${source##*/}; candidate=\"$destination/$base\"; count=1\n"
+            + "  while test -e \"$candidate\"; do\n"
+            + "    stem=${base%.*}; extension=.${base##*.}\n"
+            + "    if test \"$stem\" = \"$base\" || test -z \"$stem\"; then candidate=\"$destination/$base (副本 $count)\"; else candidate=\"$destination/$stem (副本 $count)$extension\"; fi\n"
+            + "    count=$((count + 1))\n"
+            + "  done\n"
+            + "  mv -- \"$source\" \"$candidate\" || exit 1\n"
+            + "done"
+        run(["sh", "-c", script, "desktop-move-folder", folder.path].concat(paths), function() {
+            requestDesktopRefresh()
+            if (onSuccess)
+                onSuccess()
+        })
         return true
     }
 
@@ -235,15 +309,19 @@ QtObject {
         const uriList = paths.map(function(path) {
             return "file://" + encodeURIComponent(path).replace(/%2F/gi, "/")
         }).join("\r\n") + "\r\n"
+        // Record the semantic operation before wl-copy completes. Otherwise
+        // a quick Ctrl+X then Ctrl+V races the helper process and silently
+        // falls back to copy.
+        service.clipboardMode = mode
+        service.clipboardPaths = paths
         const process = processFactory.createObject(service, {
             command: ["sh", "-c", "printf '%s' \"$1\" | wl-copy --type text/uri-list",
                 "desktop-file-copy", uriList]
         })
         process.exited.connect(function(exitCode) {
-            if (exitCode === 0) {
-                service.clipboardMode = mode
-                service.clipboardPaths = paths
-            } else {
+            if (exitCode !== 0) {
+                service.clipboardMode = ""
+                service.clipboardPaths = []
                 service.lastError = "无法写入剪贴板"
                 console.warn("[DesktopFiles] wl-copy failed: " + (process.stderr?.text ?? ""))
             }
@@ -285,7 +363,14 @@ QtObject {
             command: ["wl-paste", "--no-newline", "--type", "text/uri-list"]
         })
         reader.exited.connect(function(exitCode) {
-            const paths = exitCode === 0 ? service.filePathsFromUriList(reader.stdout?.text) : []
+            // wl-copy is asynchronous.  When the user immediately presses
+            // Ctrl+V after Ctrl+X, wl-paste can still return the previous
+            // clipboard selection.  Our own cut operation already has an
+            // authoritative path list, so use it for this shell session.
+            const trackedCut = service.clipboardMode === "cut"
+                    && service.clipboardPaths.length > 0
+            const paths = trackedCut ? service.clipboardPaths.slice()
+                : (exitCode === 0 ? service.filePathsFromUriList(reader.stdout?.text) : [])
             reader.destroy()
             if (paths.length === 0) {
                 service.lastError = "剪贴板中没有可粘贴的文件"
@@ -293,8 +378,7 @@ QtObject {
                     console.warn("[DesktopFiles] wl-paste failed: " + (reader.stderr?.text ?? ""))
                 return
             }
-            const mode = service.clipboardMode === "cut"
-                    && service.samePathList(paths, service.clipboardPaths) ? "cut" : "copy"
+            const mode = trackedCut ? "cut" : "copy"
             const script = "mode=$1; destination=$2; shift 2\n"
                 + "for source do\n"
                 + "  test -e \"$source\" || continue\n"
@@ -325,6 +409,33 @@ QtObject {
             worker.running = true
         })
         reader.running = true
+    }
+
+    function importExternalUrls(urls) {
+        if (!directory)
+            return
+        const paths = (urls ?? []).map(function(url) {
+            const value = url?.toString ? url.toString() : String(url)
+            return value.startsWith("file://")
+                ? decodeURIComponent(value.slice("file://".length)) : ""
+        }).filter(function(path) { return !!path })
+        if (paths.length === 0) {
+            lastError = "只能拖入本地文件"
+            return
+        }
+        const script = "destination=$1; shift\n"
+            + "for source do\n"
+            + "  test -e \"$source\" || continue\n"
+            + "  base=${source##*/}; candidate=\"$destination/$base\"; count=1\n"
+            + "  while test -e \"$candidate\"; do\n"
+            + "    stem=${base%.*}; extension=.${base##*.}\n"
+            + "    if test \"$stem\" = \"$base\" || test -z \"$stem\"; then candidate=\"$destination/$base (副本 $count)\"; else candidate=\"$destination/$stem (副本 $count)$extension\"; fi\n"
+            + "    count=$((count + 1))\n"
+            + "  done\n"
+            + "  cp -a -- \"$source\" \"$candidate\" || exit 1\n"
+            + "done"
+        lastError = ""
+        run(["sh", "-c", script, "desktop-external-drop", directory].concat(paths), requestDesktopRefresh)
     }
 
     property Process desktopSubscription: Process {

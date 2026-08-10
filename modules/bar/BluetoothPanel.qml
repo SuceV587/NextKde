@@ -19,10 +19,7 @@ PopupWindow {
     grabFocus: true
     anchor { item: panel.anchorItem; edges: Edges.Bottom; gravity: Edges.Bottom; margins.bottom: -6 }
 
-    BackgroundEffect.blurRegion: RoundedBlurRegion {
-        item: surface
-        radius: surface.radius
-    }
+    BackgroundEffect.blurRegion: null
 
     function open(item) {
         anchorItem = item
@@ -54,16 +51,16 @@ PopupWindow {
         }
     }
 
-    LiquidGlassSurface {
+    EnhancedGlassSurface {
         id: surface
         anchors.fill: parent
         radius: 20
         baseColor: ThemeService.backgroundColor
         ambientPrimary: WallpaperPaletteService.primary
         ambientSecondary: WallpaperPaletteService.secondary
-        ambientStrength: 0.55
-        surfaceOpacity: 0.92
-        materialDepth: 1.25
+        ambientStrength: 0.72
+        surfaceOpacity: 0.94
+        materialDepth: 1.8
         border.width: 1
         border.color: Qt.rgba(0.74, 0.95, 1, 0.30)
 

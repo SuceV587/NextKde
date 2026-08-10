@@ -212,35 +212,38 @@ PanelWindow {
         id: dialog
         width: 580
         height: searchHeader.height + (root.resultCount > 0 ? (root.viewMode === "grid" ? gridView.height : resultView.height) + 8 : 46)
+        // Shared readability outline so white/foreground text stays legible on
+        // light wallpapers where KWin tint alone isn't enough. Mirrors the
+        // notification card's textOutlineColor convention.
+        readonly property color textOutlineColor: Qt.rgba(0.05, 0.08, 0.12, 0.38)
         anchors {
             horizontalCenter: parent.horizontalCenter
             top: parent.top
             topMargin: Math.round(parent.height * 0.16)
         }
-        radius: 18
+        radius: 28
         color: "transparent"
         opacity: root.revealProgress
 
-        LiquidGlassSurface {
-            anchors.fill: parent
-            radius: dialog.radius
-            // QuickSearch shares Dock's base glass contract so both surfaces
-            // respond identically to theme and wallpaper palette changes.
-            baseColor: ThemeService.backgroundColor
-            surfaceOpacity: 1.0
-            ambientPrimary: WallpaperPaletteService.primary
-            ambientSecondary: WallpaperPaletteService.secondary
-            ambientStrength: 0.82
-            materialDepth: 0.0
-        }
+        // LiquidGlassSurface temporarily disabled to isolate KWin effect rendering.
+        // LiquidGlassSurface {
+        //     anchors.fill: parent
+        //     radius: dialog.radius
+        //     baseColor: ThemeService.backgroundColor
+        //     surfaceOpacity: 1.0
+        //     ambientPrimary: WallpaperPaletteService.primary
+        //     ambientSecondary: WallpaperPaletteService.secondary
+        //     ambientStrength: 0.82
+        //     materialDepth: 0.0
+        // }
 
-        Rectangle {
-            anchors.fill: parent
-            radius: dialog.radius
-            color: "transparent"
-            border.width: 0
-            border.color: Qt.rgba(1, 1, 1, 0.36)
-        }
+        // Rectangle {
+        //     anchors.fill: parent
+        //     radius: dialog.radius
+        //     color: "transparent"
+        //     border.width: 0
+        //     border.color: Qt.rgba(1, 1, 1, 0.36)
+        // }
 
         Item {
             id: searchHeader
@@ -256,6 +259,8 @@ PanelWindow {
                 text: "⌕"
                 color: Qt.rgba(1, 1, 1, 0.72)
                 font.pixelSize: 26
+                style: Text.Outline
+                styleColor: dialog.textOutlineColor
             }
 
             TextInput {
@@ -306,6 +311,8 @@ PanelWindow {
                     color: Qt.rgba(1, 1, 1, 0.54)
                     font: searchInput.font
                     verticalAlignment: Text.AlignVCenter
+                    style: Text.Outline
+                    styleColor: dialog.textOutlineColor
                 }
             }
 
@@ -322,6 +329,8 @@ PanelWindow {
                     color: Qt.rgba(1, 1, 1, 0.46)
                     font.pixelSize: 11
                     anchors.verticalCenter: parent.verticalCenter
+                    style: Text.Outline
+                    styleColor: dialog.textOutlineColor
                 }
 
                 Item {
@@ -340,6 +349,8 @@ PanelWindow {
                         text: root.viewMode === "list" ? "▦" : "☷"
                         color: Qt.rgba(1, 1, 1, 0.76)
                         font.pixelSize: 18
+                        style: Text.Outline
+                        styleColor: dialog.textOutlineColor
                     }
 
                     MouseArea {
@@ -426,6 +437,8 @@ PanelWindow {
                             pixelSize: 14
                             weight: Font.DemiBold
                         }
+                        style: Text.Outline
+                        styleColor: dialog.textOutlineColor
                     }
 
                     Text {
@@ -434,6 +447,8 @@ PanelWindow {
                         color: Qt.rgba(1, 1, 1, 0.68)
                         elide: Text.ElideRight
                         font.pixelSize: 11
+                        style: Text.Outline
+                        styleColor: dialog.textOutlineColor
                     }
                 }
 
@@ -457,6 +472,8 @@ PanelWindow {
                         color: Qt.rgba(0.84, 0.93, 1, 0.94)
                         font.pixelSize: 9
                         font.weight: Font.DemiBold
+                        style: Text.Outline
+                        styleColor: dialog.textOutlineColor
                     }
                 }
 
@@ -524,6 +541,8 @@ PanelWindow {
                         color: Qt.rgba(0.84, 0.93, 1, 0.96)
                         font.pixelSize: 8
                         font.weight: Font.DemiBold
+                        style: Text.Outline
+                        styleColor: dialog.textOutlineColor
                     }
                 }
 
@@ -570,6 +589,8 @@ PanelWindow {
                         pixelSize: 11
                         weight: Font.DemiBold
                     }
+                    style: Text.Outline
+                    styleColor: dialog.textOutlineColor
                 }
 
                 Text {
@@ -587,6 +608,8 @@ PanelWindow {
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                     font.pixelSize: 9
+                    style: Text.Outline
+                    styleColor: dialog.textOutlineColor
                 }
 
                 MouseArea {
@@ -614,6 +637,8 @@ PanelWindow {
             text: root.mode === "app" ? "未找到匹配的应用" : (root.mode === "clipboard" ? "剪贴板历史为空" : "未找到匹配的窗口")
             color: Qt.rgba(1, 1, 1, 0.52)
             font.pixelSize: 13
+            style: Text.Outline
+            styleColor: dialog.textOutlineColor
         }
     }
 }

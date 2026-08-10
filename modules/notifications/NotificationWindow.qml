@@ -1,341 +1,528 @@
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
+import Quickshell.Services.Notifications
 import QtQuick
 import Qt5Compat.GraphicalEffects
 import qs.modules.common
 import qs.modules.dock
+import qs.modules.notifications
 
-// A compact, non-exclusive surface in the top-right corner of one output.
+// Top-right notification popup. One card per app group (newest on top).
+//
+// The window anchors top+right+bottom with a fixed bottom margin, so its
+// surface size is constant -- it never resizes when cards enter/leave. That
+// matters because a Wayland surface resize during the entrance x-slide showed
+// up as a visible mid-animation hitch (the compositor's synchronous resize
+// landed inside the 200ms slide). A constant surface eliminates it.
+//
+// A tall transparent Overlay window would normally intercept clicks across
+// the whole right edge even when empty. We avoid that with `mask: Region`:
+// the input region is shaped to the ListView's contentItem, so only the area
+// actually covered by cards is clickable -- transparent gaps pass through.
+//
+// The ListModel carries only primitive roles; live Notification objects are
+// fetched from groupService by groupKey (see NotificationGroupService --
+// ListModel cannot store object arrays). Closing a card calls dismiss/expire
+// on the group; the service rebuilds the model and ListView's own remove
+// Transition plays the exit slide.
 PanelWindow {
     id: root
 
-    required property var notifications
-    property int blurRevision: 0
+    required property var groupService
 
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
 
-    anchors {
-        top: true
-        right: true
-    }
-    margins {
-        top: 48
-        right: 18
-    }
+    // Fixed surface: top-anchored, enough vertical room for a stack of cards
+    // growing downward. The mask keeps empty space click-through.
+    anchors { top: true; right: true; bottom: true }
+    margins { top: 48; right: 18; bottom: 48 }
 
     implicitWidth: 350
-    implicitHeight: notificationStack.height
 
-    // Each card owns a rounded region. Unlike a single stack-sized region,
-    // this leaves the gaps transparent and gives every card a Dock-like edge.
-    BackgroundEffect.blurRegion: Region {
-        // Region accepts concrete Region children, not a Repeater. Eight
-        // independent slots comfortably cover the visible notification stack;
-        // empty slots have a zero-sized region.
-        NotificationBlurRegion {
-            item: { root.blurRevision; return notificationRepeater.itemAt(0) }
-            stack: notificationStack
-            radius: item ? item.radius : 24
-        }
-        NotificationBlurRegion {
-            item: { root.blurRevision; return notificationRepeater.itemAt(1) }
-            stack: notificationStack
-            radius: item ? item.radius : 24
-        }
-        NotificationBlurRegion {
-            item: { root.blurRevision; return notificationRepeater.itemAt(2) }
-            stack: notificationStack
-            radius: item ? item.radius : 24
-        }
-        NotificationBlurRegion {
-            item: { root.blurRevision; return notificationRepeater.itemAt(3) }
-            stack: notificationStack
-            radius: item ? item.radius : 24
-        }
-        NotificationBlurRegion {
-            item: { root.blurRevision; return notificationRepeater.itemAt(4) }
-            stack: notificationStack
-            radius: item ? item.radius : 24
-        }
-        NotificationBlurRegion {
-            item: { root.blurRevision; return notificationRepeater.itemAt(5) }
-            stack: notificationStack
-            radius: item ? item.radius : 24
-        }
-        NotificationBlurRegion {
-            item: { root.blurRevision; return notificationRepeater.itemAt(6) }
-            stack: notificationStack
-            radius: item ? item.radius : 24
-        }
-        NotificationBlurRegion {
-            item: { root.blurRevision; return notificationRepeater.itemAt(7) }
-            stack: notificationStack
-            radius: item ? item.radius : 24
-        }
+    // Shape the input region to the list content so the transparent parts of
+    // the fixed-height surface don't swallow right-side clicks.
+    mask: Region {
+        item: notificationList.contentItem
     }
 
-    Column {
-        id: notificationStack
-        width: parent.width
+    // Blur the list content area so KWin's glass effect renders real liquid
+    // glass behind each card. We track the real content height on a dedicated
+    // `blurTrack` item, but only let its height *grow* with a delay (so the
+    // glass fades in after a new card's entrance slide finishes, instead of
+    // landing before the text arrives). Shrinking is immediate so removed
+    // cards don't leave a lingering glass slab.
+    Item {
+        id: blurTrack
+        anchors.top: notificationList.top
+        anchors.left: notificationList.left
+        width: notificationList.width
+        height: blurTrackHeight.value
+
+        QtObject {
+            id: blurTrackHeight
+            property real value: 0
+            // Grow lazily (entrance slide is 200ms), shrink immediately.
+            function sync(target) {
+                if (target >= value) {
+                    growTimer.targetValue = target
+                    growTimer.restart()
+                } else {
+                    growTimer.stop()
+                    value = target
+                }
+            }
+            property Timer growTimer: Timer {
+                property real targetValue: 0
+                interval: 100
+                onTriggered: blurTrackHeight.value = targetValue
+            }
+        }
+    }
+    BackgroundEffect.blurRegion: RoundedBlurRegion {
+        item: blurTrack
+        radius: 28
+    }
+
+    ListView {
+        id: notificationList
+        anchors {
+            top: parent.top
+            left: parent.left
+            right: parent.right
+            bottom: parent.bottom
+        }
+        model: root.groupService.groupsModel
         spacing: 10
-        // NotificationServer appends arrivals. Mirror the stack vertically so
-        // that the latest item occupies the top slot without copying or
-        // reordering the server-owned notification model.
-        transform: Scale {
-            origin.x: notificationStack.width / 2
-            origin.y: notificationStack.height / 2
-            yScale: -1
+        interactive: false
+        clip: true
+        onContentHeightChanged: blurTrackHeight.sync(contentHeight)
+
+        // Entrance: opacity + x-slide. Surface size is constant, so no resize
+        // lands mid-slide -- the slide stays smooth.
+        add: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.InCubic }
+                NumberAnimation { property: "x"; from: 120; to: 0; duration: 200; easing.type: Easing.InCubic }
+            }
+        }
+        // Exit slide to the right.
+        remove: Transition {
+            NumberAnimation { property: "x"; from: 0; to: notificationList.width + 44; duration: 200; easing.type: Easing.InCubic }
+        }
+        displaced: Transition {
+            NumberAnimation { property: "y"; duration: 200; easing.type: Easing.InOutCubic }
+        }
+        removeDisplaced: Transition {
+            NumberAnimation { property: "y"; duration: 200; easing.type: Easing.InOutCubic }
         }
 
-        Repeater {
-            id: notificationRepeater
-            model: root.notifications
-            onItemAdded: root.blurRevision++
-            onItemRemoved: root.blurRevision++
+        delegate: Rectangle {
+            id: card
+            required property var modelData
+            required property int index
 
-            delegate: Rectangle {
-                id: card
-                required property var modelData
-                readonly property var notification: modelData
-                readonly property color foregroundColor: Qt.rgba(1, 1, 1, 0.96)
-                readonly property color textOutlineColor: Qt.rgba(0.05, 0.08, 0.12, 0.38)
-                readonly property string iconSource: {
-                    // A notification is an immutable snapshot. Do not bind
-                    // its icon to the global app-identity revision: launcher
-                    // config loading or a custom icon save would otherwise
-                    // re-resolve every visible card and hitch its animation.
-                    return AppIdentityService.iconSourceFor(
-                        notification.desktopEntry || notification.appName,
-                        notification.image || notification.appIcon
-                    )
+            readonly property string groupKey: modelData.groupKey
+            readonly property int groupCount: modelData.count
+            readonly property bool groupCollapsed: modelData.collapsed
+            // Live newest Notification for this group. Depends on
+            // sidecarRevision so it re-evaluates when the service rebuilds.
+            readonly property var notification: {
+                void root.groupService.sidecarRevision
+                return root.groupService.latestForKey(card.groupKey)
+            }
+            // Snapshot of the last visible notification's display fields.
+            // When the group is dying (count hits 0 during a dismiss), the
+            // live notification is null but the card is still mid-exit-slide.
+            // Without this snapshot the card's text collapses to empty and
+            // you see a blank shell sliding away. We keep the last good
+            // summary/body/appName/icon so the exiting card looks intact.
+            property string _lastSummary: ""
+            property string _lastBody: ""
+            property string _lastAppName: ""
+            property string _lastIconSource: ""
+            property int _lastUrgency: 1
+            onNotificationChanged: {
+                if (card.notification) {
+                    card._lastSummary = card.notification.summary || ""
+                    card._lastBody = card.notification.body || ""
+                    card._lastAppName = card.notification.appName || ""
+                    card._lastUrgency = card.notification.urgency
+                    card._lastIconSource = AppIdentityService._iconPath(
+                        card.notification.image || card.notification.appIcon)
                 }
-                property bool closing: false
-                property bool closeAsExpired: false
+            }
+            // Display fields: use live notification, fall back to snapshot
+            // when the group is dying (notification null but card visible).
+            readonly property string displaySummary: card.notification
+                ? (card.notification.summary.length > 0
+                    ? card.notification.summary : card.notification.appName)
+                : card._lastSummary
+            readonly property string displayBody: card.notification
+                ? card.notification.body : card._lastBody
+            readonly property string displayAppName: card.notification
+                ? card.notification.appName : card._lastAppName
+            readonly property string displayIconSource: card.notification
+                ? AppIdentityService._iconPath(card.notification.image || card.notification.appIcon)
+                : card._lastIconSource
+            readonly property bool isCritical: (card.notification
+                ? card.notification.urgency : card._lastUrgency) === NotificationUrgency.Critical
+            readonly property bool isLow: (card.notification
+                ? card.notification.urgency : card._lastUrgency) === NotificationUrgency.Low
+            readonly property bool expanded: !card.groupCollapsed && card.groupCount > 1
+            readonly property color foregroundColor: Qt.rgba(1, 1, 1, 0.96)
+            readonly property color textOutlineColor: Qt.rgba(0.05, 0.08, 0.12, 0.38)
+            readonly property string iconSource: card.displayIconSource
 
-                width: notificationStack.width
-                height: content.implicitHeight + 28
-                radius: 24
-                color: "transparent"
-                clip: true
-                // Cancel the stack's vertical mirror so card contents remain
-                // upright while their ordering is newest-first.
-                transform: Scale {
-                    origin.x: card.width / 2
-                    origin.y: card.height / 2
-                    yScale: -1
-                }
+            width: notificationList.width
+            height: Math.floor(content.implicitHeight + 28)
+            Behavior on height {
+                NumberAnimation { duration: 200; easing.type: Easing.InOutCubic }
+            }
+            radius: 28
+            color: "transparent"
 
-                // Column updates y whenever another notification appears or
-                // leaves. This turns those layout changes into a calm stack
-                // rearrangement instead of a jump.
-                Behavior on y {
-                    NumberAnimation {
-                        duration: 320
-                        easing.type: Easing.OutCubic
-                    }
-                }
+            // ---- backgrounds ----
+            // The card body is now rendered by KWin's glass effect (real
+            // liquid-glass blur + tint + edge lighting via blurRegion). We only
+            // keep a faint urgency tint so critical cards still read as red,
+            // plus the left accent bar and a hairline top edge for crispness.
 
-                function close(expired) {
-                    if (closing)
-                        return
-                    closing = true
-                    closeAsExpired = expired
-                    exitAnimation.start()
-                }
+            Rectangle {
+                anchors.fill: parent
+                radius: parent.radius
+                visible: card.isCritical
+                color: Qt.rgba(0.55, 0.10, 0.08, 0.22)
+            }
+            Rectangle {
+                anchors.fill: parent
+                radius: parent.radius
+                visible: card.isLow
+                color: Qt.rgba(0.04, 0.05, 0.08, 0.12)
+            }
+            Rectangle {
+                visible: card.isCritical
+                x: 4; y: parent.radius * 0.5
+                width: 3; height: parent.height - parent.radius
+                radius: 1.5
+                color: Qt.rgba(1.0, 0.27, 0.23, 0.95)
+            }
+            Rectangle {
+                x: Math.min(parent.width / 2, parent.radius + 2)
+                y: 0.6
+                width: Math.max(0, parent.width - x * 2)
+                height: 1
+                color: Qt.rgba(1, 1, 1, 0.10)
+            }
 
-                Component.onCompleted: entranceAnimation.start()
+            // ---- close + auto-expire ----
 
-                ParallelAnimation {
-                    id: entranceAnimation
-                    NumberAnimation {
-                        target: card
-                        property: "x"
-                        from: notificationStack.width + 44
-                        to: 0
-                        duration: 420
-                        easing.type: Easing.OutQuint
-                    }
-                    NumberAnimation {
-                        target: card
-                        property: "opacity"
-                        from: 0
-                        to: 1
-                        duration: 240
-                        easing.type: Easing.OutCubic
-                    }
-                }
+            // Close the whole group at once (× button or auto-expire), not
+            // just the latest notification -- otherwise a stacked group of N
+            // needs N clicks. Single notifications are a group of 1, so this
+            // covers both cases. Uses groupKey (stable across rebuilds) rather
+            // than card.index (which can drift during a rebuild).
+            function close(expired) {
+                if (expired)
+                    root.groupService.expireGroupByKey(card.groupKey)
+                else
+                    root.groupService.dismissGroupByKey(card.groupKey)
+            }
 
-                ParallelAnimation {
-                    id: exitAnimation
-                    NumberAnimation {
-                        target: card
-                        property: "x"
-                        to: notificationStack.width + 44
-                        duration: 230
-                        easing.type: Easing.InCubic
-                    }
-                    NumberAnimation {
-                        target: card
-                        property: "opacity"
-                        to: 0
-                        duration: 180
-                        easing.type: Easing.InCubic
-                    }
-                    onFinished: {
-                        if (card.closeAsExpired)
-                            card.notification.expire()
-                        else
-                            card.notification.dismiss()
-                    }
-                }
-
-                LiquidGlassSurface {
-                    anchors.fill: parent
-                    radius: parent.radius
-                    // A neutral mid-grey glass keeps a balanced appearance
-                    // between the previous white and black variants.
-                    baseColor: Qt.rgba(0.35, 0.35, 0.35, 0.28)
-                    surfaceOpacity: 1.0
-                    bottomEdgeVisible: false
-                    bottomShadeVisible: false
-                    // Match the Dock's living colour response.
-                    ambientPrimary: WallpaperPaletteService.primary
-                    ambientSecondary: WallpaperPaletteService.secondary
-                    ambientStrength: 0.82
-                    // The Dock uses the base material depth. Matching it
-                    // avoids the heavier, more opaque popup treatment.
-                    materialDepth: 0.0
-                }
-
-                Timer {
-                    // Servers receive -1 for a persistent notification and
-                    // 0 when the client leaves timeout selection to us.
-                    interval: card.notification.expireTimeout > 0
-                        ? Math.max(1000, card.notification.expireTimeout * 1000)
+            // Auto-expire timer. Started on completed; guarded for null.
+            // FreeDesktop: expireTimeout is milliseconds; -1 = persistent;
+            // 0 = server picks. We default to 7000ms.
+            Timer {
+                interval: {
+                    const n = card.notification
+                    return (n && n.expireTimeout > 0)
+                        ? Math.max(1000, n.expireTimeout)
                         : 7000
-                    running: true
-                    repeat: false
-                    onTriggered: card.close(true)
+                }
+                running: card.notification !== null
+                repeat: false
+                onTriggered: card.close(true)
+            }
+
+            // ---- header ----
+
+            Item {
+                id: appMark
+                width: 34; height: width
+                anchors { left: parent.left; leftMargin: 14; top: parent.top; topMargin: 14 }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: !iconMask.visible
+                    text: card.displayAppName.length > 0
+                        ? card.displayAppName.slice(0, 1).toUpperCase()
+                        : "•"
+                    color: card.foregroundColor
+                    style: Text.Outline
+                    styleColor: card.textOutlineColor
+                    font { pixelSize: 16; bold: true }
+                }
+                Rectangle {
+                    id: iconMask
+                    anchors.centerIn: parent
+                    width: 30; height: width
+                    radius: width * 0.30
+                    visible: card.iconSource.length > 0
+                    color: "transparent"
+                    // Rectangle.clip doesn't round-corner child Images reliably.
+                    // Use layer + OpacityMask to actually crop the icon to the
+                    // rounded rectangle (same pattern as DockWindowPreview).
+                    layer.enabled: true
+                    layer.effect: OpacityMask {
+                        maskSource: Rectangle {
+                            width: iconMask.width
+                            height: iconMask.height
+                            radius: iconMask.radius
+                            color: "black"
+                            visible: false
+                        }
+                    }
+                    IconImage {
+                        anchors.fill: parent
+                        source: card.iconSource
+                        asynchronous: true
+                        smooth: true
+                    }
+                }
+            }
+
+            Rectangle {
+                id: countBadge
+                visible: card.groupCount > 1
+                width: badgeText.implicitWidth + 12
+                height: 18; radius: 9
+                anchors { right: closeButton.left; rightMargin: 8; top: parent.top; topMargin: 15 }
+                color: Qt.rgba(1, 1, 1, 0.16)
+                Text {
+                    id: badgeText
+                    anchors.centerIn: parent
+                    text: card.groupCount
+                    color: card.foregroundColor
+                    font { pixelSize: 11; bold: true }
+                }
+            }
+
+            MouseArea {
+                anchors {
+                    left: parent.left; top: parent.top
+                    right: countBadge.visible ? countBadge.left : closeButton.left
+                    bottom: appMark.bottom
+                }
+                visible: card.groupCount > 1
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.groupService.toggleCollapsed(card.index)
+            }
+
+            // ---- content ----
+
+            Column {
+                id: content
+                anchors {
+                    left: appMark.right; leftMargin: 10
+                    right: closeButton.left; rightMargin: 8
+                    top: parent.top; topMargin: 14
+                    bottom: parent.bottom; bottomMargin: 14
+                }
+                spacing: 4
+
+                Text {
+                    width: parent.width
+                    text: card.expanded
+                        ? (modelData.appName.length > 0 ? modelData.appName : "Notifications")
+                        : card.displaySummary
+                    color: card.foregroundColor
+                    style: Text.Outline
+                    styleColor: card.textOutlineColor
+                    font { pixelSize: 14; bold: true }
+                    elide: Text.ElideRight
+                    maximumLineCount: 1
                 }
 
-                Item {
-                    id: appMark
-                    width: 34
-                    height: width
-                    anchors {
-                        left: parent.left
-                        leftMargin: 14
-                        top: parent.top
-                        topMargin: 14
-                    }
+                Text {
+                    width: parent.width
+                    visible: !card.expanded && text.length > 0
+                    text: card.displayBody
+                    color: card.foregroundColor
+                    style: Text.Outline
+                    styleColor: card.textOutlineColor
+                    opacity: 0.78
+                    font.pixelSize: 13
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 4
+                    elide: Text.ElideRight
+                    textFormat: Text.PlainText
+                }
 
-                    Text {
-                        anchors.centerIn: parent
-                        visible: !iconMask.visible
-                        text: card.notification.appName.length > 0
-                            ? card.notification.appName.slice(0, 1).toUpperCase()
-                            : "•"
-                        color: card.foregroundColor
-                        style: Text.Outline
-                        styleColor: card.textOutlineColor
-                        font.pixelSize: 16
-                        font.bold: true
+                // Expanded: one row per notification, newest first.
+                Repeater {
+                    model: {
+                        void root.groupService.sidecarRevision
+                        return card.expanded
+                            ? root.groupService.notificationsForKey(card.groupKey).slice().reverse()
+                            : []
                     }
-
                     Item {
-                        id: iconMask
-                        anchors.centerIn: parent
-                        width: 30
-                        height: width
-                        visible: card.iconSource.length > 0
+                        width: content.width
+                        height: Math.max(notifRowText.implicitHeight, 20)
+                        visible: card.expanded
+                        Text {
+                            id: notifRowText
+                            anchors {
+                                left: parent.left
+                                right: notifRowClose.left
+                                rightMargin: 6
+                                verticalCenter: parent.verticalCenter
+                            }
+                            text: modelData.summary.length > 0
+                                ? modelData.summary
+                                : (modelData.appName || "")
+                            color: card.foregroundColor
+                            style: Text.Outline
+                            styleColor: card.textOutlineColor
+                            font { pixelSize: 13; bold: true }
+                            elide: Text.ElideRight
+                            maximumLineCount: 1
+                        }
+                        Text {
+                            id: notifRowClose
+                            text: "×"
+                            color: card.foregroundColor
+                            style: Text.Outline
+                            styleColor: card.textOutlineColor
+                            opacity: notifRowCloseArea.containsMouse ? 0.9 : 0.45
+                            font.pixelSize: 16
+                            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                            MouseArea {
+                                id: notifRowCloseArea
+                                anchors.fill: parent
+                                anchors.margins: -6
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.groupService.dismissNotification(modelData)
+                            }
+                        }
+                    }
+                }
 
-                        IconImage {
-                            id: appIcon
-                            anchors.fill: parent
-                            source: card.iconSource
-                            asynchronous: true
-                            smooth: true
-                            layer.enabled: true
-                            layer.effect: OpacityMask {
-                                maskSource: Rectangle {
-                                    width: iconMask.width
-                                    height: iconMask.height
-                                    radius: width * 0.20
-                                    color: "black"
-                                    visible: false
+                // Action buttons (collapsed: latest notification).
+                Row {
+                    width: parent.width
+                    spacing: 8
+                    visible: !card.expanded
+                        && card.notification && card.notification.actions
+                        && card.notification.actions.length > 0
+                    Repeater {
+                        model: (card.notification && card.notification.actions)
+                            ? card.notification.actions
+                            : []
+                        Rectangle {
+                            height: 28
+                            width: actionLabel.implicitWidth + 24
+                            radius: 14
+                            color: actionMouse.containsMouse
+                                ? Qt.rgba(1, 1, 1, 0.20)
+                                : Qt.rgba(1, 1, 1, 0.10)
+                            Text {
+                                id: actionLabel
+                                anchors.centerIn: parent
+                                text: {
+                                    const raw = modelData.text || modelData.identifier || ""
+                                    // Some apps (e.g. QQ) send English action labels.
+                                    // Map common ones to Chinese for display.
+                                    const map = {
+                                        "view": "查看",
+                                        "View": "查看",
+                                        "reply": "回复",
+                                        "Reply": "回复",
+                                        "open": "打开",
+                                        "Open": "打开",
+                                        "close": "关闭",
+                                        "Close": "关闭",
+                                        "mark as read": "标为已读",
+                                        "Mark as read": "标为已读"
+                                    }
+                                    return map[raw] || raw
+                                }
+                                color: card.foregroundColor
+                                font.pixelSize: 12
+                                elide: Text.ElideRight
+                            }
+                            MouseArea {
+                                id: actionMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    modelData.invoke()
+                                    if (!card.notification.resident)
+                                        card.close(false)
                                 }
                             }
                         }
                     }
                 }
 
-                Column {
-                    id: content
-                    anchors {
-                        left: appMark.right
-                        leftMargin: 10
-                        right: closeButton.left
-                        rightMargin: 8
-                        top: parent.top
-                        topMargin: 14
-                        bottom: parent.bottom
-                        bottomMargin: 14
-                    }
-                    spacing: 4
-
-                    Text {
-                        width: parent.width
-                        text: card.notification.summary.length > 0
-                            ? card.notification.summary : card.notification.appName
+                // Inline reply (collapsed: latest notification).
+                Rectangle {
+                    width: parent.width
+                    height: 34
+                    radius: 8
+                    visible: !card.expanded
+                        && card.notification && card.notification.hasInlineReply
+                    color: Qt.rgba(1, 1, 1, 0.08)
+                    TextInput {
+                        id: replyInput
+                        anchors { fill: parent; margins: 6 }
+                        verticalAlignment: Text.AlignVCenter
                         color: card.foregroundColor
-                        style: Text.Outline
-                        styleColor: card.textOutlineColor
-                        font.pixelSize: 14
-                        font.bold: true
-                        elide: Text.ElideRight
-                        maximumLineCount: 1
-                    }
-
-                    Text {
-                        width: parent.width
-                        visible: text.length > 0
-                        text: card.notification.body
-                        color: card.foregroundColor
-                        style: Text.Outline
-                        styleColor: card.textOutlineColor
-                        opacity: 0.78
                         font.pixelSize: 13
-                        wrapMode: Text.Wrap
-                        maximumLineCount: 4
-                        elide: Text.ElideRight
-                        textFormat: Text.PlainText
+                        text: ""
+                        Text {
+                            visible: !replyInput.text && !replyInput.activeFocus
+                            text: card.notification
+                                ? (card.notification.inlineReplyPlaceholder || "Reply…")
+                                : "Reply…"
+                            color: Qt.rgba(1, 1, 1, 0.40)
+                            font.pixelSize: 13
+                            anchors.fill: parent
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        onAccepted: {
+                            if (text.length > 0 && card.notification) {
+                                card.notification.sendInlineReply(text)
+                                text = ""
+                                if (!card.notification.resident)
+                                    card.close(false)
+                            }
+                        }
                     }
                 }
+            }
 
-                Text {
-                    id: closeButton
-                    text: "×"
-                    color: card.foregroundColor
-                    style: Text.Outline
-                    styleColor: card.textOutlineColor
-                    opacity: 0.55
-                    font.pixelSize: 22
-                    anchors {
-                        right: parent.right
-                        rightMargin: 12
-                        top: parent.top
-                        topMargin: 9
-                    }
+            // ---- close button ----
 
-                    MouseArea {
-                        anchors.fill: parent
-                        anchors.margins: -6
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: card.close(false)
-                    }
+            Text {
+                id: closeButton
+                text: "×"
+                color: card.foregroundColor
+                style: Text.Outline
+                styleColor: card.textOutlineColor
+                opacity: 0.55
+                font.pixelSize: 22
+                anchors { right: parent.right; rightMargin: 12; top: parent.top; topMargin: 9 }
+                MouseArea {
+                    anchors.fill: parent
+                    anchors.margins: -6
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: card.close(false)
                 }
             }
         }

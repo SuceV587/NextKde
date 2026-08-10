@@ -138,6 +138,7 @@ BlurEffect::BlurEffect()
         m_roundedOnscreenPass.texUnitLocation = m_roundedOnscreenPass.shader->uniformLocation("texUnit");
         m_roundedOnscreenPass.blurSizeLocation = m_roundedOnscreenPass.shader->uniformLocation("blurSize");
         m_roundedOnscreenPass.edgeSizePixelsLocation = m_roundedOnscreenPass.shader->uniformLocation("edgeSizePixels");
+        m_roundedOnscreenPass.highlightWidthPxLocation = m_roundedOnscreenPass.shader->uniformLocation("highlightWidthPx");
         m_roundedOnscreenPass.refractionStrengthLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionStrength");
         m_roundedOnscreenPass.refractionNormalPowLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionNormalPow");
         m_roundedOnscreenPass.refractionRGBFringingLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionRGBFringing");
@@ -966,13 +967,27 @@ void BlurEffect::prePaintWindow(EffectWindow *w, WindowPrePaintData &data, std::
 }
 #else
 #ifdef GLASS_KWIN_67
-void BlurEffect::prePaintWindow(RenderView *view, EffectWindow *w, WindowPrePaintData &data)
-{
-    effects->prePaintWindow(view, w, data);
-    if (!blurRegion(w).isEmpty()) {
-        data.setTranslucent();
-    }
-}
+// KWin 6.7: prePaintWindow is intentionally NOT overridden.
+//
+// Previously this called data.setTranslucent() for blurred windows, which
+// marks them as non-opaque in paintSimpleScreen's occlusion cull.  That
+// prevents visible -= deviceOpaque for the dock, so the WALL keeps painting
+// behind it -- but it also means the dock's own drawWindow() uses
+// PAINT_WINDOW_TRANSLUCENT, so effects->drawWindow() composites the dock
+// semi-transparently over whatever is already in the renderTarget.
+//
+// When a popup appears/disappears, the screen damage is narrow (the popup's
+// footprint).  The dock's deviceRegion shrinks to that sliver, so
+// renderTarget is NOT cleared outside it -- it retains the previous frame's
+// (blur + dock) content.  The blur onscreen pass then uses GL_BLEND to
+// composite over that stale content, producing a double-rendered flicker.
+//
+// Upstream KDE 6.7.3 blur does not override prePaintWindow.  Instead it
+// relies on BackgroundEffectItem + setPixelsToExpandRepaintsBelowOpaqueRegions
+// to expand the repaint region via the forceTranslucent mechanism in
+// collectDamage(), which subtracts the blur area from the dock's opaque
+// region so the WALL repaints behind it -- without marking the dock
+// translucent for compositing.
 #else
 void BlurEffect::prePaintWindow(RenderView *view, EffectWindow *w, WindowPrePaintData &data, std::chrono::milliseconds presentTime)
 {
@@ -1279,12 +1294,28 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     }
 
     if (smoothQuickshellCard) {
-        effectiveContentShape.clear();
+        // Only use the full-card smooth path when the repaint region covers the
+        // entire card.  When a popup appears/disappears, deviceRegion is a narrow
+        // strip and dirtyRegion only covers part of the card -- rendering the full
+        // area would blur stale framebuffer[0] content and flicker.  In that case
+        // keep the deviceRegion-clipped effectiveContentShape so the onscreen pass
+        // only touches the region that was actually updated.
+        RectF eeBounds;
+        for (const auto &r : effectiveEffectShape) {
+            eeBounds = eeBounds.united(r);
+        }
+        const bool fullCoverage = eeBounds.width() >= scaledBackgroundRect.width() * 0.99
+            && eeBounds.height() >= scaledBackgroundRect.height() * 0.99;
+        if (fullCoverage) {
+            effectiveContentShape.clear();
 #ifdef GLASS_X11
-        effectiveContentShape.append(QRectF(0, 0, scaledBackgroundRect.width(), scaledBackgroundRect.height()));
+            effectiveContentShape.append(QRectF(0, 0, scaledBackgroundRect.width(), scaledBackgroundRect.height()));
 #else
-        effectiveContentShape.append(RectF(0, 0, scaledBackgroundRect.width(), scaledBackgroundRect.height()));
+            effectiveContentShape.append(RectF(0, 0, scaledBackgroundRect.width(), scaledBackgroundRect.height()));
 #endif
+        } else {
+            smoothQuickshellCard = false;
+        }
     }
 
     // Maybe reallocate offscreen render targets. Keep in mind that the first one contains
@@ -1564,8 +1595,11 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.cornerRadiusLocation, shaderCornerRadius.toVector());
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.opacityLocation, modulation);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.texUnitLocation, 0);
-    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.blurSizeLocation, QVector2D(nativeBox.width(), nativeBox.height()));
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.blurSizeLocation, smoothQuickshellCard
+        ? QVector2D(scaledBackgroundRect.width(), scaledBackgroundRect.height())
+        : QVector2D(nativeBox.width(), nativeBox.height()));
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.edgeSizePixelsLocation, m_settings.refraction.edgeSizePixels);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.highlightWidthPxLocation, m_settings.refraction.highlightWidthPx);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionStrengthLocation, m_settings.refraction.refractionStrength);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionNormalPowLocation, m_settings.refraction.refractionNormalPow);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionRGBFringingLocation, m_settings.refraction.refractionRGBFringing);

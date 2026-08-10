@@ -1,6 +1,7 @@
 module qs.modules.common
 RoundedBlurRegion 1.0 RoundedBlurRegion.qml
 LiquidGlassSurface 1.0 LiquidGlassSurface.qml
+EnhancedGlassSurface 1.0 EnhancedGlassSurface.qml
 ArtworkPalette 1.0 ArtworkPalette.qml
 AppIcon 1.0 AppIcon.qml
 singleton AppPresentationService 1.0 AppPresentationService.qml

@@ -7,6 +7,7 @@ uniform float glowStrength;
 uniform int edgeLighting;
 
 uniform float edgeSizePixels;
+uniform float highlightWidthPx;
 uniform float refractionStrength;
 uniform float refractionNormalPow;
 uniform float refractionRGBFringing;
@@ -86,63 +87,142 @@ GlassFragment glassRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadiu
     return GlassFragment(color, dist, edgeFactor, concaveFactor, vec3(0.0, 0.0, 1.0), 1.0);
 }
 
-vec3 glassOutline(vec2 position, GlassFragment s, vec4 cornerRadius)
-{
-    // On a straight edge the SDF normal points mostly along one axis.  At a
-    // rounded corner both components are large, so applying the full edge
-    // light there creates a conspicuous bright knot.  Fade the highlight as
-    // the normal turns into a corner while keeping the straight-edge response
-    // unchanged.
-    const float h = 0.75;
-    vec2 halfBlurSize = blurSize * 0.5;
-    vec2 sdfGradient = vec2(
-        roundedRectangleDist(position + vec2(h, 0.0), halfBlurSize, cornerRadius)
-            - roundedRectangleDist(position - vec2(h, 0.0), halfBlurSize, cornerRadius),
-        roundedRectangleDist(position + vec2(0.0, h), halfBlurSize, cornerRadius)
-            - roundedRectangleDist(position - vec2(0.0, h), halfBlurSize, cornerRadius)
-    );
-    vec2 normalXY = length(sdfGradient) > 0.0001
-        ? abs(normalize(sdfGradient))
-        : vec2(0.0);
-    float cornerFactor = smoothstep(0.22, 0.68, min(normalXY.x, normalXY.y));
-    float edgeLightFactor = 1.0 - 0.62 * cornerFactor;
-
-    float rimMask = clamp(0.25 * s.concaveFactor * edgeLightFactor, 0.0, glowStrength);
-    vec3 glow = mix(s.color.rgb, glowColor, rimMask);
-    if (edgeLighting == 1) {
-        glow += s.color.rgb * s.concaveFactor * edgeLightFactor;
-    }
-
-    if (glowStrength > 0.0) {
-        float edgeMask = smoothstep(0.0, -2.0, s.dist);
-        float borderInner = smoothstep(-1.0, -3.0, s.dist);
-        float edgeProfile = edgeMask - borderInner;
-        float thicknessShadow = pow(edgeProfile, 0.9);
-        float shadowMask = smoothstep(blurSize.y * 0.7, -blurSize.y * 0.7, position.y) *
-                           smoothstep(blurSize.x * 0.7, -blurSize.x * 0.7, position.x);
-        float highlightMask = smoothstep(-blurSize.y * 0.7, blurSize.y * 0.7, position.y) *
-                              smoothstep(-blurSize.x * 0.7, blurSize.x * 0.7, position.x);
-
-        glow = mix(glow, vec3(1.0), thicknessShadow * shadowMask);
-        glow = mix(glow, vec3(1.0), thicknessShadow * highlightMask);
-    }
-
-    return glow;
-}
-
+// ── Bidirectional tint ────────────────────────────────────────────────
+// Tint strength scales with how far the backdrop brightness is from the
+// mid-point (0.5): a near-white or near-black background gets the full
+// configured strength, a mid-grey background gets almost none, and the
+// result is hard-capped at 15% so the glass never turns into painted
+// plastic. The tint *colour* flips from dark (configured tintColor) on
+// bright backgrounds to white on dark backgrounds, so the glass always
+// retains material depth instead of turning into a flat black slab.
+// These must be declared before glassOutline() because glassOutline applies
+// the tint to the backdrop.
 float adjustedTintStrength(float baseTintStrength, vec3 backgroundColor)
 {
     float strength = clamp(baseTintStrength, 0.0, 1.0);
 
+    // Bright backdrops may deepen up to 28% so white text stays readable on
+    // white backgrounds; dark backdrops stay at 15% so the glass keeps its
+    // transparent liquid-glass look.
     const vec3 grayscaleWeights = vec3(0.299, 0.587, 0.114);
     float backgroundGray = dot(backgroundColor, grayscaleWeights);
 
-    float finalScale = clamp(abs(backgroundGray - tintGray), 0.0, 1.0);
+    float cap = mix(0.15, 0.28, smoothstep(0.70, 0.80, backgroundGray));
 
-    float localStrength = strength * finalScale;
     float useLocal = step(0.5, float(autoTintAlpha)) * step(0.001, strength);
+    if (useLocal < 0.5)
+        return min(strength, cap);
 
-    return mix(strength, localStrength, useLocal);
+    float deviation = abs(backgroundGray - 0.5) * 2.0;
+    float scale = mix(0.05, 1.0, deviation);
+
+    return min(strength * scale, cap);
+}
+
+vec3 bidirectionalTintColor(vec3 backgroundColor, vec3 darkTint)
+{
+    float useLocal = step(0.5, float(autoTintAlpha)) * step(0.001, tintStrength);
+    if (useLocal < 0.5)
+        return darkTint;
+
+    const vec3 grayscaleWeights = vec3(0.299, 0.587, 0.114);
+    float backgroundGray = dot(backgroundColor, grayscaleWeights);
+
+    float t = smoothstep(0.35, 0.65, backgroundGray);
+    return mix(vec3(1.0), darkTint, t);
+}
+
+// Adaptive highlight colour: on a dark background the highlight is pure white
+// for maximum contrast; on a bright background it lifts just above the
+// backdrop instead of clipping to flat white. This mirrors iOS liquid glass
+// where the rim reads as a luminous edge, not a hardcoded white stripe.
+vec3 adaptiveHighlightColor(vec3 backgroundColor)
+{
+    const vec3 grayscaleWeights = vec3(0.299, 0.587, 0.114);
+    float backgroundGray = dot(backgroundColor, grayscaleWeights);
+
+    // Dark bg -> white (1.0). Bright bg -> background + 0.35, clamped.
+    // smoothstep gives a soft transition through mid-tones.
+    float t = smoothstep(0.30, 0.70, backgroundGray);
+    float brightHighlight = min(backgroundGray + 0.35, 1.0);
+    return mix(vec3(1.0), vec3(brightHighlight), t);
+}
+
+// Luminosity-preserving bidirectional tint with a gentle saturation lift.
+// A plain mix() toward black/white darkens the backdrop's luminance, which
+// is what makes glass read as painted plastic. Keeping the backdrop's own
+// luminance and only nudging its chroma (the essence of iOS "vibrancy")
+// keeps the material transparent and rich.
+vec3 applyGlassTint(vec3 backdrop)
+{
+    const vec3 grayscaleWeights = vec3(0.299, 0.587, 0.114);
+    vec3 lifted = mix(vec3(dot(backdrop, grayscaleWeights)), backdrop, 1.08);
+    float strength = adjustedTintStrength(tintStrength, lifted);
+    vec3 tintCol = bidirectionalTintColor(lifted, tintColor);
+    return mix(lifted, tintCol, strength);
+}
+
+// Half-circle lens profile of the rim bevel. dd is the distance from the
+// rim (0 at the edge, growing inward); the height rises smoothly from 0 at
+// the rim to zR at the inner edge of the band. Used to build the rim normal
+// so the fresnel/specular lighting has its own geometry, independent of the
+// refraction zone width.
+float rimBandHeight(float dd, float zR)
+{
+    dd = clamp(dd, 0.0, zR);
+    return sqrt(dd * (2.0 * zR - dd));
+}
+// ── End bidirectional tint ────────────────────────────────────────────
+
+vec3 glassOutline(vec2 position, GlassFragment s, vec4 cornerRadius)
+{
+    // Tint is applied to the *backdrop* colour before any edge lighting is
+    // added, so the rim highlights stay luminous instead of being dragged
+    // toward the tint colour (black on bright backgrounds).
+    vec3 baseColor = applyGlassTint(s.color.rgb);
+
+    vec2 halfBlurSize = blurSize * 0.5;
+    float minHalfSize = min(halfBlurSize.x, halfBlurSize.y);
+
+    // ── Rim lighting, decoupled from the refraction zone ───────────────
+    // The fresnel + specular below live inside their own band whose width is
+    // highlightWidthPx, so widening RefractionEdgeSize (the refraction zone)
+    // no longer thickens the highlight.
+    float zR = clamp(highlightWidthPx, 0.5, minHalfSize * 0.5);
+
+    // Bevel height field sampled by finite differences. The surface tilts
+    // most at the rim (normalZ -> 0) and is flat in the interior
+    // (normalZ -> 1), giving a continuous grazing-angle ramp instead of a
+    // hardcoded stripe band.
+    const float eps = 0.75;
+    vec2 gradPosX = vec2(eps, 0.0);
+    vec2 gradPosY = vec2(0.0, eps);
+    float hR = rimBandHeight(-roundedRectangleDist(position + gradPosX, halfBlurSize, cornerRadius), zR);
+    float hL = rimBandHeight(-roundedRectangleDist(position - gradPosX, halfBlurSize, cornerRadius), zR);
+    float hU = rimBandHeight(-roundedRectangleDist(position + gradPosY, halfBlurSize, cornerRadius), zR);
+    float hD = rimBandHeight(-roundedRectangleDist(position - gradPosY, halfBlurSize, cornerRadius), zR);
+    vec2 hGrad = vec2(hR - hL, hU - hD) / (2.0 * eps);
+
+    float invLen = inversesqrt(max(dot(hGrad, hGrad), 1e-8) + 1.0);
+    float normalZ = invLen;                 // 1.0 in the interior, 0.0 at the rim
+    float fresnel = 1.0 - normalZ;
+
+    vec3 rgb = baseColor;
+    vec3 rimLight = adaptiveHighlightColor(baseColor);
+
+    // Fresnel rim: soft luminous edge, added additively so it reads as light
+    // catching the edge rather than a painted stripe.
+    rgb += rimLight * fresnel * 0.16;
+
+    // Diagonal key-light glint (strongest at the top-right corner, fading
+    // around the shape) — the asymmetric "wet" highlight from iOS instead of
+    // a uniform white band.
+    vec2 n2d = hGrad * invLen;
+    const vec2 lightDir = vec2(0.7071, 0.7071);
+    float spec = pow(max(dot(n2d, lightDir), 0.0), 14.0);
+    rgb += rimLight * spec * fresnel * 0.35;
+
+    return rgb;
 }
 
 vec4 glass(vec4 sum, vec4 cornerRadius)
@@ -171,7 +251,14 @@ vec4 glass(vec4 sum, vec4 cornerRadius)
         s = GlassFragment(sum, dist, edgeFactor, concaveFactor, vec3(0.0, 0.0, 1.0), 1.0);
     }
 
-    vec3 rgb = s.concaveFactor < 1.0 ? glassOutline(position, s, cornerRadius) : s.color.rgb;
-    vec3 tinted = mix(rgb, tintColor, adjustedTintStrength(tintStrength, rgb));
-    return roundedRectangle(uv * blurSize, tinted, cornerRadius);
+    // Tint + rim lighting are applied inside glassOutline() on the backdrop
+    // colour only, so edge highlights stay bright. When there is no edge
+    // outline (flat centre), apply the tint directly to the backdrop.
+    vec3 rgb;
+    if (s.concaveFactor < 1.0) {
+        rgb = glassOutline(position, s, cornerRadius);
+    } else {
+        rgb = applyGlassTint(s.color.rgb);
+    }
+    return roundedRectangle(uv * blurSize, rgb, cornerRadius);
 }

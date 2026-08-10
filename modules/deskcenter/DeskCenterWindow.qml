@@ -1643,15 +1643,27 @@ PanelWindow {
             : iconSize === 56 ? 11 : 9
         readonly property int fileNameFontWeight: iconSize === 72 ? Font.Bold
             : iconSize === 56 ? Font.DemiBold : Font.Medium
-        readonly property int preferredItemWidth: iconSize + 56
+        // Reserve real gutters around every icon.  The gaps are not merely
+        // visual: they belong to the desktop background so users can start a
+        // rubber-band selection between neighbouring files.
+        readonly property int preferredItemWidth: iconSize + 72
         readonly property int columnCount: Math.max(1, Math.floor(width / preferredItemWidth))
         readonly property real itemWidth: width / columnCount
-        readonly property real itemHeight: iconSize + 48
+        readonly property real itemHeight: iconSize + 58
         readonly property int rowCount: Math.max(1, Math.floor(height / itemHeight))
         property var selectedPaths: []
         property var contextEntry: null
         property string renamingPath: ""
         property string pendingRenamePath: ""
+        property string folderDropCandidatePath: ""
+        property string dropFolderPath: ""
+        property real folderDropProgress: 0
+        property string draggingPath: ""
+        property real groupDragOffsetX: 0
+        property real groupDragOffsetY: 0
+        property var reorderSettleFrom: ({})
+        property bool reorderSettleActive: false
+        property int reorderInsertionIndex: -1
         property bool selectionBoxActive: false
         property real selectionStartX: 0
         property real selectionStartY: 0
@@ -1667,9 +1679,135 @@ PanelWindow {
             property string orderJson: "[]"
             property int iconSize: 56
             property bool showExtensions: true
+            // Per-folder customisation keyed by absolute path. Each value is
+            // { "color": "#hex", "emoji": "📁" }. Empty emoji keeps the Nerd
+            // Font folder glyph but tints it with the chosen color.
+            property string folderCustomJson: "{}"
+        }
+
+        // Parsed cache of folderCustomJson, rebuilt only when the raw string
+        // changes so delegates don't re-parse on every paint.
+        readonly property var _folderCustomCache: {
+            try { return JSON.parse(desktopLayout.folderCustomJson) } catch (_) { return {} }
+        }
+
+        function folderCustomFor(path) {
+            const map = desktopFileGrid._folderCustomCache
+            return map && map[path] ? map[path] : null
+        }
+
+        function _writeFolderCustom(path, color, emoji) {
+            let map
+            try { map = JSON.parse(desktopLayout.folderCustomJson) } catch (_) { map = {} }
+            if (!color && !emoji)
+                delete map[path]
+            else
+                map[path] = { "color": color || "", "emoji": emoji || "" }
+            desktopLayout.folderCustomJson = JSON.stringify(map)
+            desktopLayout.sync()
+        }
+
+        function setFolderColor(path, color) {
+            const existing = folderCustomFor(path)
+            _writeFolderCustom(path, color, existing ? existing.emoji : "")
+        }
+
+        function setFolderEmoji(path, emoji) {
+            const existing = folderCustomFor(path)
+            _writeFolderCustom(path, existing ? existing.color : "", emoji)
+        }
+
+        function removeFolderCustom(path) {
+            _writeFolderCustom(path, "", "")
+        }
+
+        function migrateFolderCustom(oldPath, newPath) {
+            if (oldPath === newPath)
+                return
+            const existing = folderCustomFor(oldPath)
+            if (!existing)
+                return
+            _writeFolderCustom(oldPath, "", "")
+            _writeFolderCustom(newPath, existing.color, existing.emoji)
+        }
+
+
+        // A visible hold-to-drop progress, mirroring the App Launcher folder
+        // interaction. Only a completed bar arms the actual file operation.
+        NumberAnimation {
+            id: folderDropProgressAnimation
+            target: desktopFileGrid
+            property: "folderDropProgress"
+            from: 0
+            to: 1
+            duration: 520
+            easing.type: Easing.Linear
+            onFinished: {
+                if (desktopFileGrid.folderDropCandidatePath !== "") {
+                    desktopFileGrid.dropFolderPath = desktopFileGrid.folderDropCandidatePath
+                }
+            }
+        }
+
+        function updateFolderDropTarget(pointX, pointY, sourcePath) {
+            const target = folderAtDropPoint(pointX, pointY, sourcePath)
+            const path = target?.path ?? ""
+            if (folderDropCandidatePath === path)
+                return
+            folderDropCandidatePath = path
+            dropFolderPath = ""
+            folderDropProgressAnimation.stop()
+            folderDropProgress = 0
+            if (path)
+                folderDropProgressAnimation.restart()
+        }
+
+        function clearFolderDropTarget() {
+            folderDropProgressAnimation.stop()
+            folderDropCandidatePath = ""
+            dropFolderPath = ""
+            folderDropProgress = 0
+        }
+
+        function clearGroupDrag() {
+            draggingPath = ""
+            groupDragOffsetX = 0
+            groupDragOffsetY = 0
+        }
+
+        Timer {
+            id: reorderSettleTimer
+            interval: 16
+            repeat: false
+            onTriggered: desktopFileGrid.reorderSettleActive = false
+        }
+
+        function clearReorderSettle() {
+            reorderSettleTimer.stop()
+            reorderSettleActive = false
+            reorderSettleFrom = ({})
+        }
+
+        function updateReorderInsertion(path, destinationIndex) {
+            const sourceIndex = orderedEntries.findIndex(function(entry) {
+                return entry.path === path
+            })
+            const targetIndex = Math.max(0,
+                Math.min(orderedEntries.length - 1, destinationIndex))
+            reorderInsertionIndex = sourceIndex === targetIndex ? -1 : targetIndex
+        }
+
+        function clearReorderInsertion() {
+            reorderInsertionIndex = -1
         }
 
         function ordered(source) {
+            // Prune stale folder-customisation entries whose paths no longer
+            // exist on the desktop. This prevents a deleted-then-recreated
+            // folder from inheriting a stale customisation, and keeps the
+            // persisted JSON from growing without bound.
+            pruneFolderCustom(source)
+
             let saved = []
             try { saved = JSON.parse(desktopLayout.orderJson) } catch (_) {}
             const positions = ({})
@@ -1694,6 +1832,35 @@ PanelWindow {
             })
         }
 
+        function pruneFolderCustom(source) {
+            // Never prune when the entry list is empty - that happens during
+            // startup before the snapshot loads, and pruning would wipe all
+            // saved customisations.
+            if (!source || source.length === 0)
+                return
+            let map
+            try { map = JSON.parse(desktopLayout.folderCustomJson) } catch (_) { return }
+            const livePaths = ({})
+            for (let index = 0; index < source.length; ++index) {
+                const entry = source[index]
+                if (entry && entry.kind === "folder" && entry.path)
+                    livePaths[entry.path] = true
+            }
+            let changed = false
+            const keys = Object.keys(map)
+            for (let i = 0; i < keys.length; ++i) {
+                const key = keys[i]
+                if (!livePaths[key]) {
+                    delete map[key]
+                    changed = true
+                }
+            }
+            if (changed) {
+                desktopLayout.folderCustomJson = JSON.stringify(map)
+                desktopLayout.sync()
+            }
+        }
+
         function reorder(path, destinationIndex) {
             const next = orderedEntries.slice()
             const sourceIndex = next.findIndex(function(entry) { return entry.path === path })
@@ -1702,9 +1869,29 @@ PanelWindow {
             const targetIndex = Math.max(0, Math.min(next.length - 1, destinationIndex))
             if (sourceIndex === targetIndex)
                 return
+            const previousPositions = ({})
+            for (let index = 0; index < next.length; ++index) {
+                previousPositions[next[index].path] = ({
+                    x: (columnCount - 1 - Math.floor(index / rowCount)) * itemWidth,
+                    y: (index % rowCount) * itemHeight
+                })
+            }
             const entry = next.splice(sourceIndex, 1)[0]
             next.splice(targetIndex, 0, entry)
+            // The dragged item itself is already under the pointer. Only the
+            // displaced neighbours animate into their new positions after a
+            // successful drop, never while the user is still deciding.
+            const sourceNewIndex = next.findIndex(function(candidate) {
+                return candidate.path === path
+            })
+            previousPositions[path] = ({
+                x: (columnCount - 1 - Math.floor(sourceNewIndex / rowCount)) * itemWidth,
+                y: (sourceNewIndex % rowCount) * itemHeight
+            })
+            reorderSettleFrom = previousPositions
+            reorderSettleActive = true
             saveOrder(next)
+            reorderSettleTimer.restart()
         }
 
         function saveOrder(entries) {
@@ -1712,15 +1899,36 @@ PanelWindow {
             desktopLayout.sync()
         }
 
-        function arrangeByName() {
+        function arrange(compare) {
             const next = root.desktopFiles.entries.slice().sort(function(left, right) {
                 const leftIsFolder = left.kind === "folder"
                 const rightIsFolder = right.kind === "folder"
                 if (leftIsFolder !== rightIsFolder)
                     return leftIsFolder ? -1 : 1
-                return left.name.localeCompare(right.name)
+                const result = compare(left, right)
+                return result || (left.name || "").localeCompare(right.name || "")
             })
             saveOrder(next)
+        }
+
+        function arrangeByName() {
+            arrange(function(left, right) {
+                return (left.name || "").localeCompare(right.name || "")
+            })
+        }
+
+        function arrangeByType() {
+            arrange(function(left, right) {
+                return (left.kind || "").localeCompare(right.kind || "")
+            })
+        }
+
+        function arrangeByModified(newestFirst) {
+            arrange(function(left, right) {
+                const leftTime = Number(left.modifiedAt) || 0
+                const rightTime = Number(right.modifiedAt) || 0
+                return newestFirst ? rightTime - leftTime : leftTime - rightTime
+            })
         }
 
         function resetLayout() {
@@ -1754,6 +1962,13 @@ PanelWindow {
         function createNewFolder() {
             pendingRenamePath = ""
             root.desktopFiles.createUntitledFolder(function(path) {
+                desktopFileGrid.pendingRenamePath = path
+            })
+        }
+
+        function createNewFile() {
+            pendingRenamePath = ""
+            root.desktopFiles.createUntitledFile(function(path) {
                 desktopFileGrid.pendingRenamePath = path
             })
         }
@@ -1909,6 +2124,8 @@ PanelWindow {
             contextEntry = null
             if (kind === "folder")
                 createNewFolder()
+            else if (kind === "file")
+                createNewFile()
             else if (kind === "openEntry")
                 root.desktopFiles.openEntry(entry)
             else if (kind === "rename")
@@ -1919,7 +2136,6 @@ PanelWindow {
                 const entries = selectedEntries()
                 selectedPaths = []
                 root.desktopFiles.trashEntries(entries, function() {
-                    console.log("[DesktopTrash] delete completed count=" + entries.length)
                     DockTrashService.celebrateDeposit()
                 })
             }
@@ -1946,6 +2162,36 @@ PanelWindow {
             return Math.max(0, Math.min(orderedEntries.length - 1, index))
         }
 
+        function folderAtDropPoint(pointX, pointY, sourcePath) {
+            if (!Number.isFinite(pointX) || !Number.isFinite(pointY)
+                    || pointX < 0 || pointY < 0
+                    || pointX >= width || pointY >= height)
+                return null
+            const index = indexAt(pointX, pointY)
+            const entry = orderedEntries[index]
+            if (entry?.kind !== "folder" || entry.path === sourcePath)
+                return null
+
+            // Grid cells intentionally include generous empty space for
+            // arranging icons. Accept only the compact center of the folder
+            // icon: labels and all surrounding cell space remain available
+            // for precise icon reordering.
+            const column = Math.max(0, Math.min(columnCount - 1,
+                Math.floor(pointX / itemWidth)))
+            const row = Math.max(0, Math.min(rowCount - 1,
+                Math.floor(pointY / itemHeight)))
+            const localX = pointX - column * itemWidth
+            const localY = pointY - row * itemHeight
+            const iconHitSize = iconSize * 0.76
+            const iconLeft = (itemWidth - iconHitSize) / 2
+            const iconRight = iconLeft + iconHitSize
+            const iconTop = 8 + (iconSize - iconHitSize) / 2
+            const iconBottom = iconTop + iconHitSize
+            const onIcon = localX >= iconLeft && localX <= iconRight
+                && localY >= iconTop && localY <= iconBottom
+            return onIcon ? entry : null
+        }
+
         Item {
             id: desktopKeyboard
             anchors.fill: parent
@@ -1965,6 +2211,43 @@ PanelWindow {
             target: root.desktopFiles
             function onEntriesChanged() {
                 desktopFileGrid.startPendingRename()
+            }
+            function onLastErrorChanged() {
+                if (root.desktopFiles.lastError)
+                    root.sendTimerNotification("桌面文件", root.desktopFiles.lastError)
+            }
+        }
+
+        DropArea {
+            id: externalDesktopDrop
+            anchors.fill: parent
+            z: 20
+            onEntered: function(drag) {
+                // Ignore a desktop icon's own outgoing URI drag.
+                drag.accepted = drag.hasUrls && !drag.source
+            }
+            onDropped: function(drop) {
+                if (!drop.hasUrls || drop.source) {
+                    drop.accepted = false
+                    return
+                }
+                root.desktopFiles.importExternalUrls(drop.urls)
+                drop.accepted = true
+            }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            visible: externalDesktopDrop.containsDrag
+            color: Qt.rgba(1, 1, 1, 0.06)
+            border { width: 1; color: Qt.rgba(1, 1, 1, 0.32) }
+            radius: 16
+            z: 19
+            Text {
+                anchors.centerIn: parent
+                text: "复制到桌面"
+                color: Qt.rgba(1, 1, 1, 0.78)
+                font { pixelSize: 13; weight: Font.DemiBold }
             }
         }
 
@@ -2050,16 +2333,48 @@ PanelWindow {
                 property double previousClickTime: 0
                 property real dropCenterX: 0
                 property real dropCenterY: 0
+                property real dropPointerX: 0
+                property real dropPointerY: 0
+                property var dragEntries: []
+                property double suppressOpenUntil: 0
                 readonly property bool isRenaming: desktopFileGrid.renamingPath === modelData.path
+                readonly property bool followsGroupDrag: desktopFileGrid.draggingPath !== ""
+                    && desktopFileGrid.draggingPath !== modelData.path
+                    && desktopFileGrid.isSelected(modelData.path)
+                readonly property var reorderSettleOrigin: desktopFileGrid.reorderSettleFrom[modelData.path]
+                readonly property bool followsReorderSettle: !followsGroupDrag
+                    && !filePointer.drag.active
+                    && desktopFileGrid.reorderSettleActive && reorderSettleOrigin !== undefined
+                readonly property real reorderSettleOffsetX: followsReorderSettle
+                    ? reorderSettleOrigin.x - gridColumn * desktopFileGrid.itemWidth : 0
+                readonly property real reorderSettleOffsetY: followsReorderSettle
+                    ? reorderSettleOrigin.y - gridRow * desktopFileGrid.itemHeight : 0
                 x: gridColumn * desktopFileGrid.itemWidth
                 y: gridRow * desktopFileGrid.itemHeight
                 width: desktopFileGrid.itemWidth
                 height: desktopFileGrid.itemHeight
                 visible: gridColumn >= 0 && y + height <= desktopFileGrid.height
-                z: filePointer.drag.active ? 10 : 0
+                z: filePointer.drag.active ? 10 : followsGroupDrag ? 9 : 0
+                transform: Translate {
+                    x: fileDelegate.followsGroupDrag ? desktopFileGrid.groupDragOffsetX
+                        : fileDelegate.reorderSettleOffsetX
+                    y: fileDelegate.followsGroupDrag ? desktopFileGrid.groupDragOffsetY
+                        : fileDelegate.reorderSettleOffsetY
+                    Behavior on x {
+                        enabled: !fileDelegate.followsGroupDrag
+                        NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+                    }
+                    Behavior on y {
+                        enabled: !fileDelegate.followsGroupDrag
+                        NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+                    }
+                }
 
                 Rectangle {
-                    anchors { fill: parent; margins: 3 }
+                    // Match the actual pointer target rather than colouring
+                    // the complete grid cell.  The cell edge stays visibly
+                    // and interactively empty for lasso selection.
+                    anchors.fill: filePointer
                     radius: 10
                     // Hover is intentionally quieter than selection: both
                     // use the neutral black material introduced above.
@@ -2069,6 +2384,45 @@ PanelWindow {
                     border { width: 1; color: Qt.rgba(1, 1, 1, 0.28) }
                     Behavior on opacity {
                         NumberAnimation { duration: 130; easing.type: Easing.OutCubic }
+                    }
+                }
+                Item {
+                    // The target folder shows the exact hold progress rather
+                    // than a vague hover state. Releasing before it fills is
+                    // always treated as an icon reorder.
+                    anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: desktopFileGrid.iconSize + 5 }
+                    width: desktopFileGrid.iconSize
+                    height: 4
+                    visible: modelData.kind === "folder"
+                        && desktopFileGrid.folderDropCandidatePath === modelData.path
+                    opacity: visible ? 1 : 0
+                    Behavior on opacity {
+                        NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
+                    }
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: height / 2
+                        color: Qt.rgba(1, 1, 1, 0.22)
+                    }
+                    Rectangle {
+                        width: parent.width * desktopFileGrid.folderDropProgress
+                        height: parent.height
+                        radius: height / 2
+                        color: Qt.rgba(1, 1, 1, 0.88)
+                    }
+                }
+                // Finder-style destination feedback: only actual folders can
+                // receive a drop, so files never imply an unsupported action.
+                Rectangle {
+                    anchors { fill: parent; margins: 3 }
+                    radius: 10
+                    visible: opacity > 0.01
+                    opacity: modelData.kind === "folder"
+                        && desktopFileGrid.dropFolderPath === modelData.path ? 1 : 0
+                    color: Qt.rgba(0, 0, 0, 0.56)
+                    border { width: 1; color: Qt.rgba(1, 1, 1, 0.62) }
+                    Behavior on opacity {
+                        NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
                     }
                 }
                 Item {
@@ -2089,7 +2443,11 @@ PanelWindow {
                     Item {
                         id: imageThumbnailFrame
                         anchors { fill: parent; margins: 4 }
-                        visible: modelData.kind === "image" && imageThumbnail.status === Image.Ready
+                        visible: modelData.kind === "image"
+                        opacity: imageThumbnail.status === Image.Ready ? 1 : 0
+                        Behavior on opacity {
+                            NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
+                        }
                         Image {
                             id: imageThumbnail
                             anchors.fill: parent
@@ -2122,14 +2480,132 @@ PanelWindow {
                         asynchronous: true
                         visible: source !== "" && status === Image.Ready
                     }
+                    // Folder icon: a unified Canvas-drawn folder shape used
+                    // for both default and customised folders. When a custom
+                    // color is set the folder is tinted with it; when an emoji
+                    // is set it is drawn centered inside the folder body so
+                    // both the folder and the symbol are visible.
+                    Item {
+                        readonly property var folderCustom: modelData.kind === "folder"
+                            ? desktopFileGrid.folderCustomFor(modelData.path) : null
+                        anchors.centerIn: parent
+                        width: desktopFileGrid.iconSize
+                        height: desktopFileGrid.iconSize
+                        visible: modelData.kind === "folder"
+
+                        Canvas {
+                            id: folderCanvas
+                            anchors.fill: parent
+                            readonly property color baseColor: {
+                                const c = parent.folderCustom
+                                if (c && c.color)
+                                    return c.color
+                                return "#70b6ff"
+                            }
+                            onBaseColorChanged: requestPaint()
+                            onWidthChanged: requestPaint()
+                            onHeightChanged: requestPaint()
+                            Component.onCompleted: requestPaint()
+
+                            function shade(hex, factor) {
+                                // Darken/lighten an rgba/hex color by factor
+                                // (0..1 = darker, >1 = lighter).
+                                const ctx = getContext("2d")
+                                const c = Qt.color(hex)
+                                const r = Math.max(0, Math.min(255, Math.round(c.r * 255 * factor)))
+                                const g = Math.max(0, Math.min(255, Math.round(c.g * 255 * factor)))
+                                const b = Math.max(0, Math.min(255, Math.round(c.b * 255 * factor)))
+                                return "rgba(" + r + "," + g + "," + b + "," + c.a + ")"
+                            }
+
+                            onPaint: {
+                                const ctx = getContext("2d")
+                                ctx.reset()
+                                const w = width
+                                const h = height
+                                const margin = w * 0.10
+                                const tabH = h * 0.14
+                                const bodyX = margin
+                                const bodyY = margin + tabH
+                                const bodyW = w - margin * 2
+                                const bodyH = h - margin - bodyY
+                                const r = Math.min(bodyW, bodyH) * 0.18
+
+                                // Back tab (folder flap) - darker shade for depth
+                                ctx.fillStyle = folderCanvas.shade(folderCanvas.baseColor, 0.72)
+                                ctx.globalAlpha = 0.92
+                                ctx.beginPath()
+                                ctx.moveTo(bodyX, bodyY)
+                                ctx.lineTo(bodyX + bodyW * 0.42, bodyY)
+                                ctx.lineTo(bodyX + bodyW * 0.42 + tabH * 0.7, bodyY - tabH)
+                                ctx.lineTo(bodyX + bodyW * 0.72, bodyY - tabH)
+                                ctx.arcTo(bodyX + bodyW * 0.72 + r, bodyY - tabH,
+                                          bodyX + bodyW * 0.72 + r, bodyY - tabH + r, r)
+                                ctx.lineTo(bodyX + bodyW * 0.72 + r, bodyY)
+                                ctx.closePath()
+                                ctx.fill()
+
+                                // Front body - base color fill
+                                ctx.fillStyle = folderCanvas.shade(folderCanvas.baseColor, 1.0)
+                                ctx.globalAlpha = 0.90
+                                roundRect(ctx, bodyX, bodyY, bodyW, bodyH, r)
+                                ctx.fill()
+
+                                // Top highlight strip on the front body
+                                ctx.fillStyle = "rgba(255,255,255,0.18)"
+                                ctx.globalAlpha = 1.0
+                                ctx.beginPath()
+                                ctx.moveTo(bodyX + r, bodyY)
+                                ctx.lineTo(bodyX + bodyW - r, bodyY)
+                                ctx.lineTo(bodyX + bodyW - r, bodyY + bodyH * 0.12)
+                                ctx.lineTo(bodyX + r, bodyY + bodyH * 0.12)
+                                ctx.closePath()
+                                ctx.fill()
+
+                                // Subtle inner border for definition
+                                ctx.strokeStyle = "rgba(0,0,0,0.16)"
+                                ctx.lineWidth = 1
+                                roundRect(ctx, bodyX, bodyY, bodyW, bodyH, r)
+                                ctx.stroke()
+                            }
+
+                            function roundRect(ctx, x, y, w, h, r) {
+                                ctx.beginPath()
+                                ctx.moveTo(x + r, y)
+                                ctx.lineTo(x + w - r, y)
+                                ctx.arcTo(x + w, y, x + w, y + r, r)
+                                ctx.lineTo(x + w, y + h - r)
+                                ctx.arcTo(x + w, y + h, x + w - r, y + h, r)
+                                ctx.lineTo(x + r, y + h)
+                                ctx.arcTo(x, y + h, x, y + h - r, r)
+                                ctx.lineTo(x, y + r)
+                                ctx.arcTo(x, y, x + r, y, r)
+                                ctx.closePath()
+                            }
+                        }
+
+                        // Emoji centered inside the folder body.
+                        Text {
+                            anchors {
+                                horizontalCenter: parent.horizontalCenter
+                                top: parent.top
+                                topMargin: parent.height * 0.36
+                            }
+                            visible: parent.folderCustom && parent.folderCustom.emoji
+                            text: parent.folderCustom ? parent.folderCustom.emoji : ""
+                            font { family: "Noto Color Emoji"; pixelSize: desktopFileGrid.iconSize * 0.36 }
+                        }
+                    }
                     Text {
                         anchors.centerIn: parent
                         // A broken or unsupported image still behaves like a
                         // normal desktop file instead of becoming invisible.
+                        // Folders are drawn by the Canvas Item above.
                         visible: (modelData.kind !== "image" || imageThumbnail.status !== Image.Ready)
                             && (modelData.kind !== "launcher" || launcherIcon.status !== Image.Ready)
+                            && modelData.kind !== "folder"
                         text: desktopFileGrid.iconFor(modelData.kind)
-                        color: modelData.kind === "folder" ? "#70b6ff" : Qt.rgba(1, 1, 1, 0.88)
+                        color: Qt.rgba(1, 1, 1, 0.88)
                         style: Text.Outline
                         styleColor: Qt.rgba(0, 0, 0, 0.50)
                         font { family: "LXGW WenKai Mono Nerd Font"; pixelSize: desktopFileGrid.iconSize * 0.75 }
@@ -2154,7 +2630,19 @@ PanelWindow {
                 }
                 MouseArea {
                     id: filePointer
-                    anchors.fill: parent
+                    // The complete cell used to be clickable, leaving no
+                    // genuine blank area between adjacent files.  Keep a
+                    // compact content target around the icon and label.
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        top: parent.top
+                        bottom: parent.bottom
+                        leftMargin: 9
+                        rightMargin: 9
+                        topMargin: 4
+                        bottomMargin: 6
+                    }
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                     hoverEnabled: true
                     drag.target: parent.dragEnabled ? fileDelegate : null
@@ -2165,6 +2653,10 @@ PanelWindow {
                     drag.minimumY: 0
                     drag.maximumY: desktopFileGrid.height - fileDelegate.height
                     onPressed: function(mouse) {
+                        desktopFileGrid.clearFolderDropTarget()
+                        desktopFileGrid.clearGroupDrag()
+                        desktopFileGrid.clearReorderSettle()
+                        desktopFileGrid.clearReorderInsertion()
                         if (mouse.button === Qt.RightButton) {
                             if (!desktopFileGrid.isSelected(modelData.path))
                                 desktopFileGrid.selectOnly(modelData.path)
@@ -2176,6 +2668,7 @@ PanelWindow {
                                 desktopFileGrid.toggleSelection(modelData.path)
                             else if (!desktopFileGrid.isSelected(modelData.path))
                                 desktopFileGrid.selectOnly(modelData.path)
+                            parent.dragEntries = desktopFileGrid.selectedEntries()
                             parent.dragMoved = false
                             parent.dropCenterX = parent.x + parent.width / 2
                             parent.dropCenterY = parent.y + parent.height / 2
@@ -2188,13 +2681,43 @@ PanelWindow {
                         parent.dragMoved = true
                         parent.dropCenterX = parent.x + parent.width / 2
                         parent.dropCenterY = parent.y + parent.height / 2
+                        if (parent.dragEntries.length > 1) {
+                            desktopFileGrid.draggingPath = modelData.path
+                            desktopFileGrid.groupDragOffsetX = parent.x
+                                - parent.gridColumn * desktopFileGrid.itemWidth
+                            desktopFileGrid.groupDragOffsetY = parent.y
+                                - parent.gridRow * desktopFileGrid.itemHeight
+                        }
+                        const pointerPosition = filePointer.mapToItem(
+                            desktopFileGrid, mouse.x, mouse.y)
+                        parent.dropPointerX = pointerPosition.x
+                        parent.dropPointerY = pointerPosition.y
+                        desktopFileGrid.updateFolderDropTarget(
+                            parent.dropPointerX, parent.dropPointerY, modelData.path)
+                        if (parent.dragEntries.length === 1
+                                && desktopFileGrid.folderDropCandidatePath === "")
+                            desktopFileGrid.updateReorderInsertion(modelData.path,
+                                desktopFileGrid.indexAt(parent.dropCenterX, parent.dropCenterY))
+                        else
+                            desktopFileGrid.clearReorderInsertion()
                     }
                     onReleased: function(mouse) {
                         parent.dragEnabled = true
+                        const dropPath = desktopFileGrid.dropFolderPath
+                        desktopFileGrid.clearFolderDropTarget()
+                        desktopFileGrid.clearReorderInsertion()
                         if (mouse.button !== Qt.LeftButton || !parent.dragMoved)
                             return
+                        // Qt can occasionally finish a native drag as part
+                        // of a double-click sequence. Suppress opening for a
+                        // short post-drag window so a drop is never mistaken
+                        // for activation.
+                        parent.previousClickTime = 0
+                        parent.suppressOpenUntil = Date.now() + 350
                         const target = desktopFileGrid.indexAt(
                             parent.dropCenterX, parent.dropCenterY)
+                        const targetEntry = desktopFileGrid.folderAtDropPoint(
+                            parent.dropPointerX, parent.dropPointerY, modelData.path)
                         // Native dragging writes x/y directly, so restore the
                         // declarative grid bindings before changing the model.
                         fileDelegate.x = Qt.binding(function() {
@@ -2203,10 +2726,19 @@ PanelWindow {
                         fileDelegate.y = Qt.binding(function() {
                             return fileDelegate.gridRow * desktopFileGrid.itemHeight
                         })
-                        desktopFileGrid.reorder(modelData.path, target)
+                        desktopFileGrid.clearGroupDrag()
+                        if (dropPath !== "" && targetEntry?.path === dropPath) {
+                            root.desktopFiles.moveEntriesToFolder(
+                                parent.dragEntries, targetEntry, function() {
+                                    desktopFileGrid.setSelectedPaths([])
+                                })
+                        } else {
+                            desktopFileGrid.reorder(modelData.path, target)
+                        }
                     }
                     onClicked: function(mouse) {
-                        if (mouse.button !== Qt.LeftButton || (mouse.modifiers & Qt.ControlModifier))
+                        if (parent.dragMoved || mouse.button !== Qt.LeftButton
+                                || (mouse.modifiers & Qt.ControlModifier))
                             return
                         if (!desktopFileGrid.isSelected(modelData.path)) {
                             desktopFileGrid.selectOnly(modelData.path)
@@ -2220,7 +2752,10 @@ PanelWindow {
                         if (!parent.dragMoved && elapsed >= 350 && elapsed <= 1200)
                             desktopFileGrid.beginInlineRename(modelData)
                     }
-                    onDoubleClicked: {
+                    onDoubleClicked: function(mouse) {
+                        if (parent.dragMoved || Date.now() < parent.suppressOpenUntil
+                                || mouse.button !== Qt.LeftButton)
+                            return
                         parent.opening = true
                         openFeedback.restart()
                     }
@@ -2257,8 +2792,27 @@ PanelWindow {
                     function commit() {
                         if (desktopFileGrid.renamingPath !== modelData.path)
                             return
-                        if (root.desktopFiles.renameEntry(modelData, inlineRenameInput.text))
+                        const newName = inlineRenameInput.text.trim()
+                        const newPath = root.desktopFiles.directory + "/" + newName
+                        // Reject name collisions synchronously so the folder
+                        // customisation is not migrated to a path that will
+                        // never be created.
+                        if (newPath !== modelData.path) {
+                            const clash = root.desktopFiles.entries.some(function(e) {
+                                return e.path === newPath
+                            })
+                            if (clash) {
+                                root.desktopFiles.lastError = "该名称已被占用"
+                                return
+                            }
+                        }
+                        if (root.desktopFiles.renameEntry(modelData, inlineRenameInput.text)) {
+                            // Migrate folder customisation to the new path so
+                            // renaming a folder does not discard its color/emoji.
+                            if (newPath !== modelData.path)
+                                desktopFileGrid.migrateFolderCustom(modelData.path, newPath)
                             desktopFileGrid.renamingPath = ""
+                        }
                     }
                     onVisibleChanged: {
                         if (!visible)
@@ -2294,33 +2848,154 @@ PanelWindow {
             }
         }
 
+        // A quiet icon-sized placeholder marks the future slot without
+        // moving neighbours, keeping ordering distinct from a folder drop.
+        Rectangle {
+            id: reorderInsertionMarker
+            readonly property int markerColumn: desktopFileGrid.reorderInsertionIndex < 0 ? 0
+                : desktopFileGrid.columnCount - 1
+                    - Math.floor(desktopFileGrid.reorderInsertionIndex / desktopFileGrid.rowCount)
+            readonly property int markerRow: desktopFileGrid.reorderInsertionIndex < 0 ? 0
+                : desktopFileGrid.reorderInsertionIndex % desktopFileGrid.rowCount
+            x: markerColumn * desktopFileGrid.itemWidth + 7
+            y: markerRow * desktopFileGrid.itemHeight + 4
+            width: Math.max(36, desktopFileGrid.itemWidth - 14)
+            height: Math.max(40, desktopFileGrid.itemHeight - 8)
+            radius: 11
+            visible: desktopFileGrid.reorderInsertionIndex >= 0
+                && desktopFileGrid.folderDropCandidatePath === ""
+            opacity: visible ? 0.42 : 0
+            color: Qt.rgba(1, 1, 1, 0.055)
+            border { width: 1; color: Qt.rgba(1, 1, 1, 0.48) }
+            z: 8
+            Behavior on opacity {
+                NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
+            }
+        }
+
         Platform.Menu {
             id: desktopContextMenu
-            Platform.MenuItem { text: desktopFileGrid.defaultOpenText(); visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("openEntry") }
-            Platform.MenuItem { text: "重命名"; visible: desktopFileGrid.selectedEntries().length === 1; onTriggered: desktopFileGrid.triggerContextAction("rename") }
+            Platform.MenuItem { icon.name: "document-open"; text: desktopFileGrid.defaultOpenText(); visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("openEntry") }
+            Platform.MenuItem { icon.name: "edit-rename"; text: "重命名"; visible: desktopFileGrid.selectedEntries().length === 1; onTriggered: desktopFileGrid.triggerContextAction("rename") }
             Platform.Menu {
+                icon.name: "preferences-desktop-color"
+                title: "自定义图标"
+                visible: desktopFileGrid.contextEntry !== null && desktopFileGrid.contextEntry.kind === "folder"
+                // Color submenu: static items, check-marked when active.
+                Platform.Menu {
+                    icon.name: "color-fill"
+                    title: "颜色"
+                    Platform.MenuItem { text: "默认"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === ""; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "") }
+                    Platform.MenuItem { text: "🔴 红"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#FF6B6B"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#FF6B6B") }
+                    Platform.MenuItem { text: "🟠 橙"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#FFA94D"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#FFA94D") }
+                    Platform.MenuItem { text: "🟡 黄"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#FFD43B"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#FFD43B") }
+                    Platform.MenuItem { text: "🟢 绿"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#69DB7C"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#69DB7C") }
+                    Platform.MenuItem { text: "🔵 蓝"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#4DABF7"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#4DABF7") }
+                    Platform.MenuItem { text: "🟣 紫"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#9775FA"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#9775FA") }
+                    Platform.MenuItem { text: "🩷 粉"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#F783AC"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#F783AC") }
+                    Platform.MenuItem { text: "⚫ 灰"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#868E96"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#868E96") }
+                }
+                // Emoji submenus: one per category, static items.
+                Platform.Menu {
+                    title: "常用"
+                    Platform.MenuItem { text: "无"; checkable: true; checked: !(desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji); onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "") }
+                    Platform.MenuItem { text: "📁  文件夹"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📁"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📁") }
+                    Platform.MenuItem { text: "📂  打开的文件夹"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📂"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📂") }
+                    Platform.MenuItem { text: "🗂️  分类文件夹"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🗂️"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🗂️") }
+                    Platform.MenuItem { text: "📦  包裹"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📦"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📦") }
+                    Platform.MenuItem { text: "⭐  星标"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "⭐"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "⭐") }
+                    Platform.MenuItem { text: "🔥  热门"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🔥"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🔥") }
+                    Platform.MenuItem { text: "💡  灵感"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "💡"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "💡") }
+                    Platform.MenuItem { text: "❤️  收藏"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "❤️"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "❤️") }
+                    Platform.MenuItem { text: "✨  精选"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "✨"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "✨") }
+                    Platform.MenuItem { text: "📌  置顶"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📌"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📌") }
+                    Platform.MenuItem { text: "🎯  目标"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🎯"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🎯") }
+                    Platform.MenuItem { text: "💎  珍藏"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "💎"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "💎") }
+                }
+                Platform.Menu {
+                    title: "学习"
+                    Platform.MenuItem { text: "无"; checkable: true; checked: !(desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji); onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "") }
+                    Platform.MenuItem { text: "📚  书籍"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📚"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📚") }
+                    Platform.MenuItem { text: "📖  阅读"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📖"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📖") }
+                    Platform.MenuItem { text: "✏️  笔记"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "✏️"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "✏️") }
+                    Platform.MenuItem { text: "📝  备忘录"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📝"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📝") }
+                    Platform.MenuItem { text: "🎓  学业"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🎓"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🎓") }
+                    Platform.MenuItem { text: "🔬  研究"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🔬"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🔬") }
+                    Platform.MenuItem { text: "🧪  实验"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🧪"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🧪") }
+                    Platform.MenuItem { text: "💻  编程"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "💻"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "💻") }
+                    Platform.MenuItem { text: "🖥️  工作站"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🖥️"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🖥️") }
+                    Platform.MenuItem { text: "📐  设计"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📐"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📐") }
+                    Platform.MenuItem { text: "🎨  创意"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🎨"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🎨") }
+                    Platform.MenuItem { text: "🎵  音乐"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🎵"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🎵") }
+                }
+                Platform.Menu {
+                    title: "生活"
+                    Platform.MenuItem { text: "无"; checkable: true; checked: !(desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji); onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "") }
+                    Platform.MenuItem { text: "🏠  主页"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🏠"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🏠") }
+                    Platform.MenuItem { text: "🏡  居家"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🏡"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🏡") }
+                    Platform.MenuItem { text: "🛒  购物"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🛒"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🛒") }
+                    Platform.MenuItem { text: "🍳  烹饪"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🍳"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🍳") }
+                    Platform.MenuItem { text: "☕  咖啡"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "☕"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "☕") }
+                    Platform.MenuItem { text: "🌿  植物"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🌿"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🌿") }
+                    Platform.MenuItem { text: "🎮  游戏"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🎮"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🎮") }
+                    Platform.MenuItem { text: "🎬  影视"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🎬"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🎬") }
+                    Platform.MenuItem { text: "📷  照片"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📷"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📷") }
+                    Platform.MenuItem { text: "✈️  旅行"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "✈️"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "✈️") }
+                    Platform.MenuItem { text: "🚗  出行"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🚗"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🚗") }
+                    Platform.MenuItem { text: "💰  财务"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "💰"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "💰") }
+                }
+                Platform.Menu {
+                    title: "符号"
+                    Platform.MenuItem { text: "无"; checkable: true; checked: !(desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji); onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "") }
+                    Platform.MenuItem { text: "🔵  蓝点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🔵"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🔵") }
+                    Platform.MenuItem { text: "🟢  绿点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🟢"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🟢") }
+                    Platform.MenuItem { text: "🟡  黄点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🟡"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🟡") }
+                    Platform.MenuItem { text: "🟠  橙点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🟠"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🟠") }
+                    Platform.MenuItem { text: "🔴  红点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🔴"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🔴") }
+                    Platform.MenuItem { text: "🟣  紫点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🟣"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🟣") }
+                    Platform.MenuItem { text: "⚫  黑点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "⚫"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "⚫") }
+                    Platform.MenuItem { text: "⚪  白点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "⚪"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "⚪") }
+                    Platform.MenuItem { text: "⬛  方块"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "⬛"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "⬛") }
+                    Platform.MenuItem { text: "🔶  菱形"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🔶"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🔶") }
+                    Platform.MenuItem { text: "⚡  闪电"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "⚡"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "⚡") }
+                    Platform.MenuItem { text: "🌈  彩虹"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🌈"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🌈") }
+                }
+                Platform.MenuItem { icon.name: "edit-clear"; text: "移除自定义"; onTriggered: desktopFileGrid.removeFolderCustom(desktopFileGrid.contextEntry.path) }
+            }
+            Platform.Menu {
+                icon.name: "application-x-executable"
                 title: "打开方式"
                 visible: desktopFileGrid.contextEntry !== null
                     && desktopFileGrid.canChooseOpenWith(desktopFileGrid.contextEntry)
-                Platform.MenuItem { text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(0)); visible: desktopFileGrid.openWithIdAt(0) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(0)) }
-                Platform.MenuItem { text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(1)); visible: desktopFileGrid.openWithIdAt(1) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(1)) }
-                Platform.MenuItem { text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(2)); visible: desktopFileGrid.openWithIdAt(2) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(2)) }
-                Platform.MenuItem { text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(3)); visible: desktopFileGrid.openWithIdAt(3) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(3)) }
-                Platform.MenuItem { text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(4)); visible: desktopFileGrid.openWithIdAt(4) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(4)) }
-                Platform.MenuItem { text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(5)); visible: desktopFileGrid.openWithIdAt(5) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(5)) }
+                Platform.MenuItem { icon.name: "application-x-executable"; text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(0)); visible: desktopFileGrid.openWithIdAt(0) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(0)) }
+                Platform.MenuItem { icon.name: "application-x-executable"; text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(1)); visible: desktopFileGrid.openWithIdAt(1) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(1)) }
+                Platform.MenuItem { icon.name: "application-x-executable"; text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(2)); visible: desktopFileGrid.openWithIdAt(2) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(2)) }
+                Platform.MenuItem { icon.name: "application-x-executable"; text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(3)); visible: desktopFileGrid.openWithIdAt(3) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(3)) }
+                Platform.MenuItem { icon.name: "application-x-executable"; text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(4)); visible: desktopFileGrid.openWithIdAt(4) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(4)) }
+                Platform.MenuItem { icon.name: "application-x-executable"; text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(5)); visible: desktopFileGrid.openWithIdAt(5) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(5)) }
                 // Keep this entry available even when gio has not returned
                 // association results yet (or when the MIME type has none).
-                Platform.MenuItem { text: "其他应用程序…"; onTriggered: root.desktopFiles.showKdeOpenWith(desktopFileGrid.contextEntry) }
+                Platform.MenuItem { icon.name: "application-x-executable"; text: "其他应用程序…"; onTriggered: root.desktopFiles.showKdeOpenWith(desktopFileGrid.contextEntry) }
             }
-            Platform.MenuItem { text: "复制"; visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("copy") }
-            Platform.MenuItem { text: "剪切"; visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("cut") }
-            Platform.MenuItem { text: "移到废纸篓"; visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("trash") }
-            Platform.MenuItem { text: "在文件管理器中打开"; onTriggered: desktopFileGrid.triggerContextAction("open") }
-            Platform.MenuItem { text: "新建文件夹"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("folder") }
-            Platform.MenuItem { text: "粘贴"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("paste") }
-            Platform.MenuItem { text: "按名称自动整理"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("arrange") }
-            Platform.MenuItem { text: "重置图标排序"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("resetLayout") }
+            Platform.MenuItem { icon.name: "edit-copy"; text: "复制"; visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("copy") }
+            Platform.MenuItem { icon.name: "edit-cut"; text: "剪切"; visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("cut") }
+            Platform.MenuItem { icon.name: "user-trash"; text: "移到废纸篓"; visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("trash") }
+            Platform.MenuItem { icon.name: "folder-open"; text: "在文件管理器中打开"; onTriggered: desktopFileGrid.triggerContextAction("open") }
+            Platform.MenuItem { icon.name: "document-new"; text: "新建文件"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("file") }
+            Platform.MenuItem { icon.name: "folder-new"; text: "新建文件夹"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("folder") }
+            Platform.MenuItem { icon.name: "edit-paste"; text: "粘贴"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("paste") }
+            Platform.Menu {
+                icon.name: "view-sort-ascending"
+                title: "整理方式"
+                visible: desktopFileGrid.contextEntry === null
+                Platform.MenuItem { text: "按名称"; onTriggered: desktopFileGrid.arrangeByName() }
+                Platform.MenuItem { text: "按类型"; onTriggered: desktopFileGrid.arrangeByType() }
+                Platform.MenuItem { text: "按修改时间（最新）"; onTriggered: desktopFileGrid.arrangeByModified(true) }
+                Platform.MenuItem { text: "按修改时间（最早）"; onTriggered: desktopFileGrid.arrangeByModified(false) }
+            }
+            Platform.MenuItem { icon.name: "view-refresh"; text: "重置图标排序"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("resetLayout") }
             Platform.MenuItem {
+                icon.name: "view-file-columns"
                 text: "显示文件扩展名"
                 visible: desktopFileGrid.contextEntry === null
                 checkable: true
@@ -2331,13 +3006,14 @@ PanelWindow {
                 }
             }
             Platform.Menu {
+                icon.name: "view-list-icons"
                 title: "图标大小"
                 visible: desktopFileGrid.contextEntry === null
                 Platform.MenuItem { text: "小"; checkable: true; checked: desktopFileGrid.iconSize === 40; onTriggered: desktopFileGrid.setIconSize(40) }
                 Platform.MenuItem { text: "中"; checkable: true; checked: desktopFileGrid.iconSize === 56; onTriggered: desktopFileGrid.setIconSize(56) }
                 Platform.MenuItem { text: "大"; checkable: true; checked: desktopFileGrid.iconSize === 72; onTriggered: desktopFileGrid.setIconSize(72) }
             }
-            Platform.MenuItem { text: "刷新"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("refresh") }
+            Platform.MenuItem { icon.name: "view-refresh"; text: "刷新"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("refresh") }
         }
 
         Rectangle {

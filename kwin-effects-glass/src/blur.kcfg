@@ -164,6 +164,9 @@
         <entry name="RefractionEdgeSize" type="Double">
             <default>20.0</default>
         </entry>
+        <entry name="HighlightWidthPx" type="Double">
+            <default>3.0</default>
+        </entry>
         <entry name="RefractionRGBFringing" type="Double">
             <default>1.0</default>
         </entry>

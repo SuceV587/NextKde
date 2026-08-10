@@ -62,6 +62,9 @@ Item {
     // icons intentionally leave it false.
     property bool   editMode: false
     property bool   isDragging: false
+    // A small neutral marker for persistent shell-control state, currently
+    // used by the Trash icon while it contains recoverable items.
+    property bool   statusBadge: false
     // This is proportional to iconSize (3px when iconSize is 44px). It is
     // also included in AdaptiveMath, so the active background never overlaps
     // a neighbour or makes the real Row wider than the calculated width.
@@ -147,7 +150,6 @@ Item {
         _reportActiveIndicator()
     }
     function acknowledgeAttention() {
-        console.log("[DockTrash] attention animation started")
         // Fixed shell controls never use the launch bounce, so an external
         // acknowledgement must not be gated on that unrelated startup flag.
         _bounceDone = true
@@ -333,6 +335,21 @@ Item {
         anchors.centerIn: parent
         source: icon.iconSource || ""
         visible: !icon.glyph
+    }
+
+    Rectangle {
+        width: Math.max(5, Math.round(icon.iconSize * 0.15))
+        height: width
+        anchors { right: parent.right; top: parent.top; rightMargin: 2; topMargin: 2 }
+        radius: width / 2
+        color: Qt.rgba(1, 1, 1, 0.88)
+        border { width: 1; color: Qt.rgba(0, 0, 0, 0.48) }
+        opacity: icon.statusBadge ? 1 : 0
+        visible: opacity > 0.01
+        z: 2
+        Behavior on opacity {
+            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+        }
     }
 
     Text {

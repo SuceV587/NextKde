@@ -91,10 +91,13 @@ public:
 #ifdef GLASS_KWIN_67
     void prePaintScreen(ScreenPrePaintData &data) override;
 
+    // prePaintWindow is intentionally NOT overridden on KWin 6.7.
+    // See the note in blur.cpp: BackgroundEffectItem owns paint-region
+    // expansion via forceTranslucent in collectDamage(), and calling
+    // data.setTranslucent() here corrupts the compositing path when a
+    // Wayland popup is added/removed above a blurred surface.
 #ifdef GLASS_X11
     void prePaintWindow(EffectWindow *w, WindowPrePaintData &data) override;
-#else
-    void prePaintWindow(RenderView *view, EffectWindow *w, WindowPrePaintData &data) override;
 #endif
 #else
     void prePaintScreen(ScreenPrePaintData &data, std::chrono::milliseconds presentTime) override;
@@ -171,6 +174,7 @@ private:
 
         int blurSizeLocation;
         int edgeSizePixelsLocation;
+        int highlightWidthPxLocation;
         int refractionStrengthLocation;
         int refractionNormalPowLocation;
         int refractionRGBFringingLocation;
