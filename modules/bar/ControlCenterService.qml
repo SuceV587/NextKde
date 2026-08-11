@@ -12,6 +12,13 @@ QtObject {
     property int volumePercent: 0
     property bool audioMuted: false
     property bool volumeChangeInProgress: false
+    // Display brightness through the sysfs backlight class; writes go through
+    // logind's SetBrightness so the session owner never needs /sys write
+    // access. `brightnessAvailable` stays false when no backlight exists.
+    property bool brightnessAvailable: false
+    property int brightnessPercent: 0
+    property bool brightnessChangeInProgress: false
+    property string brightnessBacklightName: ""
     property bool bluetoothAvailable: false
     property bool bluetoothPowered: false
     property bool bluetoothChangeInProgress: false
@@ -44,7 +51,11 @@ QtObject {
         const proc = processFactory.createObject(service, {
             command: ["sh", "-c",
                 "wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null; "
-                    + "printf '\\036'; bluetoothctl show 2>/dev/null",
+                    + "printf '\\036'; bluetoothctl show 2>/dev/null; "
+                    + "printf '\\036'; "
+                    + "for d in /sys/class/backlight/*; do [ -r \"$d/max_brightness\" ] || continue; "
+                    + "name=${d##*/}; current=$(cat \"$d/brightness\" 2>/dev/null); max=$(cat \"$d/max_brightness\" 2>/dev/null); "
+                    + "case \"$max\" in ''|*[!0-9]*|[0]*) ;; *) printf '%s|%s|%s' \"$name\" \"$current\" \"$max\"; break;; esac; done",
                 "control-center-refresh"]
         })
         _refreshProcess = proc
@@ -62,9 +73,56 @@ QtObject {
             service.bluetoothAvailable = poweredMatch !== null
             if (poweredMatch)
                 service.bluetoothPowered = poweredMatch[1].toLowerCase() === "yes"
+            const backlight = (parts[2] || "").trim()
+            if (backlight) {
+                const fields = backlight.split("|")
+                const current = Number(fields[1])
+                const maximum = Number(fields[2])
+                service.brightnessAvailable = fields.length === 3
+                    && Number.isFinite(current) && Number.isFinite(maximum) && maximum > 0
+                if (service.brightnessAvailable) {
+                    service.brightnessBacklightName = fields[0]
+                    service.brightnessPercent = Math.round(
+                        Math.max(0, Math.min(100, current / maximum * 100)))
+                }
+            } else {
+                service.brightnessAvailable = false
+                service.brightnessBacklightName = ""
+                service.brightnessPercent = 0
+            }
             proc.destroy()
         })
         proc.running = true
+    }
+
+    // Brightness changes go through logind so the session owner can write a
+    // backlight without /sys privileges. The brightness sysfs path is the only
+    // user-readable part; SetBrightness performs the privileged write.
+    function setBrightness(percent) {
+        const value = Math.round(Math.max(0, Math.min(100, Number(percent) || 0)))
+        if (!brightnessAvailable || brightnessChangeInProgress || !brightnessBacklightName)
+            return false
+        brightnessChangeInProgress = true
+        // Read the maximum again at commit time so a fixed max_brightness
+        // change never writes an out-of-range value.
+        const proc = processFactory.createObject(service, {
+            command: ["sh", "-c",
+                "name=$1; max=$(cat \"/sys/class/backlight/$name/max_brightness\" 2>/dev/null); "
+                    + "case \"$max\" in ''|*[!0-9]*|[0]*) exit 1;; esac; "
+                    + "value=$(( ($2 * max + 50) / 100 )); "
+                    + "qdbus6 --system org.freedesktop.login1 /org/freedesktop/login1/session/auto "
+                    + "org.freedesktop.login1.Session.SetBrightness backlight \"$name\" \"$value\"",
+                "control-center-brightness", brightnessBacklightName, String(value)]
+        })
+        proc.exited.connect(function(writeCode) {
+            service.brightnessChangeInProgress = false
+            if (writeCode === 0)
+                service.brightnessPercent = value
+            service.refresh()
+            proc.destroy()
+        })
+        proc.running = true
+        return true
     }
 
     function setVolume(percent) {

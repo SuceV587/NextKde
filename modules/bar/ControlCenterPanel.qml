@@ -23,6 +23,8 @@ Item {
     property Item anchorItem: null
     property real volumePreview: ControlCenterService.volumePercent
     property bool draggingVolume: false
+    property real brightnessPreview: ControlCenterService.brightnessPercent
+    property bool draggingBrightness: false
     property bool logoutConfirmationVisible: false
     readonly property var player: DockMprisService.activePlayer
     signal networkRequested()
@@ -406,11 +408,31 @@ Item {
         cardBorderColor: Qt.rgba(1, 1, 1, 0.14)
 
         Text { anchors { left: parent.left; top: parent.top; leftMargin: 14; topMargin: 8 } text: "显示亮度"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.56; font { pixelSize: 11; weight: Font.DemiBold } }
-        Text { anchors { right: parent.right; top: parent.top; rightMargin: 14; topMargin: 8 } text: "未检测到后端"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.40; font.pixelSize: 9 }
+        Text { anchors { right: parent.right; top: parent.top; rightMargin: 14; topMargin: 8 } text: ControlCenterService.brightnessAvailable ? Math.round(panel.brightnessPreview) + "%" : "无亮度设备"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.40; font.pixelSize: 9 }
         Rectangle {
+            id: brightnessTrack
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 31; rightMargin: 31; bottomMargin: 12 }
             height: 4; radius: 2; color: Qt.rgba(1, 1, 1, 0.17)
-            Rectangle { width: parent.width * 0.48; height: parent.height; radius: parent.radius; color: Qt.rgba(1, 1, 1, 0.42) }
+            Rectangle {
+                width: parent.width * Math.max(0, Math.min(1, panel.brightnessPreview / 100))
+                height: parent.height; radius: parent.radius; color: Qt.rgba(1, 1, 1, 0.42)
+            }
+            MouseArea {
+                enabled: ControlCenterService.brightnessAvailable
+                anchors { fill: parent; margins: -10 }
+                onPressed: function(mouse) {
+                    panel.draggingBrightness = true
+                    panel.brightnessPreview = Math.round(Math.max(0, Math.min(1, mouse.x / brightnessTrack.width)) * 100)
+                }
+                onPositionChanged: function(mouse) {
+                    if (pressed)
+                        panel.brightnessPreview = Math.round(Math.max(0, Math.min(1, mouse.x / brightnessTrack.width)) * 100)
+                }
+                onReleased: {
+                    panel.draggingBrightness = false
+                    ControlCenterService.setBrightness(panel.brightnessPreview)
+                }
+            }
         }
         Text { anchors { left: parent.left; leftMargin: 12; bottom: parent.bottom; bottomMargin: 5 } text: "☀"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.55; font.pixelSize: 13 }
     }
@@ -646,12 +668,16 @@ Item {
         }
     }
 
-    // ── Volume sync from the service ─────────────────────────────────
+    // ── Volume / brightness sync from the service ────────────────────
     Connections {
         target: ControlCenterService
         function onVolumePercentChanged() {
             if (!panel.draggingVolume)
                 panel.volumePreview = ControlCenterService.volumePercent
+        }
+        function onBrightnessPercentChanged() {
+            if (!panel.draggingBrightness)
+                panel.brightnessPreview = ControlCenterService.brightnessPercent
         }
     }
 }
