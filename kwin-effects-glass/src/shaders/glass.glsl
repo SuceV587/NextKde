@@ -309,33 +309,37 @@ vec3 glassOutline(vec2 position, GlassFragment s, vec4 cornerRadius)
     // bottom-right" (or the opposite diagonal) instead of a closed ring.
     //
     // -n2d is the outward rim normal. highlightAngle (degrees, kwinrc) picks
-    //   the light direction: 45 -> top-left + bottom-right, 225 -> opposite.
-    //   pow() sharpens the falloff so only the near-facing arc lights up.
+    //   the light direction. abs() is the iOS diagonal: the two corners on the
+    //   light's diagonal share mirror-symmetric outward normals (top-left
+    //   faces 225° when the light is at 45°), so BOTH corners light up as
+    //   "top-left + bottom-right" (or the opposite diagonal) - the signature
+    //   partial-rim look. Without abs, only one corner would be lit.
     float angleRad = highlightAngle * 3.14159265 / 180.0;
     vec2 lightDir = vec2(cos(angleRad), sin(angleRad));
-    float facing = max(dot(-n2d, lightDir), 0.0);
-    float focused = pow(facing, 3.0);
+    float facing = abs(dot(-n2d, lightDir));
+    float focused = smoothstep(0.25, 1.0, facing);
 
-    // A faint all-around fresnel keeps the rim readable on dark backdrops;
-    // the focused highlight carries the actual "liquid" directionality.
-    rgb += highlight * fresnel * 0.12 * surfaceScale;
-    // The directional arc: strongest where the normal faces the light.
-    rgb += highlight * fresnel * focused * 0.55 * surfaceScale;
+    // Faint all-around fresnel keeps the rim visible on dark backdrops, but
+    // deliberately low so the arc reads as the light source, not a ring.
+    rgb += highlight * fresnel * 0.05 * surfaceScale;
+    // The directional arc: brightest where the normal faces the light.
+    // 0.42 keeps it subtle - a sheen, not a painted stripe.
+    rgb += highlight * fresnel * focused * 0.42 * surfaceScale;
 
     // Synthetic bevel: the top edge catches light while the bottom shades
-    // (n2d.y > 0 on the top edge), reinforcing the "lit from above" cue.
-    float bevelGradient = n2d.y * 0.22;
+    // (n2d.y > 0 on the top edge), giving the material a physical thickness.
+    // Kept independent of the diagonal arc - it is the "3D slab" cue, the arc
+    // is the liquid reflection.
+    float bevelGradient = n2d.y * 0.15;
     rgb += highlight * (bevelGradient * fresnel) * surfaceScale;
 
-    // Specular sheen on the same light direction as the focused edge arc, so
-    // the whole highlight rotates together when highlightAngle changes. The
-    // anisotropic skew gives a brushed, wet-glass look; the soft clamp keeps
-    // it from blowing out. No back-kick: a second opposing light would re-add
-    // the symmetric full-ring glow this rewrite removes.
+    // Specular sheen on the same light direction, so the whole highlight
+    // rotates together when highlightAngle changes. No back-kick: a second
+    // opposing light would re-add the symmetric full-ring glow.
     vec2 anisoN = (n2d + vec2(-n2d.y, n2d.x) * 0.2) * 0.9805806;
     float mainLight = max(dot(anisoN, lightDir), 0.0);
     float directional = mainLight * sqrt(mainLight) * 0.7;
-    float brightnessRaw = (directional + 0.05) * fresnel * 0.7 * surfaceScale;
+    float brightnessRaw = (directional + 0.02) * fresnel * 0.4 * surfaceScale;
     float brightness = brightnessRaw / (1.0 + brightnessRaw);
     rgb = mix(rgb, highlight, brightness);
 

@@ -1264,6 +1264,24 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     bool useInferredRadius = false;
     const bool isQuickshellSurface = w->window()->resourceClass().contains(QLatin1String("quickshell"), Qt::CaseInsensitive)
         || w->window()->resourceName().contains(QLatin1String("quickshell"), Qt::CaseInsensitive);
+    // TEMP DIAG: identify every quickshell surface so we can differentiate
+    // quicksearch/applauncher/bar/dock per-surface highlight angles.
+    if (isQuickshellSurface) {
+        static QHash<QString, int> windowIdLog;
+        const auto rClass = w->window()->resourceClass();
+        const auto rName = w->window()->resourceName();
+        const auto key = rClass + "|" + rName + "|" + QString::number(w->pos().y());
+        if (windowIdLog.value(key, 0) < 3) {
+            windowIdLog[key] = windowIdLog.value(key, 0) + 1;
+            qCWarning(KWIN_BLUR) << "[glass-window] class=" << rClass
+                << "name=" << rName
+                << "winClass=" << w->windowClass()
+                << "pos=" << w->pos()
+                << "size=" << w->frameGeometry().width() << "x" << w->frameGeometry().height()
+                << "dock=" << w->isDock()
+                << "fullscreen=" << w->isFullScreen();
+        }
+    }
     if (isQuickshellSurface && frameShape.isEmpty()
         && contentShape.boundingRect() == effectShape.boundingRect()) {
         const auto bounds = contentShape.boundingRect();
