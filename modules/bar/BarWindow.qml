@@ -131,7 +131,7 @@ PanelWindow {
                     NetworkStatus {
                         id: networkStatus
                         anchors.centerIn: parent
-                        sharedPanelOpen: networkPanel.visible || bluetoothPanel.visible || controlCenter.visible
+                        sharedPanelOpen: networkPanel.visible || bluetoothPanel.visible || controlCenter.isOpen
                         onPanelToggleRequested: {
                             // Top-bar popups are mutually exclusive. Closing
                             // first also releases the Control Center focus
@@ -154,10 +154,10 @@ PanelWindow {
                 }
                 ControlCenterToggle {
                     id: controlCenterToggle
-                    panelOpen: controlCenter.visible
+                    panelOpen: controlCenter.isOpen
                     onPanelToggleRequested: {
                         bluetoothPanel.close()
-                        if (!controlCenter.visible) {
+                        if (!controlCenter.isOpen) {
                             networkPanel.close()
                         }
                         controlCenter.toggle(controlCenterToggle)
