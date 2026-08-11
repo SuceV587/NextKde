@@ -50,7 +50,8 @@ PanelWindow {
         }
     }
     onScreenChanged: console.log("[AppLauncherWindow] screen changed=" + !!screen)
-    readonly property real minimumLauncherWidth: 600
+    readonly property real minimumLauncherWidth: screen
+        ? Math.round(screen.width * 0.60) : 600
     readonly property real minimumLauncherHeight: 500
     readonly property bool usesMinimumSize:
         AppLauncherService.dockWidth < minimumLauncherWidth
@@ -1030,7 +1031,7 @@ PanelWindow {
                 clip: true
                 // Fill the launcher width with equal columns instead of
                 // leaving a fixed-cell remainder at the right edge. The
-                // minimum keeps the 600px launcher comfortably five-wide.
+                // minimum keeps the 60%-of-screen launcher five-wide.
                 readonly property int columnCount: Math.max(5,
                     Math.floor(width / 96))
                 cellWidth: width > 0 ? width / columnCount : 96
@@ -1422,8 +1423,8 @@ PanelWindow {
                 LiquidGlassSurface {
                     id: folderDialog
                     // The dialog is a true square whose side follows 80% of
-                    // launcher height. Launcher width is always >= 600px,
-                    // so this remains safely inside the surface.
+                    // launcher height. Launcher width is always >= 60% of
+                    // screen width, so this remains safely inside the surface.
                     width: root.launcherHeight * 0.80
                     height: width
                     anchors.centerIn: parent
