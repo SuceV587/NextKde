@@ -266,12 +266,30 @@ workspace.windowAdded.connect(function(window) {
 workspace.windowRemoved.connect(scheduleSnapshot);
 workspace.windowActivated.connect(scheduleSnapshot);
 
-// Virtual-desktop lifecycle: keep the overview's desktop bar and the
-// per-window placement fresh without polling.
-workspace.desktopAdded.connect(publishDesktops);
-workspace.desktopRemoved.connect(publishDesktops);
-workspace.desktopNameChanged.connect(publishDesktops);
-workspace.currentDesktopChanged.connect(publishDesktops);
+// Virtual-desktop lifecycle signals. KWin's QtScript API does not expose every
+// signal name in every version, and one missing connect aborts the whole
+// script (which would also stop the window snapshots). Connect defensively;
+// snapshot() republishes the desktop list as a fallback, so the overview stays
+// fresh even when every signal is unavailable.
+function connectDesktopSignals() {
+    const hooks = {
+        desktopAdded: publishDesktops,
+        desktopRemoved: publishDesktops,
+        desktopNameChanged: publishDesktops,
+        currentDesktopChanged: publishDesktops
+    };
+    for (const name in hooks) {
+        try {
+            if (workspace[name] && workspace[name].connect)
+                workspace[name].connect(hooks[name]);
+            else
+                print("[QuickshellWindowBridge] desktop signal unavailable: " + name);
+        } catch (error) {
+            print("[QuickshellWindowBridge] desktop signal connect failed: " + name);
+        }
+    }
+}
+connectDesktopSignals();
 
 const commandTimer = new QTimer();
 // Commands are UI actions, so 100 ms keeps the Dock responsive while cutting
