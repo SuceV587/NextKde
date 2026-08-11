@@ -1264,24 +1264,6 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     bool useInferredRadius = false;
     const bool isQuickshellSurface = w->window()->resourceClass().contains(QLatin1String("quickshell"), Qt::CaseInsensitive)
         || w->window()->resourceName().contains(QLatin1String("quickshell"), Qt::CaseInsensitive);
-    // TEMP DIAG: identify every quickshell surface so we can differentiate
-    // quicksearch/applauncher/bar/dock per-surface highlight angles.
-    if (isQuickshellSurface) {
-        static QHash<QString, int> windowIdLog;
-        const auto rClass = w->window()->resourceClass();
-        const auto rName = w->window()->resourceName();
-        const auto key = rClass + "|" + rName + "|" + QString::number(w->pos().y());
-        if (windowIdLog.value(key, 0) < 3) {
-            windowIdLog[key] = windowIdLog.value(key, 0) + 1;
-            qCWarning(KWIN_BLUR) << "[glass-window] class=" << rClass
-                << "name=" << rName
-                << "winClass=" << w->windowClass()
-                << "pos=" << w->pos()
-                << "size=" << w->frameGeometry().width() << "x" << w->frameGeometry().height()
-                << "dock=" << w->isDock()
-                << "fullscreen=" << w->isFullScreen();
-        }
-    }
     if (isQuickshellSurface && frameShape.isEmpty()
         && contentShape.boundingRect() == effectShape.boundingRect()) {
         const auto bounds = contentShape.boundingRect();
@@ -1634,7 +1616,34 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
         : QVector2D(nativeBox.width(), nativeBox.height()));
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.edgeSizePixelsLocation, m_settings.refraction.edgeSizePixels);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.highlightWidthPxLocation, m_settings.refraction.highlightWidthPx);
-    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.highlightAngleLocation, m_settings.refraction.highlightAngle);
+    // Per-surface highlight direction. KWin's LayerShellV1Window is a private
+    // class (symbols not exported), so the layer-shell namespace set in QML
+    // can't be read from the effect. Instead we use stable geometry + type
+    // signals, which the log confirms reliably distinguish the panels:
+    //   dock            : isDock() + bottom, full-width strip
+    //   bar             : top, full-width 35px strip (no blur region)
+    //   applauncher     : full-screen to the very top (y==0)
+    //   quicksearch     : full-screen below the bar (y≈35)
+    //   control-center  : small cards (<500px wide)
+    // iOS does the same thing visually - one light, but each surface's
+    // geometry reads it differently.
+    float effectiveHighlightAngle = m_settings.refraction.highlightAngle;
+    if (w->isDock()) {
+        effectiveHighlightAngle = 45.0f;   // top-left + bottom-right
+    } else {
+        const qreal wgt = w->frameGeometry().width();
+        const qreal hgt = w->frameGeometry().height();
+        const qreal y = w->pos().y();
+        if (wgt > 1500.0 && hgt > 300.0) {
+            // Full-screen panels. applauncher reaches the very top of the
+            // output (y==0); quicksearch sits below the bar (y≈35).
+            effectiveHighlightAngle = (y < 10.0) ? -1.0f : 135.0f;
+        } else {
+            // Small cards (control center): keep the configured direction.
+            effectiveHighlightAngle = 45.0f;
+        }
+    }
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.highlightAngleLocation, effectiveHighlightAngle);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionStrengthLocation, m_settings.refraction.refractionStrength);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionNormalPowLocation, m_settings.refraction.refractionNormalPow);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionRGBFringingLocation, m_settings.refraction.refractionRGBFringing);
