@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Effects
+import Qt5Compat.GraphicalEffects
 import Quickshell
 import Quickshell.Wayland
 import qs.modules.bar
@@ -39,11 +40,14 @@ Item {
 
     // Compact counterpart to the Dock player's transport controls. It keeps
     // the same circular glass treatment but is sized for this small panel.
+    // When `liquidSource` is set (the media card's artwork backdrop), the
+    // button becomes a frosted lens over that layer instead of a flat circle.
     component MediaControlButton: Item {
         id: button
         property string symbol: ""
         property bool primary: false
         property bool controlEnabled: true
+        property Item liquidSource: null
         signal triggered()
         width: primary ? 28 : 24
         height: width
@@ -51,12 +55,13 @@ Item {
         scale: pointer.pressed ? 0.90 : (pointer.containsMouse ? 1.06 : 1.0)
         Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
 
-        Rectangle {
+        LiquidGlassControl {
             anchors.fill: parent
-            radius: width / 2
-            color: Qt.rgba(1, 1, 1, button.primary ? 0.18 : 0.12)
-            border.width: 1
-            border.color: Qt.rgba(1, 1, 1, button.primary ? 0.36 : 0.25)
+            sourceItem: button.liquidSource
+            blurRadius: button.primary ? 11 : 8
+            tintColor: Qt.rgba(1, 1, 1, button.primary ? 0.16 : 0.10)
+            highlightStrength: 0.32
+            borderColor: Qt.rgba(1, 1, 1, button.primary ? 0.40 : 0.28)
         }
         Text {
             anchors.centerIn: parent
@@ -238,6 +243,21 @@ Item {
         cardColor: "transparent"
         cardBorderColor: Qt.rgba(0.72, 0.95, 1, 0.32)
 
+        // A faint wallpaper-tone layer is both the card's quiet liquid base
+        // and the blur source for the transport buttons. Blurring it makes
+        // each button a frosted lens that absorbs the ambient wallpaper tint
+        // (iOS-style), instead of a swatch of the album artwork.
+        Rectangle {
+            id: mediaBackdrop
+            anchors.fill: parent
+            radius: parent.cardRadius
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: Qt.rgba(WallpaperPaletteService.primary.r, WallpaperPaletteService.primary.g, WallpaperPaletteService.primary.b, 0.16) }
+                GradientStop { position: 1.0; color: Qt.rgba(WallpaperPaletteService.secondary.r, WallpaperPaletteService.secondary.g, WallpaperPaletteService.secondary.b, 0.07) }
+            }
+        }
+
         Rectangle {
             id: artwork
             width: 43; height: 43; radius: 13
@@ -281,6 +301,7 @@ Item {
                 MediaControlButton {
                     anchors.centerIn: parent
                     symbol: "⏮"
+                    liquidSource: mediaBackdrop
                     controlEnabled: panel.player?.canGoPrevious ?? false
                     onTriggered: DockMprisService.previous()
                 }
@@ -288,6 +309,7 @@ Item {
             MediaControlButton {
                 primary: true
                 symbol: panel.player?.isPlaying ? "⏸" : "▶"
+                liquidSource: mediaBackdrop
                 controlEnabled: panel.player !== null
                 onTriggered: DockMprisService.togglePlayPause()
             }
@@ -297,6 +319,7 @@ Item {
                 MediaControlButton {
                     anchors.centerIn: parent
                     symbol: "⏭"
+                    liquidSource: mediaBackdrop
                     controlEnabled: panel.player?.canGoNext ?? false
                     onTriggered: DockMprisService.next()
                 }

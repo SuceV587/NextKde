@@ -4,6 +4,7 @@ GlassSlider 1.0 GlassSlider.qml
 GlassToggle 1.0 GlassToggle.qml
 RoundedBlurRegion 1.0 RoundedBlurRegion.qml
 LiquidGlassSurface 1.0 LiquidGlassSurface.qml
+LiquidGlassControl 1.0 LiquidGlassControl.qml
 EnhancedGlassSurface 1.0 EnhancedGlassSurface.qml
 ArtworkPalette 1.0 ArtworkPalette.qml
 AppIcon 1.0 AppIcon.qml
