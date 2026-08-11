@@ -32,6 +32,10 @@ QtObject {
     property int notificationHistoryMax: 50
     property bool screenshotInProgress: false
     property bool logoutInProgress: false
+    // The control center panel is owned by BarWindow, so a global shortcut
+    // cannot toggle it directly. BarWindow listens for this request; the
+    // service stays the intent channel (same pattern as AppActionService).
+    signal toggleRequested()
     property var _refreshProcess: null
 
     function refresh() {

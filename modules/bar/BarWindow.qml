@@ -191,4 +191,16 @@ PanelWindow {
             bluetoothPanel.open(controlCenterToggle)
         }
     }
+
+    // The global Meta+B shortcut reaches the panel through the service's
+    // intent signal; the panel instance (and its anchor item) lives here.
+    Connections {
+        target: ControlCenterService
+        function onToggleRequested() {
+            bluetoothPanel.close()
+            if (!controlCenter.isOpen)
+                networkPanel.close()
+            controlCenter.toggle(controlCenterToggle)
+        }
+    }
 }
