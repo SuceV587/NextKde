@@ -217,10 +217,17 @@ PanelWindow {
                         cursorShape: Qt.PointingHandCursor
                         onEntered: {
                             root.selectedWindowIndex = index
-                            // One thumbnail per hovered window only: the bridge
-                            // captures it synchronously via KWin's ScreenShot2,
-                            // and concurrent captures froze the compositor.
-                            WindowService.requestThumbnail(modelData.windowId)
+                            // Debounce: the pointer sweeps across cards while
+                            // hunting for a window, and each capture is a
+                            // synchronous ScreenShot2 on the compositor. Wait
+                            // for the pointer to settle before requesting.
+                            hoverThumbnailTimer.stop()
+                            hoverThumbnailTimer.windowId = modelData.windowId
+                            hoverThumbnailTimer.restart()
+                        }
+                        onExited: {
+                            if (hoverThumbnailTimer.windowId === modelData.windowId)
+                                hoverThumbnailTimer.stop()
                         }
                         onClicked: {
                             WindowService.activateWindow(modelData.windowId)
@@ -240,13 +247,26 @@ PanelWindow {
         }
     }
 
+    // Request the hovered window's thumbnail after the pointer has settled
+    // (300ms without moving to another card). One capture at a time.
+    Timer {
+        id: hoverThumbnailTimer
+        interval: 300
+        repeat: false
+        property string windowId: ""
+        onTriggered: {
+            if (root.open && windowId)
+                WindowService.requestThumbnail(windowId)
+        }
+    }
+
     onOpenChanged: {
         if (open) {
             // Presentation state only. No D-Bus work here: opening the
             // overview while firing desktop queries or thumbnail captures
             // through the bridge consistently hung/crashed the shell, so the
             // grid renders from the already-live WindowService model and each
-            // window card requests its single thumbnail only when hovered.
+            // window card requests its single thumbnail only once hovered.
             selectedDesktopIndex = Math.max(0, root.currentDesktopIndex)
             selectedWindowIndex = -1
         }
