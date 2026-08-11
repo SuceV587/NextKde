@@ -64,16 +64,41 @@ PanelWindow {
     property int cardWidth: 296
     property int cardHeight: 59
 
-    BackgroundEffect.blurRegion: RoundedBlurRegion {
-        item: cardBody
-        radius: root.cardRadius
+    // The blur radius as an integer, shared by the region encoding AND the
+    // cardBody radius so the plugin's SDF mask and the QML drawn shape always
+    // coincide (a mismatch is what produced the visible double-edge aliasing).
+    readonly property int blurRadius: Math.max(1, Math.min(
+        Math.round(root.cardRadius),
+        Math.floor(Math.min(root.cardWidth, root.cardHeight) / 2)))
+
+    // Blur region with the radius encoded explicitly, instead of
+    // RoundedBlurRegion's ellipse scanlines (whose top-row inset is corrupted
+    // by DPR scaling, making the plugin recover a smaller radius than QML
+    // draws). The top scanline starts at x=blurRadius - the plugin's
+    // smoothQuickshellCard reads exactly this inset as the corner radius.
+    // Everything below it is full-width so the card blurs completely and the
+    // SDF mask rounds the corners to blurRadius.
+    BackgroundEffect.blurRegion: Region {
+        x: root.blurRadius
+        y: 0
+        width: root.cardWidth - root.blurRadius
+        height: 1
+        Region {
+            x: 0
+            y: 1
+            width: root.cardWidth
+            height: root.cardHeight - 1
+        }
     }
 
     // Card surface: transparent (blur shows through) + subtle tint/border.
+    // The radius MUST match blurRadius (the plugin's SDF mask), not the
+    // original float cardRadius, or the two edges separate into a visible
+    // aliased ring on small cards.
     Rectangle {
         id: cardBody
         anchors.fill: parent
-        radius: root.cardRadius
+        radius: root.blurRadius
         color: root.cardColor
         opacity: root.cardOpacity
         border.width: 1
