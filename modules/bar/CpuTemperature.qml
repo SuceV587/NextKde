@@ -323,7 +323,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 3
 
-        Text {
+        GlassText {
             text: ""
             color: ThemeService.foregroundColor
             font {
@@ -337,7 +337,7 @@ Item {
             spacing: -1
             anchors.verticalCenter: parent.verticalCenter
 
-            Text {
+            GlassText {
                 text: "平均温度 " + root.averageC + "°"
                 color: ThemeService.foregroundColor
                 font {
@@ -347,7 +347,7 @@ Item {
                 }
             }
 
-            Text {
+            GlassText {
                 text: "最高温度 " + root.maximumC + "°"
                 color: ThemeService.foregroundColor
                 font {
@@ -437,13 +437,13 @@ Item {
                         width: parent.width - closeButton.width
                         spacing: 2
 
-                        Text {
+                        GlassText {
                             text: "温度传感器"
                             color: ThemeService.foregroundColor
                             font { family: "Noto Sans CJK SC"; pixelSize: 16; weight: Font.DemiBold }
                         }
 
-                        Text {
+                        GlassText {
                             text: "每 " + root.sampleIntervalMs / 1000 + " 秒更新 · " + root.sensorReadings.length + " 个读数"
                             color: Qt.rgba(ThemeService.foregroundColor.r, ThemeService.foregroundColor.g, ThemeService.foregroundColor.b, 0.62)
                             font { family: "Noto Sans CJK SC"; pixelSize: 11 }
@@ -457,7 +457,7 @@ Item {
                         radius: width / 2
                         color: closeMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.15) : "transparent"
 
-                        Text {
+                        GlassText {
                             anchors.centerIn: parent
                             text: "×"
                             color: ThemeService.foregroundColor
@@ -490,8 +490,8 @@ Item {
                             Column {
                                 anchors.centerIn: parent
                                 spacing: 2
-                                Text { text: modelData.label; color: Qt.rgba(ThemeService.foregroundColor.r, ThemeService.foregroundColor.g, ThemeService.foregroundColor.b, 0.65); font.pixelSize: 11 }
-                                Text { text: modelData.value; color: ThemeService.foregroundColor; font { pixelSize: 19; weight: Font.DemiBold } }
+                                GlassText { text: modelData.label; color: Qt.rgba(ThemeService.foregroundColor.r, ThemeService.foregroundColor.g, ThemeService.foregroundColor.b, 0.65); font.pixelSize: 11 }
+                                GlassText { text: modelData.value; color: ThemeService.foregroundColor; font { pixelSize: 19; weight: Font.DemiBold } }
                             }
                         }
                     }
@@ -524,7 +524,7 @@ Item {
                     Column {
                         width: (parent.width - 12) / 2
                         spacing: 3
-                        Text {
+                        GlassText {
                             text: "内存趋势 · 最近 " + root.memoryHistory.length * root.sampleIntervalMs / 1000 + " 秒"
                             color: Qt.rgba(ThemeService.foregroundColor.r, ThemeService.foregroundColor.g, ThemeService.foregroundColor.b, 0.62)
                             font { family: "Noto Sans CJK SC"; pixelSize: 10 }
@@ -534,7 +534,7 @@ Item {
                     Column {
                         width: (parent.width - 12) / 2
                         spacing: 3
-                        Text {
+                        GlassText {
                             text: "CPU 趋势 · " + Math.round(root.cpuUsage * 100) + "% · 最近 " + root.cpuHistory.length * root.sampleIntervalMs / 1000 + " 秒"
                             color: Qt.rgba(ThemeService.foregroundColor.r, ThemeService.foregroundColor.g, ThemeService.foregroundColor.b, 0.62)
                             font { family: "Noto Sans CJK SC"; pixelSize: 10 }
@@ -546,7 +546,7 @@ Item {
                 Column {
                     width: parent.width
                     spacing: 3
-                    Text {
+                    GlassText {
                         text: "CPU 平均频率 · " + Math.round(root.cpuFrequencyMhz) + " MHz · 最近 " + root.cpuFrequencyHistory.length * root.sampleIntervalMs / 1000 + " 秒"
                         color: Qt.rgba(ThemeService.foregroundColor.r, ThemeService.foregroundColor.g, ThemeService.foregroundColor.b, 0.62)
                         font { family: "Noto Sans CJK SC"; pixelSize: 10 }
@@ -559,7 +559,7 @@ Item {
                     }
                 }
 
-                Text {
+                GlassText {
                     text: "实时读数"
                     color: ThemeService.foregroundColor
                     font { family: "Noto Sans CJK SC"; pixelSize: 12; weight: Font.DemiBold }
@@ -578,7 +578,7 @@ Item {
                         height: 38
                         radius: 6
                         color: index % 2 ? "transparent" : Qt.rgba(1, 1, 1, 0.045)
-                        Text {
+                        GlassText {
                             anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
                             width: parent.width - valueText.width - 28
                             elide: Text.ElideRight
@@ -586,7 +586,7 @@ Item {
                             color: ThemeService.foregroundColor
                             font { family: "Noto Sans CJK SC"; pixelSize: 12 }
                         }
-                        Text {
+                        GlassText {
                             id: valueText
                             anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
                             text: (modelData.milliC / 1000).toFixed(1) + "°C"

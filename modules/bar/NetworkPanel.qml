@@ -292,7 +292,7 @@ PopupWindow {
                     styleColor: Qt.rgba(0, 0, 0, 0.38)
                     font { pixelSize: 13; weight: Font.DemiBold }
                 }
-                Text {
+                GlassText {
                     text: !NetworkService.wifiEnabled ? "打开开关以扫描附近网络"
                         : (NetworkService.deviceState === "connected"
                         ? (NetworkService.connectivity === "full" ? "已连接互联网"
@@ -316,7 +316,7 @@ PopupWindow {
                 color: Qt.rgba(1, 1, 1, 0.11)
                 border.width: 1
                 border.color: Qt.rgba(1, 1, 1, 0.18)
-                Text {
+                GlassText {
                     anchors.centerIn: parent
                     text: "忘记"
                     color: "#ff9b92"
@@ -340,7 +340,7 @@ PopupWindow {
                 border.width: 1
                 border.color: Qt.rgba(1, 1, 1, 0.18)
                 opacity: NetworkService.wifiDisconnectInProgress ? 0.5 : 1.0
-                Text {
+                GlassText {
                     anchors.centerIn: parent
                     text: NetworkService.wifiDisconnectInProgress ? "…" : "断开"
                     color: ThemeService.foregroundColor
@@ -487,7 +487,7 @@ PopupWindow {
                         onClicked: panel.showNetworkDialog(modelData)
                     }
                 }
-                Text {
+                GlassText {
                     anchors.centerIn: parent
                     visible: NetworkService.wifiEnabled && !NetworkService.wifiScanInProgress
                         && NetworkService.nearbyWifi.length === 0
@@ -590,7 +590,7 @@ PopupWindow {
                 anchors { left: parent.left; top: parent.top; leftMargin: 13; topMargin: 12 }
                 color: Qt.rgba(1, 1, 1, 0.13)
                 border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.28)
-                Text { anchors.centerIn: parent; text: "×"; color: ThemeService.foregroundColor; font { pixelSize: 22; weight: Font.Light } }
+                GlassText { anchors.centerIn: parent; text: "×"; color: ThemeService.foregroundColor; font { pixelSize: 22; weight: Font.Light } }
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: panel.closeNetworkDialog() }
             }
 
@@ -601,7 +601,7 @@ PopupWindow {
                 color: Qt.rgba(1, 1, 1, 0.15)
                 border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.30)
                 opacity: NetworkService.wifiConnectInProgress ? 0.55 : 1.0
-                Text { anchors.centerIn: parent; text: NetworkService.wifiConnectInProgress ? "…" : "✓"; color: ThemeService.foregroundColor; font { pixelSize: 18; weight: Font.Light } }
+                GlassText { anchors.centerIn: parent; text: NetworkService.wifiConnectInProgress ? "…" : "✓"; color: ThemeService.foregroundColor; font { pixelSize: 18; weight: Font.Light } }
                 MouseArea { anchors.fill: parent; enabled: !NetworkService.wifiConnectInProgress; cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor; onClicked: panel.confirmConnection() }
             }
 
@@ -632,7 +632,7 @@ PopupWindow {
                     elide: Text.ElideRight
                     font { pixelSize: 16; weight: Font.Bold }
                 }
-                Text {
+                GlassText {
                     width: parent.width
                     text: NetworkService.wifiConnectInProgress ? "正在加入此无线局域网…"
                         : (panel.selectedNetwork?.active ? "当前已连接此无线局域网。"
@@ -668,7 +668,7 @@ PopupWindow {
                             border.color: panel.selectedEnterpriseEap === modelData.id
                                 ? Qt.rgba(0.28, 0.64, 1, 0.78)
                                 : Qt.rgba(1, 1, 1, 0.15)
-                            Text {
+                            GlassText {
                                 anchors.centerIn: parent
                                 text: modelData.label
                                 color: ThemeService.foregroundColor
@@ -681,7 +681,7 @@ PopupWindow {
                             }
                         }
                     }
-                    Text {
+                    GlassText {
                         anchors.verticalCenter: parent.verticalCenter
                         text: panel.selectedEnterpriseEap === "peap"
                             ? "MSCHAPv2" : "PAP"
@@ -689,7 +689,7 @@ PopupWindow {
                         opacity: 0.48
                         font.pixelSize: 10
                     }
-                    Text {
+                    GlassText {
                         anchors.verticalCenter: parent.verticalCenter
                         text: panel.showAnonymousIdentity ? "收起" : "匿名身份"
                         color: ThemeService.foregroundColor
@@ -731,7 +731,7 @@ PopupWindow {
                         clip: true
                         font.pixelSize: 13
                         onTextEdited: panel.requestedUsername = text
-                        Text { anchors.verticalCenter: parent.verticalCenter; visible: !usernameInput.text && !usernameInput.activeFocus; text: "用户名"; color: ThemeService.foregroundColor; opacity: 0.62; font.pixelSize: 13 }
+                        GlassText { anchors.verticalCenter: parent.verticalCenter; visible: !usernameInput.text && !usernameInput.activeFocus; text: "用户名"; color: ThemeService.foregroundColor; opacity: 0.62; font.pixelSize: 13 }
                     }
                     Rectangle {
                         visible: Boolean(panel.selectedNetwork?.enterprise)
@@ -759,7 +759,7 @@ PopupWindow {
                         font.pixelSize: 13
                         onTextEdited: panel.requestedPassword = text
                         Keys.onPressed: function(event) { if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { panel.confirmConnection(); event.accepted = true } }
-                        Text { anchors.verticalCenter: parent.verticalCenter; visible: !passwordInput.text && !passwordInput.activeFocus; text: "密码"; color: ThemeService.foregroundColor; opacity: 0.62; font.pixelSize: 13 }
+                        GlassText { anchors.verticalCenter: parent.verticalCenter; visible: !passwordInput.text && !passwordInput.activeFocus; text: "密码"; color: ThemeService.foregroundColor; opacity: 0.62; font.pixelSize: 13 }
                     }
                     Rectangle {
                         visible: Boolean(panel.selectedNetwork?.enterprise
@@ -784,7 +784,7 @@ PopupWindow {
                         clip: true
                         font.pixelSize: 13
                         onTextEdited: panel.requestedAnonymousIdentity = text
-                        Text { anchors.verticalCenter: parent.verticalCenter; visible: !anonymousIdentityInput.text && !anonymousIdentityInput.activeFocus; text: "匿名身份（可选）"; color: ThemeService.foregroundColor; opacity: 0.62; font.pixelSize: 13 }
+                        GlassText { anchors.verticalCenter: parent.verticalCenter; visible: !anonymousIdentityInput.text && !anonymousIdentityInput.activeFocus; text: "匿名身份（可选）"; color: ThemeService.foregroundColor; opacity: 0.62; font.pixelSize: 13 }
                     }
                 }
                 Rectangle {
@@ -797,13 +797,13 @@ PopupWindow {
                     color: Qt.rgba(0.15, 0.52, 1, 0.16)
                     border.width: 1
                     border.color: Qt.rgba(0.28, 0.64, 1, 0.36)
-                    Text {
+                    GlassText {
                         anchors { left: parent.left; leftMargin: 13; verticalCenter: parent.verticalCenter }
                         text: panel.confirmForgetNetwork ? "忘记此网络？" : "✓  已保存密码"
                         color: ThemeService.foregroundColor
                         font { pixelSize: 12; weight: Font.DemiBold }
                     }
-                    Text {
+                    GlassText {
                         anchors { right: parent.right; rightMargin: 60; verticalCenter: parent.verticalCenter }
                         text: panel.confirmForgetNetwork ? "取消" : "更换"
                         color: ThemeService.foregroundColor
@@ -823,7 +823,7 @@ PopupWindow {
                             }
                         }
                     }
-                    Text {
+                    GlassText {
                         anchors { right: parent.right; rightMargin: 13; verticalCenter: parent.verticalCenter }
                         text: NetworkService.wifiForgetInProgress ? "…"
                             : (panel.confirmForgetNetwork ? "确认" : "忘记")
@@ -846,7 +846,7 @@ PopupWindow {
                         }
                     }
                 }
-                Text {
+                GlassText {
                     visible: !panel.selectedNetwork?.active && !panel.selectedNetwork?.enterprise
                         && !panel.useSavedCredentials
                     width: parent.width
@@ -856,7 +856,7 @@ PopupWindow {
                     wrapMode: Text.WordWrap
                     font.pixelSize: 12
                 }
-                Text {
+                GlassText {
                     visible: panel.dialogError.length > 0
                     width: parent.width
                     text: panel.dialogError

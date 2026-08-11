@@ -352,7 +352,7 @@ Item {
         }
     }
 
-    Text {
+    GlassText {
         anchors.centerIn: parent
         text: icon.glyph
         visible: !!icon.glyph

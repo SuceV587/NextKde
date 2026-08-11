@@ -1,4 +1,7 @@
 module qs.modules.common
+GlassText 1.0 GlassText.qml
+GlassSlider 1.0 GlassSlider.qml
+GlassToggle 1.0 GlassToggle.qml
 RoundedBlurRegion 1.0 RoundedBlurRegion.qml
 LiquidGlassSurface 1.0 LiquidGlassSurface.qml
 EnhancedGlassSurface 1.0 EnhancedGlassSurface.qml

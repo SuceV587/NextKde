@@ -27,20 +27,28 @@ PopupWindow {
     grabFocus: true
     anchor { item: panel.anchorItem; edges: Edges.Bottom; gravity: Edges.Bottom; margins.bottom: -6 }
 
-    // One continuous liquid-glass slab behind the whole control center,
-    // instead of eight per-card blobs that left hollow gaps between cards.
-    // The slab extends past the content column (15px breathing room on every
-    // side) so the glass reads as a frame around the controls rather than
-    // hugging their edges. contentColumn uses anchors.margins: 10; this slab
-    // uses margins: -5, so the gap between slab edge and content is 15px.
-    Item {
-        id: glassSlab
-        anchors.fill: parent
-        anchors.margins: 5
+    // Per-card blur regions. The plugin's smoothQuickshellCard fast path only
+    // triggers when a region spans the full card width; the three lower cards
+    // are narrowed by 2px so no rectangle spans full width, which forces the
+    // plugin onto its per-rectangle path and keeps each card a separate blur.
+    BackgroundEffect.blurRegion: Region {
+        RoundedBlurRegion { item: wifiCard; coordinateSpace: blurCoordinateSpace; radius: wifiCard.radius }
+        RoundedBlurRegion { item: bluetoothCard; coordinateSpace: blurCoordinateSpace; radius: bluetoothCard.radius }
+        RoundedBlurRegion { item: mediaCard; coordinateSpace: blurCoordinateSpace; radius: mediaCard.radius }
+        RoundedBlurRegion { item: screenshotButton; coordinateSpace: blurCoordinateSpace; radius: screenshotButton.radius }
+        RoundedBlurRegion { item: logoutButton; coordinateSpace: blurCoordinateSpace; radius: logoutButton.radius }
+        RoundedBlurRegion { item: dndButton; coordinateSpace: blurCoordinateSpace; radius: dndButton.radius }
+        RoundedBlurRegion { item: brightnessCard; coordinateSpace: blurCoordinateSpace; radius: brightnessCard.radius }
+        RoundedBlurRegion { item: soundCard; coordinateSpace: blurCoordinateSpace; radius: soundCard.radius }
+        RoundedBlurRegion { item: historyCard; coordinateSpace: blurCoordinateSpace; radius: historyCard.radius }
     }
-    BackgroundEffect.blurRegion: RoundedBlurRegion {
-        item: glassSlab
-        radius: 34
+
+    // BackgroundEffect receives geometry in PopupWindow coordinates. This
+    // non-visual item gives the nested card regions a stable mapToItem target.
+    Item {
+        id: blurCoordinateSpace
+        anchors.fill: parent
+        enabled: false
     }
 
     function toggle(item) {
@@ -115,14 +123,19 @@ PopupWindow {
                 height: parent.height
                 spacing: 8
 
-                Rectangle {
+                LiquidGlassSurface {
                     id: wifiCard
                     width: parent.width
                     height: 59
                     radius: height / 2
-                    color: Qt.rgba(1, 1, 1, 0.10)
+                    baseColor: Qt.rgba(1, 1, 1, 0.20)
+                    surfaceOpacity: 0.95
                     border.width: 1
                     border.color: Qt.rgba(0.74, 0.95, 1, 0.34)
+                    materialDepth: 1.2
+                    ambientPrimary: WallpaperPaletteService.primary
+                    ambientSecondary: WallpaperPaletteService.secondary
+                    ambientStrength: 0.55
                     Rectangle {
                         width: 39; height: 39; radius: width / 2
                         anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
@@ -131,6 +144,29 @@ PopupWindow {
                         // neutral Dock glass in every state.
                         color: NetworkService.wifiEnabled
                             ? "#f7fbff" : Qt.rgba(1, 1, 1, 0.22)
+                        Behavior on color {
+                            ColorAnimation { duration: 150 }
+                        }
+                        // Glass disc finish: top specular + bottom inner shade
+                        // so the state disc reads as a lens, not a flat chip.
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: parent.radius
+                            gradient: Gradient {
+                                orientation: Gradient.Vertical
+                                GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.50) }
+                                GradientStop { position: 0.5; color: Qt.rgba(1, 1, 1, 0.0) }
+                            }
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: parent.radius
+                            gradient: Gradient {
+                                orientation: Gradient.Vertical
+                                GradientStop { position: 0.55; color: Qt.rgba(0, 0, 0, 0.0) }
+                                GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.14) }
+                            }
+                        }
                         Canvas {
                             id: controlWifiGlyph
                             anchors.centerIn: parent
@@ -180,15 +216,20 @@ PopupWindow {
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: panel.networkRequested() }
                 }
 
-                Rectangle {
+                LiquidGlassSurface {
                     id: bluetoothCard
                     width: parent.width
                     height: 59
                     radius: height / 2
-                    color: Qt.rgba(1, 1, 1, 0.10)
+                    baseColor: Qt.rgba(1, 1, 1, 0.20)
+                    surfaceOpacity: 0.95
                     opacity: ControlCenterService.bluetoothAvailable ? 1 : 0.48
                     border.width: 1
                     border.color: Qt.rgba(0.74, 0.95, 1, 0.34)
+                    materialDepth: 1.2
+                    ambientPrimary: WallpaperPaletteService.primary
+                    ambientSecondary: WallpaperPaletteService.secondary
+                    ambientStrength: 0.55
                     Rectangle {
                         width: 39; height: 39; radius: width / 2
                         anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
@@ -248,14 +289,19 @@ PopupWindow {
                 }
             }
 
-            Rectangle {
+            LiquidGlassSurface {
                 id: mediaCard
                 width: parent.width - 145
                 height: parent.height
                 radius: 25
-                color: Qt.rgba(1, 1, 1, 0.10)
+                baseColor: Qt.rgba(1, 1, 1, 0.20)
+                surfaceOpacity: 0.95
                 border.width: 1
                 border.color: Qt.rgba(0.72, 0.95, 1, 0.32)
+                materialDepth: 1.2
+                ambientPrimary: WallpaperPaletteService.primary
+                ambientSecondary: WallpaperPaletteService.secondary
+                ambientStrength: 0.55
 
                 Rectangle {
                     id: artwork
@@ -332,13 +378,18 @@ PopupWindow {
             Row {
                 anchors.fill: parent
                 spacing: 10
-                Rectangle {
+                LiquidGlassSurface {
                     id: screenshotButton
                     width: 54; height: 54; radius: width / 2
                     scale: screenshotPointer.pressed ? 0.91 : (screenshotPointer.containsMouse ? 1.06 : 1.0)
                     Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
-                    color: Qt.rgba(1, 1, 1, 0.10)
+                    baseColor: Qt.rgba(1, 1, 1, 0.20)
+                    surfaceOpacity: 0.95
                     border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.24)
+                    materialDepth: 1.2
+                    ambientPrimary: WallpaperPaletteService.primary
+                    ambientSecondary: WallpaperPaletteService.secondary
+                    ambientStrength: 0.55
                     Image {
                         anchors.centerIn: parent
                         width: 25
@@ -351,13 +402,18 @@ PopupWindow {
                     }
                     MouseArea { id: screenshotPointer; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ControlCenterService.captureInteractiveScreenshot() }
                 }
-                Rectangle {
+                LiquidGlassSurface {
                     id: logoutButton
                     width: 54; height: 54; radius: width / 2
                     scale: logoutPointer.pressed ? 0.91 : (logoutPointer.containsMouse ? 1.06 : 1.0)
                     Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
-                    color: Qt.rgba(1, 1, 1, 0.10)
+                    baseColor: Qt.rgba(1, 1, 1, 0.20)
+                    surfaceOpacity: 0.95
                     border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.24)
+                    materialDepth: 1.2
+                    ambientPrimary: WallpaperPaletteService.primary
+                    ambientSecondary: WallpaperPaletteService.secondary
+                    ambientStrength: 0.55
                     Image {
                         anchors.centerIn: parent
                         width: 24
@@ -370,7 +426,7 @@ PopupWindow {
                     }
                     MouseArea { id: logoutPointer; anchors.fill: parent; hoverEnabled: true; enabled: !ControlCenterService.logoutInProgress; cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor; onClicked: panel.logoutConfirmationVisible = true }
                 }
-                Rectangle {
+                LiquidGlassSurface {
                     id: dndButton
                     // Fill the remaining row width so Do Not Disturb reads as
                     // a named mode instead of a third anonymous action.
@@ -379,10 +435,15 @@ PopupWindow {
                     radius: height / 2
                     scale: dndPointer.pressed ? 0.97 : (dndPointer.containsMouse ? 1.025 : 1.0)
                     Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
-                    color: Qt.rgba(1, 1, 1, 0.10)
+                    baseColor: Qt.rgba(1, 1, 1, 0.20)
+                    surfaceOpacity: 0.95
                     border.width: 1
                     border.color: ControlCenterService.doNotDisturbEnabled
                         ? "#0a84ff" : Qt.rgba(1, 1, 1, 0.24)
+                    materialDepth: 1.2
+                    ambientPrimary: WallpaperPaletteService.primary
+                    ambientSecondary: WallpaperPaletteService.secondary
+                    ambientStrength: 0.55
                     Image {
                         anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter }
                         width: 23
@@ -413,30 +474,43 @@ PopupWindow {
 
         // Keep the reference's Display row, but make its unavailable backend
         // explicit rather than offering a slider that cannot change anything.
-        Rectangle {
+        LiquidGlassSurface {
             id: brightnessCard
-            width: parent.width
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width - 4
             height: 57
             radius: 19
-            color: Qt.rgba(1, 1, 1, 0.10)
+            baseColor: Qt.rgba(1, 1, 1, 0.20)
+            surfaceOpacity: 0.95
             border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.14)
+            materialDepth: 1.2
+            ambientPrimary: WallpaperPaletteService.primary
+            ambientSecondary: WallpaperPaletteService.secondary
+            ambientStrength: 0.55
             Text { anchors { left: parent.left; top: parent.top; leftMargin: 14; topMargin: 8 } text: "显示亮度"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.56; font { pixelSize: 11; weight: Font.DemiBold } }
             Text { anchors { right: parent.right; top: parent.top; rightMargin: 14; topMargin: 8 } text: "未检测到后端"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.40; font.pixelSize: 9 }
-            Rectangle {
-                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 31; rightMargin: 31; bottomMargin: 12 }
-                height: 4; radius: 2; color: Qt.rgba(1, 1, 1, 0.17)
-                Rectangle { width: parent.width * 0.48; height: parent.height; radius: parent.radius; color: Qt.rgba(1, 1, 1, 0.42) }
+            GlassSlider {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 31; rightMargin: 31; bottomMargin: 1 }
+                interactive: false
+                value: 0.48
+                activeColor: Qt.rgba(1, 1, 1, 0.42)
             }
             Text { anchors { left: parent.left; leftMargin: 12; bottom: parent.bottom; bottomMargin: 5 } text: "☀"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.55; font.pixelSize: 13 }
         }
 
-        Rectangle {
+        LiquidGlassSurface {
             id: soundCard
-            width: parent.width
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width - 4
             height: 57
             radius: 19
-            color: Qt.rgba(1, 1, 1, 0.10)
+            baseColor: Qt.rgba(1, 1, 1, 0.20)
+            surfaceOpacity: 0.95
             border.width: 1; border.color: Qt.rgba(0.72, 0.93, 1, 0.27)
+            materialDepth: 1.2
+            ambientPrimary: WallpaperPaletteService.primary
+            ambientSecondary: WallpaperPaletteService.secondary
+            ambientStrength: 0.55
             Text { anchors { left: parent.left; top: parent.top; leftMargin: 14; topMargin: 8 } text: "声音"; color: "white"; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); font { pixelSize: 11; weight: Font.DemiBold } }
             Text { anchors { right: parent.right; top: parent.top; rightMargin: 14; topMargin: 8 } text: Math.round(panel.volumePreview) + "%"; color: "white"; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.72; font.pixelSize: 10 }
             Canvas {
@@ -462,16 +536,19 @@ PopupWindow {
                 }
                 Connections { target: ControlCenterService; function onAudioMutedChanged() { volumeGlyph.requestPaint() } }
             }
-            Rectangle {
-                id: volumeTrack
-                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 34; rightMargin: 17; bottomMargin: 13 }
-                height: 5; radius: 2.5; color: Qt.rgba(0, 0, 0, 0.20)
-                Rectangle { width: parent.width * Math.max(0, Math.min(1, panel.volumePreview / 100)); height: parent.height; radius: parent.radius; color: "white" }
-                MouseArea {
-                    anchors { fill: parent; margins: -10 }
-                    onPressed: function(mouse) { panel.draggingVolume = true; panel.volumePreview = Math.round(Math.max(0, Math.min(1, mouse.x / volumeTrack.width)) * 100) }
-                    onPositionChanged: function(mouse) { if (pressed) panel.volumePreview = Math.round(Math.max(0, Math.min(1, mouse.x / volumeTrack.width)) * 100) }
-                    onReleased: { panel.draggingVolume = false; ControlCenterService.setVolume(panel.volumePreview) }
+            GlassSlider {
+                id: volumeSlider
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 34; rightMargin: 17; bottomMargin: 3 }
+                value: panel.volumePreview / 100
+                // Live preview while dragging (frame-locked to the pointer),
+                // committed only on release — mirrors the previous track.
+                onDragPositionChanged: function(v) {
+                    panel.draggingVolume = true
+                    panel.volumePreview = Math.round(Math.max(0, Math.min(1, v)) * 100)
+                }
+                onValueCommitted: function(v) {
+                    panel.draggingVolume = false
+                    ControlCenterService.setVolume(Math.round(Math.max(0, Math.min(1, v)) * 100))
                 }
             }
         }
@@ -480,13 +557,20 @@ PopupWindow {
         // notification snapshots. Reads from ControlCenterService.notificationHistory
         // (populated by NotificationGroupService). Compact -- a header with a
         // clear button and a ListView capped to a few visible rows.
-        Rectangle {
-            width: parent.width
+        LiquidGlassSurface {
+            id: historyCard
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width - 4
             height: 110
             radius: 19
-            color: Qt.rgba(1, 1, 1, 0.10)
+            baseColor: Qt.rgba(1, 1, 1, 0.20)
+            surfaceOpacity: 0.95
             border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.14)
+            materialDepth: 1.2
+            ambientPrimary: WallpaperPaletteService.primary
+            ambientSecondary: WallpaperPaletteService.secondary
+            ambientStrength: 0.55
 
             Item {
                 anchors {
@@ -494,7 +578,7 @@ PopupWindow {
                     margins: 10
                 }
 
-                Text {
+                GlassText {
                     id: historyTitle
                     text: "通知历史"
                     color: ThemeService.foregroundColor
@@ -502,7 +586,7 @@ PopupWindow {
                     anchors { left: parent.left; top: parent.top }
                 }
 
-                Text {
+                GlassText {
                     text: "清空"
                     color: clearMouse.containsMouse ? "#0a84ff" : Qt.rgba(1, 1, 1, 0.50)
                     font { pixelSize: 11 }
@@ -535,7 +619,7 @@ PopupWindow {
                         width: historyList.width
                         height: histSummary.implicitHeight + (histBody.visible ? histBody.implicitHeight + 2 : 0)
 
-                        Text {
+                        GlassText {
                             id: histSummary
                             width: parent.width
                             text: (appName.length > 0 ? appName + " · " : "") + (summary.length > 0 ? summary : "通知")
@@ -545,7 +629,7 @@ PopupWindow {
                             maximumLineCount: 1
                         }
 
-                        Text {
+                        GlassText {
                             id: histBody
                             anchors.top: histSummary.bottom
                             anchors.topMargin: 1
@@ -560,7 +644,7 @@ PopupWindow {
                     }
 
                     // Empty-state hint.
-                    Text {
+                    GlassText {
                         anchors.centerIn: parent
                         visible: historyList.count === 0
                         text: "暂无历史通知"

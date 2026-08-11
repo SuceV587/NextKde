@@ -1228,7 +1228,7 @@ PanelWindow {
                     anchors { left: parent.left; top: parent.top; leftMargin: 18; topMargin: 42 }
                     font { pixelSize: 24; weight: Font.DemiBold }
                 }
-                Text {
+                GlassText {
                     text: "日历、天气和媒体会在此保持一目了然"
                     wrapMode: Text.Wrap
                     color: Qt.rgba(1, 1, 1, 0.74)
@@ -1487,7 +1487,7 @@ PanelWindow {
                             color: Qt.rgba(1, 1, 1, 0.14)
                             border.width: 1
                             border.color: Qt.rgba(1, 1, 1, 0.15)
-                            Text { anchors.centerIn: parent; text: modelData; color: "white"; font { pixelSize: 12; weight: Font.DemiBold } }
+                            GlassText { anchors.centerIn: parent; text: modelData; color: "white"; font { pixelSize: 12; weight: Font.DemiBold } }
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor

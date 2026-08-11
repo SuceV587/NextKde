@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
 import qs.modules.common
+import qs.modules.dock
 
 // Output-bound application-launcher surface. The panel itself spans the
 // output only to make centering reliable. The visible glass card follows Dock
@@ -844,7 +845,7 @@ PanelWindow {
                 }
                 height: 30
 
-                Text {
+                GlassText {
                     anchors {
                         left: parent.left
                         verticalCenter: parent.verticalCenter
@@ -872,7 +873,7 @@ PanelWindow {
                     border.width: searchInput.activeFocus ? 1 : 0
                     border.color: Qt.rgba(1, 1, 1, 0.34)
 
-                    Text {
+                    GlassText {
                         anchors {
                             left: parent.left
                             leftMargin: 11
@@ -930,7 +931,7 @@ PanelWindow {
                     // A visible clear affordance avoids forcing users to
                     // select/backspace a long query. It only exists while a
                     // query is active, keeping the resting search field calm.
-                    Text {
+                    GlassText {
                         anchors {
                             right: parent.right
                             rightMargin: 10
@@ -954,7 +955,7 @@ PanelWindow {
                         }
                     }
 
-                    Text {
+                    GlassText {
                         anchors {
                             left: searchInput.left
                             verticalCenter: parent.verticalCenter
@@ -1189,8 +1190,11 @@ PanelWindow {
 
                         // Folder artwork is a compact 3×3 preview of its first
                         // nine apps. It intentionally stays within the same
-                        // icon footprint as ordinary root applications.
-                        Rectangle {
+                        // icon footprint as ordinary root applications, but
+                        // reads as a liquid-glass tile: translucent over the
+                        // launcher blur with the material's top reflection,
+                        // matching the folder dialog material language.
+                        LiquidGlassSurface {
                             visible: modelData.type === "folder"
                             width: 52
                             height: 52
@@ -1200,10 +1204,18 @@ PanelWindow {
                                 topMargin: 8
                             }
                             radius: 12
-                            // A restrained neutral shade remains stable on
-                            // liquid glass regardless of the wallpaper/theme,
-                            // while still reading darker than hover feedback.
-                            color: Qt.rgba(0, 0, 0, 0.18)
+                            // Translucent glass absorbing the wallpaper hue,
+                            // like the iOS folder tile: the material's top
+                            // reflection and edge lines stay, but the body
+                            // picks up ambient colour so it reads as a liquid
+                            // lens over the blurred backdrop rather than a
+                            // flat dark plate.
+                            baseColor: Qt.rgba(0, 0, 0, 0.20)
+                            surfaceOpacity: 1.0
+                            materialDepth: 1.0
+                            ambientPrimary: WallpaperPaletteService.primary
+                            ambientSecondary: WallpaperPaletteService.secondary
+                            ambientStrength: 0.8
 
                             Grid {
                                 anchors {
@@ -1374,7 +1386,7 @@ PanelWindow {
                 }
             }
 
-            Text {
+            GlassText {
                 anchors.centerIn: parent
                 visible: !root.openFolder && root.filteredApplications.length === 0
                 text: root.applications.length === 0
@@ -1403,7 +1415,7 @@ PanelWindow {
                     }
                 }
 
-                Rectangle {
+                LiquidGlassSurface {
                     id: folderDialog
                     // The dialog is a true square whose side follows 80% of
                     // launcher height. Launcher width is always >= 600px,
@@ -1412,15 +1424,26 @@ PanelWindow {
                     height: width
                     anchors.centerIn: parent
                     opacity: root.folderDialogOpen ? 1 : 0
-                    scale: root.folderDialogOpen ? 1 : 0.92
+                    scale: root.folderDialogOpen ? 1 : 0.85
                     radius: 22
-                    color: Qt.rgba(0.06, 0.07, 0.10, 0.76)
+                    // Translucent over the launcher's blur region: the folder
+                    // reads as liquid glass rising out of the wallpaper, with
+                    // the material's top reflection and inset edge lines.
+                    baseColor: Qt.rgba(0.06, 0.07, 0.10, 0.55)
+                    surfaceOpacity: 0.98
+                    materialDepth: 1.2
 
                     Behavior on opacity {
                         NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
                     }
+                    // Liquid inflation: shrink then expand with a soft
+                    // overshoot bounce, like the folder is swelling open.
                     Behavior on scale {
-                        NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+                        NumberAnimation {
+                            duration: 260
+                            easing.type: Easing.OutBack
+                            easing.overshoot: 1.6
+                        }
                     }
 
                     Item {
@@ -1433,7 +1456,7 @@ PanelWindow {
                         }
                         height: 28
 
-                        Text {
+                        GlassText {
                             anchors {
                                 left: parent.left
                                 verticalCenter: parent.verticalCenter
@@ -1876,7 +1899,7 @@ PanelWindow {
                                     weight: Font.DemiBold
                                 }
                             }
-                            Text {
+                            GlassText {
                                 anchors {
                                     right: parent.right
                                     verticalCenter: parent.verticalCenter
@@ -1908,7 +1931,7 @@ PanelWindow {
                                     onClicked: root.chooseCustomIcon()
                                 }
                             }
-                            Text {
+                            GlassText {
                                 width: parent.width - 64
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: root.editingApplication
@@ -1942,7 +1965,7 @@ PanelWindow {
                                     Behavior on color {
                                         ColorAnimation { duration: 120 }
                                     }
-                                    Text {
+                                    GlassText {
                                         id: actionLabel
                                         anchors.centerIn: parent
                                         text: modelData.label
@@ -1965,7 +1988,7 @@ PanelWindow {
                             }
                         }
 
-                        Text {
+                        GlassText {
                             width: parent.width
                             height: 12
                             visible: root.editorIconStatus.length > 0
@@ -1976,7 +1999,7 @@ PanelWindow {
                             font.pixelSize: 10
                         }
 
-                        Text {
+                        GlassText {
                             text: "显示名称"
                             color: AppLauncherService.dockForegroundColor
                             opacity: 0.72
@@ -2005,7 +2028,7 @@ PanelWindow {
                             }
                         }
 
-                        Text {
+                        GlassText {
                             text: "图标名称或本地路径"
                             color: AppLauncherService.dockForegroundColor
                             opacity: 0.72
@@ -2060,7 +2083,7 @@ PanelWindow {
                                     Behavior on color {
                                         ColorAnimation { duration: 120 }
                                     }
-                                    Text {
+                                    GlassText {
                                         anchors.centerIn: parent
                                         text: modelData.label
                                         color: AppLauncherService.dockForegroundColor

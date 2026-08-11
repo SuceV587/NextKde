@@ -175,6 +175,7 @@ private:
         int blurSizeLocation;
         int edgeSizePixelsLocation;
         int highlightWidthPxLocation;
+        int surfaceScaleLocation;
         int refractionStrengthLocation;
         int refractionNormalPowLocation;
         int refractionRGBFringingLocation;

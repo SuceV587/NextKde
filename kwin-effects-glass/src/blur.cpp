@@ -139,6 +139,7 @@ BlurEffect::BlurEffect()
         m_roundedOnscreenPass.blurSizeLocation = m_roundedOnscreenPass.shader->uniformLocation("blurSize");
         m_roundedOnscreenPass.edgeSizePixelsLocation = m_roundedOnscreenPass.shader->uniformLocation("edgeSizePixels");
         m_roundedOnscreenPass.highlightWidthPxLocation = m_roundedOnscreenPass.shader->uniformLocation("highlightWidthPx");
+        m_roundedOnscreenPass.surfaceScaleLocation = m_roundedOnscreenPass.shader->uniformLocation("surfaceScale");
         m_roundedOnscreenPass.refractionStrengthLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionStrength");
         m_roundedOnscreenPass.refractionNormalPowLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionNormalPow");
         m_roundedOnscreenPass.refractionRGBFringingLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionRGBFringing");
@@ -1612,6 +1613,12 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.tintColorLocation, tintVec);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.tintGrayLocation, static_cast<float>(0.299 * tint.redF() + 0.587 * tint.greenF() + 0.114 * tint.blueF()));
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.autoTintAlphaLocation, m_settings.general.autoTintAlpha ? 1 : 0);
+    // Per-surface material strength: the always-visible dock gets a more
+    // pronounced glassy rim, transient popups stay subtle.
+    const float surfaceScale = w->isDock() ? 1.8f
+                             : (w->isNotification() || w->isOnScreenDisplay()) ? 0.5f
+                             : 1.0f;
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.surfaceScaleLocation, surfaceScale);
     auto tintStrengthForRegion = [&](bool decorationRegion) {
         if (w->isDock() && m_settings.general.excludeDocks) {
             return 0.0f;

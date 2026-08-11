@@ -112,7 +112,7 @@ PopupWindow {
                     onClicked: ControlCenterService.setBluetoothDeviceConnected(modelData, !modelData.connected)
                 }
             }
-            Text {
+            GlassText {
                 anchors.centerIn: parent
                 visible: ControlCenterService.bluetoothPowered
                     && !ControlCenterService.bluetoothDevicesRefreshInProgress
@@ -122,7 +122,7 @@ PopupWindow {
                 opacity: 0.52
                 font.pixelSize: 12
             }
-            Text {
+            GlassText {
                 anchors.centerIn: parent
                 visible: ControlCenterService.bluetoothDevicesRefreshInProgress
                 text: "正在刷新…"
@@ -130,7 +130,7 @@ PopupWindow {
                 opacity: 0.52
                 font.pixelSize: 12
             }
-            Text {
+            GlassText {
                 anchors.centerIn: parent
                 visible: !ControlCenterService.bluetoothPowered
                 text: "蓝牙已关闭"
