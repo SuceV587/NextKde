@@ -9,6 +9,11 @@ import qs.modules.dock
 PanelWindow {
     id: root
 
+    // Distinguish this surface from other quickshell panels so the glass
+    // plugin can give it its own highlight direction (kwin reads the
+    // layer-shell namespace as the window class).
+    WlrLayershell.namespace: "quickshell-quicksearch"
+
     property bool open: false
     property string mode: "window"
     property string viewMode: "list"

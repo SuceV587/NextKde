@@ -43,6 +43,10 @@ PanelWindow {
     // Which output this card lives on (the same screen as the bar).
     property var targetScreen: Quickshell.screens.length > 1 ? Quickshell.screens[1] : Quickshell.screens[0]
 
+    // Control-center cards get the same highlight family as the bar (cards
+    // float over the bar's screen area).
+    WlrLayershell.namespace: "quickshell-controlcenter"
+
     // Visible-state via position, NOT the window's `visible` flag.
     //
     // Quickshell submits the blur region when the window surface is created.

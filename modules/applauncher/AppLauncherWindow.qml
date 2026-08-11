@@ -12,6 +12,10 @@ import qs.modules.dock
 PanelWindow {
     id: root
 
+    // Distinguish this surface from other quickshell panels so the glass
+    // plugin can give it its own highlight direction.
+    WlrLayershell.namespace: "quickshell-applauncher"
+
     // The module root passes this state explicitly (as QuickSearch does) so
     // every output-bound variant shares one reliable visibility binding.
     property bool open: false

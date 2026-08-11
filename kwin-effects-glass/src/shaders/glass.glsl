@@ -314,10 +314,15 @@ vec3 glassOutline(vec2 position, GlassFragment s, vec4 cornerRadius)
     //   faces 225° when the light is at 45°), so BOTH corners light up as
     //   "top-left + bottom-right" (or the opposite diagonal) - the signature
     //   partial-rim look. Without abs, only one corner would be lit.
+    //   highlightAngle < 0 (applauncher) falls back to a uniform ring: all
+    //   edges lit equally, no directional focus.
     float angleRad = highlightAngle * 3.14159265 / 180.0;
     vec2 lightDir = vec2(cos(angleRad), sin(angleRad));
     float facing = abs(dot(-n2d, lightDir));
     float focused = smoothstep(0.25, 1.0, facing);
+    if (highlightAngle < 0.0) {
+        focused = 1.0;
+    }
 
     // Faint all-around fresnel keeps the rim visible on dark backdrops, but
     // deliberately low so the arc reads as the light source, not a ring.
