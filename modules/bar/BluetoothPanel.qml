@@ -19,7 +19,22 @@ PopupWindow {
     grabFocus: true
     anchor { item: panel.anchorItem; edges: Edges.Bottom; gravity: Edges.Bottom; margins.bottom: -6 }
 
-    BackgroundEffect.blurRegion: null
+    // Real liquid glass: compositor blur region so windows behind the device
+    // list are visible through the glass. Stepped region encodes the radius
+    // (top scanline at x=blurRadius) so the plugin rounds corners exactly.
+    readonly property int blurRadius: Math.max(1, Math.min(20, Math.floor(300 / 2)))
+    BackgroundEffect.blurRegion: Region {
+        x: panel.blurRadius
+        y: 0
+        width: 300 - panel.blurRadius
+        height: 1
+        Region {
+            x: 0
+            y: 1
+            width: 300
+            height: 340 - 1
+        }
+    }
 
     function open(item) {
         anchorItem = item
@@ -51,16 +66,13 @@ PopupWindow {
         }
     }
 
-    EnhancedGlassSurface {
+    Rectangle {
         id: surface
         anchors.fill: parent
         radius: 20
-        baseColor: ThemeService.backgroundColor
-        ambientPrimary: WallpaperPaletteService.primary
-        ambientSecondary: WallpaperPaletteService.secondary
-        ambientStrength: 0.72
-        surfaceOpacity: 0.94
-        materialDepth: 1.8
+        // Transparent so the compositor blur region shows through - real
+        // liquid glass with windows visible behind the device list.
+        color: Qt.rgba(1, 1, 1, 0.08)
         border.width: 1
         border.color: Qt.rgba(0.74, 0.95, 1, 0.30)
 

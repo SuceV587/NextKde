@@ -44,9 +44,27 @@ PopupWindow {
         margins.bottom: -8
     }
 
-    // This is intentionally a single compact list card. The active network
-    // remains one row in that list instead of being repeated in a status card.
-    BackgroundEffect.blurRegion: null
+    // Real liquid glass: a compositor blur region on the panel surface, so
+    // windows behind the Wi-Fi list are visible through the glass (QML-only
+    // surfaces cannot sample the compositor buffer). The stepped region
+    // encodes the corner radius explicitly (top scanline at x=blurRadius) so
+    // the plugin's smoothQuickshellCard path rounds corners with the exact
+    // radius, avoiding the aliasing from ellipse-scanline regions.
+    // The join sheet (LiquidGlassSurface) is a separate QML material on top;
+    // the list card below becomes transparent so this blur shows through.
+    readonly property int blurRadius: Math.max(1, Math.min(19, Math.floor(310 / 2)))
+    BackgroundEffect.blurRegion: Region {
+        x: panel.blurRadius
+        y: 0
+        width: 310 - panel.blurRadius
+        height: 1
+        Region {
+            x: 0
+            y: 1
+            width: 310
+            height: 365 - 1
+        }
+    }
 
     function toggle(item) {
         anchorItem = item
@@ -355,17 +373,15 @@ PopupWindow {
             }
         }
 
-        EnhancedGlassSurface {
+        Rectangle {
             id: networkListCard
             width: parent.width
             height: parent.height
             radius: 19
-            baseColor: ThemeService.backgroundColor
-            ambientPrimary: WallpaperPaletteService.primary
-            ambientSecondary: WallpaperPaletteService.secondary
-            ambientStrength: 0.72
-            surfaceOpacity: 0.94
-            materialDepth: 1.8
+            // Transparent so the compositor blur region (BackgroundEffect on
+            // this panel) shows through - real liquid glass with windows
+            // visible behind it. A subtle tint + border keep text readable.
+            color: Qt.rgba(1, 1, 1, 0.08)
             border.width: 1
             border.color: Qt.rgba(0.74, 0.95, 1, 0.28)
 

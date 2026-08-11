@@ -77,10 +77,13 @@ Item {
 
     ControlCenterCoordinator {
         id: coordinator
-        // Derived from the bar: control center top sits below the 35px bar
-        // plus a 6px breathing gap; right edge inset to align with the toggle.
-        panelTop: 41
-        panelRight: 20
+        // Aligned with the Wi-Fi panel: the panel's top edge sits at the bar
+        // bottom (35) and its right edge is flushed to the screen right edge
+        // after SlideX clamping. panelRight=0 puts the control center's right
+        // edge at screen right - 20 (the rightmost cards use offsetRight=20),
+        // and panelTop=35 matches the Wi-Fi panel's top.
+        panelTop: 35
+        panelRight: 0
     }
 
     function toggle(item) {
