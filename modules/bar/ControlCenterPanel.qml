@@ -109,7 +109,7 @@ Item {
         cardRadius: 29.5
         cardWidth: 137
         cardHeight: 59
-        cardColor: Qt.rgba(1, 1, 1, 0.10)
+        cardColor: "transparent"
         cardBorderColor: Qt.rgba(0.74, 0.95, 1, 0.34)
 
         Rectangle {
@@ -170,7 +170,7 @@ Item {
         cardRadius: 29.5
         cardWidth: 137
         cardHeight: 59
-        cardColor: Qt.rgba(1, 1, 1, 0.10)
+        cardColor: "transparent"
         cardBorderColor: Qt.rgba(0.74, 0.95, 1, 0.34)
         cardOpacity: ControlCenterService.bluetoothAvailable ? 1 : 0.48
 
@@ -233,7 +233,7 @@ Item {
         cardRadius: 25
         cardWidth: 151
         cardHeight: 127
-        cardColor: Qt.rgba(1, 1, 1, 0.10)
+        cardColor: "transparent"
         cardBorderColor: Qt.rgba(0.72, 0.95, 1, 0.32)
 
         Rectangle {
@@ -310,7 +310,7 @@ Item {
         cardRadius: 27
         cardWidth: 54
         cardHeight: 54
-        cardColor: Qt.rgba(1, 1, 1, 0.10)
+        cardColor: "transparent"
         cardBorderColor: Qt.rgba(1, 1, 1, 0.24)
 
         cardScale: screenshotPointer.pressed ? 0.91 : (screenshotPointer.containsMouse ? 1.06 : 1.0)
@@ -336,7 +336,7 @@ Item {
         cardRadius: 27
         cardWidth: 54
         cardHeight: 54
-        cardColor: Qt.rgba(1, 1, 1, 0.10)
+        cardColor: "transparent"
         cardBorderColor: Qt.rgba(1, 1, 1, 0.24)
 
         cardScale: logoutPointer.pressed ? 0.91 : (logoutPointer.containsMouse ? 1.06 : 1.0)
@@ -362,7 +362,7 @@ Item {
         cardRadius: 27
         cardWidth: 168
         cardHeight: 54
-        cardColor: Qt.rgba(1, 1, 1, 0.10)
+        cardColor: "transparent"
         cardBorderColor: ControlCenterService.doNotDisturbEnabled
             ? "#0a84ff" : Qt.rgba(1, 1, 1, 0.24)
 
@@ -402,7 +402,7 @@ Item {
         cardRadius: 19
         cardWidth: 296
         cardHeight: 57
-        cardColor: Qt.rgba(1, 1, 1, 0.10)
+        cardColor: "transparent"
         cardBorderColor: Qt.rgba(1, 1, 1, 0.14)
 
         Text { anchors { left: parent.left; top: parent.top; leftMargin: 14; topMargin: 8 } text: "显示亮度"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.56; font { pixelSize: 11; weight: Font.DemiBold } }
@@ -423,7 +423,7 @@ Item {
         cardRadius: 19
         cardWidth: 296
         cardHeight: 57
-        cardColor: Qt.rgba(1, 1, 1, 0.10)
+        cardColor: "transparent"
         cardBorderColor: Qt.rgba(0.72, 0.93, 1, 0.27)
 
         Text { anchors { left: parent.left; top: parent.top; leftMargin: 14; topMargin: 8 } text: "声音"; color: "white"; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); font { pixelSize: 11; weight: Font.DemiBold } }
@@ -473,7 +473,7 @@ Item {
         cardRadius: 19
         cardWidth: 296
         cardHeight: 110
-        cardColor: Qt.rgba(1, 1, 1, 0.10)
+        cardColor: "transparent"
         cardBorderColor: Qt.rgba(1, 1, 1, 0.14)
 
         Item {
