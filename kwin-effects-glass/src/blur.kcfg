@@ -167,6 +167,10 @@
         <entry name="HighlightWidthPx" type="Double">
             <default>3.0</default>
         </entry>
+        <entry name="HighlightAngle" type="Int">
+            <default>45</default>
+            <whatsthis>Direction of the focused edge highlight in degrees. 45 = light from top-left (left-top + right-bottom arcs lit); 225 = opposite diagonal; 0/180 = horizontal axis.</whatsthis>
+        </entry>
         <entry name="RefractionRGBFringing" type="Double">
             <default>1.0</default>
         </entry>

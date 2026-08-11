@@ -8,6 +8,7 @@ uniform int edgeLighting;
 
 uniform float edgeSizePixels;
 uniform float highlightWidthPx;
+uniform float highlightAngle;
 uniform float surfaceScale;
 uniform float refractionStrength;
 uniform float refractionNormalPow;
@@ -299,28 +300,42 @@ vec3 glassOutline(vec2 position, GlassFragment s, vec4 cornerRadius)
     vec3 rgb = baseColor * (1.0 - innerShadow * 0.15);
     vec3 highlight = getHighlightColor(baseColor, 1.0);
 
-    // Broad fresnel glow: soft luminous edge, added additively so it reads
-    // as light catching the edge rather than a painted stripe.
-    rgb += highlight * fresnel * 0.30 * surfaceScale;
+    // ── Focused edge highlight (iOS-style partial rim) ────────────────
+    // iOS glass does NOT draw a full enclosing rim. The highlight is the
+    // mirror reflection of a directional light source off the bevel's normal
+    // field: only the arc whose outward normal faces the light is bright, the
+    // rest of the rim stays dark. Because both corners along the light's
+    // diagonal share normals that face it, the highlight reads as "top-left +
+    // bottom-right" (or the opposite diagonal) instead of a closed ring.
+    //
+    // -n2d is the outward rim normal. highlightAngle (degrees, kwinrc) picks
+    //   the light direction: 45 -> top-left + bottom-right, 225 -> opposite.
+    //   pow() sharpens the falloff so only the near-facing arc lights up.
+    float angleRad = highlightAngle * 3.14159265 / 180.0;
+    vec2 lightDir = vec2(cos(angleRad), sin(angleRad));
+    float facing = max(dot(-n2d, lightDir), 0.0);
+    float focused = pow(facing, 3.0);
 
-    // Synthetic bevel: the top edge of the glass catches light while the
-    // bottom shades (n2d.y > 0 on the top edge), giving the material a
-    // physical thickness. The iOS "3D slab" cue.
+    // A faint all-around fresnel keeps the rim readable on dark backdrops;
+    // the focused highlight carries the actual "liquid" directionality.
+    rgb += highlight * fresnel * 0.12 * surfaceScale;
+    // The directional arc: strongest where the normal faces the light.
+    rgb += highlight * fresnel * focused * 0.55 * surfaceScale;
+
+    // Synthetic bevel: the top edge catches light while the bottom shades
+    // (n2d.y > 0 on the top edge), reinforcing the "lit from above" cue.
     float bevelGradient = n2d.y * 0.22;
     rgb += highlight * (bevelGradient * fresnel) * surfaceScale;
 
-    // Two-light specular with anisotropic streak, ported from the iOS
-    // liquid-glass shader: a 45° key light plus a 0.8-weight back-reflection
-    // ("kick"), so the glass reads as lit from both sides instead of one hot
-    // blob. The lobe is skewed 11° off-axis (anisotropic brushed look) and
-    // the brightness is soft-clamped with x/(1+x) so it can never blow out.
+    // Specular sheen on the same light direction as the focused edge arc, so
+    // the whole highlight rotates together when highlightAngle changes. The
+    // anisotropic skew gives a brushed, wet-glass look; the soft clamp keeps
+    // it from blowing out. No back-kick: a second opposing light would re-add
+    // the symmetric full-ring glow this rewrite removes.
     vec2 anisoN = (n2d + vec2(-n2d.y, n2d.x) * 0.2) * 0.9805806;
-    const vec2 lightDir = vec2(0.7071, 0.7071);
     float mainLight = max(dot(anisoN, lightDir), 0.0);
-    float kickLight = max(dot(anisoN, -lightDir), 0.0);
-    float totalInfluence = mainLight + kickLight * 0.8;
-    float directional = totalInfluence * sqrt(totalInfluence) * 0.7;
-    float brightnessRaw = (directional + 0.07) * fresnel * 0.9 * surfaceScale;
+    float directional = mainLight * sqrt(mainLight) * 0.7;
+    float brightnessRaw = (directional + 0.05) * fresnel * 0.7 * surfaceScale;
     float brightness = brightnessRaw / (1.0 + brightnessRaw);
     rgb = mix(rgb, highlight, brightness);
 

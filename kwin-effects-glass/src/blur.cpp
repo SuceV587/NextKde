@@ -139,6 +139,7 @@ BlurEffect::BlurEffect()
         m_roundedOnscreenPass.blurSizeLocation = m_roundedOnscreenPass.shader->uniformLocation("blurSize");
         m_roundedOnscreenPass.edgeSizePixelsLocation = m_roundedOnscreenPass.shader->uniformLocation("edgeSizePixels");
         m_roundedOnscreenPass.highlightWidthPxLocation = m_roundedOnscreenPass.shader->uniformLocation("highlightWidthPx");
+        m_roundedOnscreenPass.highlightAngleLocation = m_roundedOnscreenPass.shader->uniformLocation("highlightAngle");
         m_roundedOnscreenPass.surfaceScaleLocation = m_roundedOnscreenPass.shader->uniformLocation("surfaceScale");
         m_roundedOnscreenPass.refractionStrengthLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionStrength");
         m_roundedOnscreenPass.refractionNormalPowLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionNormalPow");
@@ -1615,6 +1616,7 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
         : QVector2D(nativeBox.width(), nativeBox.height()));
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.edgeSizePixelsLocation, m_settings.refraction.edgeSizePixels);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.highlightWidthPxLocation, m_settings.refraction.highlightWidthPx);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.highlightAngleLocation, m_settings.refraction.highlightAngle);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionStrengthLocation, m_settings.refraction.refractionStrength);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionNormalPowLocation, m_settings.refraction.refractionNormalPow);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionRGBFringingLocation, m_settings.refraction.refractionRGBFringing);
