@@ -3,6 +3,7 @@ import QtQuick.Effects
 import Qt5Compat.GraphicalEffects
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Widgets
 import qs.modules.bar
 import qs.modules.common
 import qs.modules.dock
@@ -511,13 +512,16 @@ Item {
     }
 
     // ── Card 9: Notification history ─────────────────────────────────
+    // Session history grouped by app: dismissed/expired banners and DND
+    // notifications (which are never shown) land here. Each group header
+    // carries the app icon/name, and every row has its own close button.
     ControlCenterCard {
         coordinator: coordinator
         offsetTop: 347
         offsetRight: 20
         cardRadius: 19
         cardWidth: 296
-        cardHeight: 110
+        cardHeight: 230
         cardColor: "transparent"
         cardBorderColor: Qt.rgba(1, 1, 1, 0.14)
 
@@ -554,35 +558,83 @@ Item {
                     topMargin: 6
                     bottom: parent.bottom
                 }
-                model: ControlCenterService.notificationHistory
+                model: ControlCenterService.historyGroups
                 clip: true
                 interactive: true
-                spacing: 4
+                spacing: 6
 
-                delegate: Item {
+                // One group per app: a compact header + its notification rows.
+                delegate: Column {
+                    required property var modelData
                     width: historyList.width
-                    height: histSummary.implicitHeight + (histBody.visible ? histBody.implicitHeight + 2 : 0)
 
-                    Text {
-                        id: histSummary
+                    Row {
                         width: parent.width
-                        text: (appName.length > 0 ? appName + " · " : "") + (summary.length > 0 ? summary : "通知")
-                        color: ThemeService.foregroundColor
-                        font { pixelSize: 11; weight: Font.Bold }
-                        elide: Text.ElideRight
-                        maximumLineCount: 1
+                        height: 18
+                        spacing: 5
+                        IconImage {
+                            width: 12; height: 12
+                            source: modelData.appIcon || ""
+                            asynchronous: true
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: modelData.appName
+                            color: Qt.rgba(1, 1, 1, 0.62)
+                            font { pixelSize: 10; weight: Font.DemiBold }
+                            elide: Text.ElideRight
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
-                    Text {
-                        id: histBody
-                        anchors.top: histSummary.bottom
-                        anchors.topMargin: 1
+                    Column {
                         width: parent.width
-                        visible: text.length > 0
-                        text: body
-                        color: Qt.rgba(1, 1, 1, 0.55)
-                        font.pixelSize: 10
-                        elide: Text.ElideRight
-                        maximumLineCount: 1
+                        spacing: 3
+                        Repeater {
+                            model: modelData.items
+                            delegate: Item {
+                                required property var modelData
+                                width: historyList.width
+                                height: rowSummary.implicitHeight + (rowBody.visible ? rowBody.implicitHeight + 1 : 0)
+
+                                Text {
+                                    id: rowSummary
+                                    width: parent.width - removeButton.width - 6
+                                    text: modelData.summary.length > 0 ? modelData.summary : "通知"
+                                    color: ThemeService.foregroundColor
+                                    font { pixelSize: 11; weight: Font.Bold }
+                                    elide: Text.ElideRight
+                                    maximumLineCount: 1
+                                }
+                                Text {
+                                    id: rowBody
+                                    anchors.top: rowSummary.bottom
+                                    anchors.topMargin: 1
+                                    width: parent.width - removeButton.width - 6
+                                    visible: text.length > 0
+                                    text: modelData.body
+                                    color: Qt.rgba(1, 1, 1, 0.50)
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                    maximumLineCount: 1
+                                }
+                                Text {
+                                    id: removeButton
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "×"
+                                    color: removeMouse.containsMouse ? "#ff453a" : Qt.rgba(1, 1, 1, 0.42)
+                                    font { pixelSize: 13; weight: Font.Bold }
+                                    MouseArea {
+                                        id: removeMouse
+                                        anchors.fill: parent
+                                        anchors.margins: -5
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: ControlCenterService.removeHistoryById(modelData.notifId)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 Text {

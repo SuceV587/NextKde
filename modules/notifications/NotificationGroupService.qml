@@ -376,6 +376,14 @@ QtObject {
 
     // ---- history -----------------------------------------------------------
 
+    // Public entry: snapshot a notification into the history store. DND uses
+    // this to keep a Do-Not-Disturb notification in the session history even
+    // though it is never shown as a banner (untracked notifications never
+    // reach dismiss/expire, so they would otherwise be lost entirely).
+    function pushHistory(notification) {
+        _pushHistory(notification)
+    }
+
     // Snapshot a notification into ControlCenterService.notificationHistory
     // before it's destroyed. History lives on the ControlCenterService
     // singleton so the ControlCenter panel can read it without a cross-module

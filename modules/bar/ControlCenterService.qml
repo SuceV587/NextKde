@@ -37,6 +37,55 @@ QtObject {
     // binds this singleton -- can read it without a cross-module reference.
     property ListModel notificationHistory: ListModel {}
     property int notificationHistoryMax: 50
+    // The history grouped by app for the session-history view. A JS array (not
+    // a ListModel) because each group carries an `items` array; the panel
+    // binds ListView to this and renders each group's rows with a nested
+    // Repeater. Rebuilt on every history mutation via _historyConnections.
+    property var historyGroups: []
+    property int historyRevision: 0
+
+    function rebuildHistoryGroups() {
+        const groups = []
+        const groupIndex = ({})
+        const history = notificationHistory
+        for (let i = 0; i < history.count; i++) {
+            const row = history.get(i)
+            const key = row.appName || "其他"
+            let group = groupIndex[key]
+            if (group === undefined) {
+                group = groups.length
+                groupIndex[key] = group
+                groups.push({ appName: key, appIcon: row.appIcon, items: [] })
+            }
+            groups[group].items.push({
+                notifId: row.notifId,
+                summary: row.summary,
+                body: row.body,
+                timestamp: row.timestamp
+            })
+        }
+        historyGroups = groups
+        historyRevision++
+    }
+
+    // Remove a single history entry (used by each grouped row's close button).
+    function removeHistoryById(notifId) {
+        const history = notificationHistory
+        for (let i = 0; i < history.count; i++) {
+            if (history.get(i).notifId === notifId) {
+                history.remove(i)
+                return
+            }
+        }
+    }
+
+    property Connections _historyConnections: Connections {
+        target: service.notificationHistory
+        function onRowsInserted() { service.rebuildHistoryGroups() }
+        function onRowsRemoved() { service.rebuildHistoryGroups() }
+        function onRowsMoved() { service.rebuildHistoryGroups() }
+        function onModelReset() { service.rebuildHistoryGroups() }
+    }
     property bool screenshotInProgress: false
     property bool logoutInProgress: false
     // The control center panel is owned by BarWindow, so a global shortcut

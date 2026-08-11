@@ -24,8 +24,15 @@ Scope {
 
         onNotification: notification => {
             // Do Not Disturb still accepts the notification at D-Bus level,
-            // but deliberately keeps it out of the visible QuickShell stack.
-            notification.tracked = !ControlCenterService.doNotDisturbEnabled
+            // but keeps it out of the visible banner stack. Untracked
+            // notifications never reach dismiss/expire, so snapshot them into
+            // the session history here or they would be lost entirely.
+            if (ControlCenterService.doNotDisturbEnabled) {
+                notification.tracked = false
+                notifGroupService.pushHistory(notification)
+            } else {
+                notification.tracked = true
+            }
         }
     }
 
