@@ -63,6 +63,25 @@ function includeWindow(window) {
         && !isKWinInternalWindow;
 }
 
+// The ids of the virtual desktops a window is on. KWin scripting exposes
+// `window.desktops` as a list of VirtualDesktop objects; each has an id.
+function desktopIds(window) {
+    try {
+        const desktops = window.desktops;
+        if (!desktops || !desktops.length)
+            return [];
+        const ids = [];
+        for (let i = 0; i < desktops.length; i++) {
+            const id = desktops[i] && desktops[i].id;
+            if (id)
+                ids.push(normalizeId(id));
+        }
+        return ids;
+    } catch (error) {
+        return [];
+    }
+}
+
 function snapshot() {
     const windows = [];
     const all = workspace.windowList();
@@ -81,7 +100,11 @@ function snapshot() {
             fullscreen: !!window.fullScreen,
             // KWin's authoritative _NET_WM_STATE_DEMANDS_ATTENTION state.
             // This is the provider boundary for the Dock's urgent styling.
-            urgent: !!propertyValue(window, "demandsAttention", false)
+            urgent: !!propertyValue(window, "demandsAttention", false),
+            // Virtual desktops this window lives on (ids). Consumed by the
+            // workspace overview to place each window on its desktop.
+            desktops: desktopIds(window),
+            onAllDesktops: !!propertyValue(window, "onAllDesktops", false)
         });
     }
     callDBus(service, path, iface, "Publish", JSON.stringify({ type: "snapshot", windows: windows }));
@@ -117,6 +140,28 @@ function findWindow(id) {
     return null;
 }
 
+function findDesktop(id) {
+    const wanted = normalizeId(id);
+    const desktops = workspace.desktops;
+    for (let i = 0; i < desktops.length; i++) {
+        if (normalizeId(desktops[i].id) === wanted)
+            return desktops[i];
+    }
+    return null;
+}
+
+function publishDesktops() {
+    const desktops = workspace.desktops;
+    const list = [];
+    for (let i = 0; i < desktops.length; i++)
+        list.push({ id: normalizeId(desktops[i].id), name: String(desktops[i].name || "") });
+    callDBus(service, path, iface, "Publish", JSON.stringify({
+        type: "desktops",
+        desktops: list,
+        current: normalizeId(workspace.currentDesktop.id)
+    }));
+}
+
 function handleCommand(serialized) {
     if (!serialized)
         return;
@@ -128,6 +173,39 @@ function handleCommand(serialized) {
         command = JSON.parse(serialized);
     } catch (error) {
         print("[QuickshellWindowBridge] command JSON error=" + error);
+        return;
+    }
+
+    // Virtual-desktop commands do not target a window. Handle them before the
+    // window lookup below.
+    if (command.action === "desktops") {
+        publishDesktops();
+        return;
+    }
+    if (command.action === "switch-desktop") {
+        const desktop = findDesktop(command.id);
+        if (!desktop) {
+            print("[QuickshellWindowBridge] switch-desktop missing id=" + command.id);
+            publishAction(command, false);
+            return;
+        }
+        workspace.currentDesktop = desktop;
+        publishAction(command, true);
+        return;
+    }
+    if (command.action === "move-to-desktop") {
+        const window = findWindow(command.windowId);
+        const desktop = findDesktop(command.desktopId);
+        if (!window || !desktop) {
+            print("[QuickshellWindowBridge] move-to-desktop missing window/desktop");
+            publishAction(command, false);
+            return;
+        }
+        window.desktops = [desktop];
+        if (command.activate)
+            workspace.activeWindow = window;
+        publishAction(command, true);
+        scheduleSnapshot();
         return;
     }
 
@@ -188,6 +266,13 @@ workspace.windowAdded.connect(function(window) {
 workspace.windowRemoved.connect(scheduleSnapshot);
 workspace.windowActivated.connect(scheduleSnapshot);
 
+// Virtual-desktop lifecycle: keep the overview's desktop bar and the
+// per-window placement fresh without polling.
+workspace.desktopAdded.connect(publishDesktops);
+workspace.desktopRemoved.connect(publishDesktops);
+workspace.desktopNameChanged.connect(publishDesktops);
+workspace.currentDesktopChanged.connect(publishDesktops);
+
 const commandTimer = new QTimer();
 // Commands are UI actions, so 100 ms keeps the Dock responsive while cutting
 // idle D-Bus traffic from 40 polls per second to 10.
@@ -208,3 +293,4 @@ commandTimer.timeout.connect(function() {
 commandTimer.start();
 
 snapshot();
+publishDesktops();

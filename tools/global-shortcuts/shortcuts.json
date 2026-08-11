@@ -22,6 +22,13 @@
       "target": "control-center",
       "action": "toggle",
       "default": "Meta+B"
+    },
+    {
+      "id": "net.local.quickshell-overview",
+      "description": "工作区概览",
+      "target": "overview",
+      "action": "toggle",
+      "default": "Meta+Tab"
     }
   ]
 }
