@@ -561,7 +561,7 @@ Item {
         cardHeight: 477
         cardColor: "transparent"
         cardBorderColor: "transparent"
-        visible: panel.logoutConfirmationVisible
+        cardShown: panel.logoutConfirmationVisible
         // cardColor transparent + no blur region on this sheet would show the
         // cards through; give it an opaque dark fill so it reads as a modal.
         Rectangle {

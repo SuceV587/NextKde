@@ -33,8 +33,8 @@ QtObject {
             cards.push(card)
             // If the group is already open (cards registered after openAll,
             // e.g. during startup), pick up the cascade so this card appears.
-            if (open && !card.visible)
-                card.visible = true
+            if (open && !card.cardShown)
+                card.cardShown = true
         }
     }
 
@@ -55,7 +55,7 @@ QtObject {
         open = false
         _openingIndex = -1
         for (const card of cards)
-            card.visible = false
+            card.cardShown = false
     }
 
     function _cascadeCard() {
@@ -65,7 +65,7 @@ QtObject {
         }
         const card = cards[_openingIndex]
         if (card)
-            card.visible = true
+            card.cardShown = true
         _openingIndex++
         _cascadeTimer.start()
     }

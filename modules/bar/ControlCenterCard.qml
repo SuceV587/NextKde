@@ -43,6 +43,20 @@ PanelWindow {
     // Which output this card lives on (the same screen as the bar).
     property var targetScreen: Quickshell.screens.length > 1 ? Quickshell.screens[1] : Quickshell.screens[0]
 
+    // Visible-state via position, NOT the window's `visible` flag.
+    //
+    // Quickshell submits the blur region when the window surface is created.
+    // Toggling `visible` destroys/recreates the surface, so the first frame
+    // after showing a card has NO region yet - KWin falls back to a full-window
+    // rectangle, topInset=0 disables the smooth card path, and the card draws
+    // a square slab for one frame before the region arrives. The dock avoids
+    // this because it is always visible.
+    //
+    // Keeping the window always mapped and hiding/showing it by sliding its
+    // top margin off/onto the screen keeps the blur region continuously
+    // submitted, so every frame - including the first - rounds the corners.
+    property bool cardShown: false
+
     screen: root.targetScreen
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
@@ -50,7 +64,11 @@ PanelWindow {
 
     anchors { top: true; right: true }
     margins {
-        top: root.coordinator ? root.coordinator.panelTop + root.offsetTop : 60 + root.offsetTop
+        // Off-screen (well above the display) while hidden; the real position
+        // (panel origin + this card's grid offset) when shown.
+        top: root.cardShown
+            ? (root.coordinator ? root.coordinator.panelTop + root.offsetTop : 60 + root.offsetTop)
+            : -2000
         // panelRight is the distance from the control center's right edge to
         // the screen's right edge (positive px). offsetRight is this card's
         // right edge to the control center's right edge. Sum = screen inset.
@@ -114,11 +132,12 @@ PanelWindow {
     }
 
     Component.onCompleted: {
+        // Window stays mapped (visible: true) so the blur region is always
+        // submitted; the coordinator shows/hides it via cardShown position.
+        root.visible = true
         if (root.managedByCoordinator) {
             if (root.coordinator)
                 root.coordinator.register(root)
-            // Start hidden; the coordinator opens the group.
-            root.visible = false
         }
     }
 }
