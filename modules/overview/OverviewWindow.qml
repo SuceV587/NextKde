@@ -30,6 +30,27 @@ PanelWindow {
     focusable: open
     anchors { top: true; left: true; right: true; bottom: true }
 
+    // PanelWindow root keyboard handling (same pattern as AppLauncherWindow):
+    // the window itself takes Keys once focusable, no Item focus dance.
+    Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Escape) {
+            root.open = false
+            event.accepted = true
+        } else if (event.key === Qt.Key_Left) {
+            root.selectedDesktopIndex = Math.max(0, root.selectedDesktopIndex - 1)
+            event.accepted = true
+        } else if (event.key === Qt.Key_Right) {
+            root.selectedDesktopIndex = Math.min(root.desktopCount - 1, root.selectedDesktopIndex + 1)
+            event.accepted = true
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            const desktops = root.desktops
+            if (desktops[root.selectedDesktopIndex])
+                WindowService.switchDesktop(desktops[root.selectedDesktopIndex].id)
+            root.open = false
+            event.accepted = true
+        }
+    }
+
     readonly property var desktops: WindowService.desktops || []
     readonly property int desktopCount: desktops.length
     readonly property int currentDesktopIndex: {
@@ -216,40 +237,35 @@ PanelWindow {
 
     onOpenChanged: {
         if (open) {
-            // Re-read desktops (they may have changed since last open) and
-            // refresh every window thumbnail.
+            // Re-read desktops (they may have changed since last open).
             WindowService.refreshDesktops()
             selectedDesktopIndex = Math.max(0, root.currentDesktopIndex)
-            const windows = root.currentWindows
-            for (let i = 0; i < windows.length; i++)
-                WindowService.requestThumbnail(windows[i].windowId)
-            focusTimer.restart()
+            selectedWindowIndex = -1
+            // Request thumbnails in small batches. The bridge captures each
+            // thumbnail through KWin's ScreenShot2 on the compositor thread;
+            // firing every window at once on open stalled the compositor and
+            // froze the whole session for a moment (a full-screen compositor
+            // freeze reads as a shell hang). Stagger them over ~1.2s.
+            thumbnailTimer.restart()
         }
     }
 
-    Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
-            root.open = false
-            event.accepted = true
-        } else if (event.key === Qt.Key_Left) {
-            root.selectedDesktopIndex = Math.max(0, root.selectedDesktopIndex - 1)
-            event.accepted = true
-        } else if (event.key === Qt.Key_Right) {
-            root.selectedDesktopIndex = Math.min(root.desktopCount - 1, root.selectedDesktopIndex + 1)
-            event.accepted = true
-        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            const desktops = root.desktops
-            if (desktops[root.selectedDesktopIndex])
-                WindowService.switchDesktop(desktops[root.selectedDesktopIndex].id)
-            root.open = false
-            event.accepted = true
-        }
-    }
-
+    // Request the next windows' thumbnails on each tick until the visible
+    // grid is covered, then stop.
     Timer {
-        id: focusTimer
-        interval: 1
-        repeat: false
-        onTriggered: root.forceActiveFocus()
+        id: thumbnailTimer
+        interval: 140
+        repeat: true
+        running: false
+        property int nextIndex: 0
+        onTriggered: {
+            const windows = root.currentWindows
+            const batchEnd = Math.min(windows.length, thumbnailTimer.nextIndex + 2)
+            for (let i = thumbnailTimer.nextIndex; i < batchEnd; i++)
+                WindowService.requestThumbnail(windows[i].windowId)
+            thumbnailTimer.nextIndex = batchEnd
+            if (batchEnd >= windows.length)
+                running = false
+        }
     }
 }
