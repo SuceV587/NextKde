@@ -98,22 +98,21 @@ GlassFragment glassRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadiu
     float bandT = 1.0 - clamp(interiorDist / bandWidth, 0.0, 1.0);
     float lens = circleMap(bandT);
 
-    // Displacement scale: refractionStrength arrives as /20 (10 kwinrc = 0.5),
-    // and the rim displacement needs to reach several pixels to be visible.
-    // K = 6.0 maps RefractionStrength=10 to ~3px at the rim, iOS-scale, with a
-    // hard cap at 4px so it can never turn into a fisheye. The lens profile
-    // (circleMap) and concaveFactor then attenuate it toward the interior.
-    float finalStrength = min(concaveFactor * refractionStrength * 6.0, 4.0) * lens;
+    // Displacement: the rim peak scales with refractionStrength (kwinrc /20,
+    // so 10 -> 0.5) through the original 0.4 coefficient. The lens profile
+    // (circleMap) and concaveFactor attenuate it toward the interior. How
+    // strong the bend reads is a parameter choice (RefractionStrength), not a
+    // shader constant.
+    float finalStrength = min(0.4 * concaveFactor * refractionStrength, 1.0) * lens;
 
     // Corner-weighted chromatic aberration (Kyant0): a real rectangular lens
     // fringes most at its corners and not at all on the axes, so the colour
-    // split scales with |x*y| across the surface. refractionOffsetStrength
-    // (10 in the user config) controls how strongly the corners take over.
-    // Factor 3.0 lifts the otherwise-invisible 3% split to ~9% on the axes
-    // and ~30% at the corners, matching the visible fringe of iOS glass.
+    // split scales with |x*y| across the surface. The corner emphasis is the
+    // structural change (parameter-unreachable); the overall amount stays
+    // parameter-driven via refractionRGBFringing.
     vec2 centeredNorm = position / halfBlurSize;
     float cornerWeight = abs(centeredNorm.x * centeredNorm.y);
-    float fringingFactor = refractionRGBFringing * 3.0 * (0.3 + 0.7 * cornerWeight);
+    float fringingFactor = refractionRGBFringing * 0.3 * (0.3 + 0.7 * cornerWeight);
 
     vec2 refractOffsetG = -normal.xy * finalStrength;
     vec2 refractOffsetR = -normal.xy * finalStrength;
