@@ -50,24 +50,68 @@ vec4 roundedRectangle(vec2 fragCoord, vec3 color, vec4 cornerRadius)
     return vec4(color, mix(1.0, 0.0, s));
 }
 
+// ── Kyant0 lens profile (circleMap) ───────────────────────────────────
+// Refraction in iOS glass is confined to a band near the edge and falls off
+// along a circular-arc profile: 1.0 at the rim, 0.0 at the inner edge of the
+// band. This is what makes the edge bend while the interior stays flat.
+// Replaces the pow() approximation in concaveFactor for the refraction zone.
+float circleMap(float x)
+{
+    return 1.0 - sqrt(1.0 - clamp(x, 0.0, 1.0) * x);
+}
+
+// Analytic gradient of the rounded-box SDF (Kyant0 gradSdRoundedRect). One
+// exact normal sample replaces the finite-difference pair, and the gradient
+// radius is widened so the normal field stays continuous across the corner
+// transition instead of picking up the per-corner radius discontinuity.
+vec2 gradSdRoundedBox(vec2 p, vec2 b, float r)
+{
+    vec2 q = abs(p) - b + r;
+    vec2 sgn = sign(p);
+    vec2 outside = max(q, 0.0);
+    float lenOut = length(outside);
+    if (lenOut > 1e-5) {
+        return sgn * outside / lenOut;
+    }
+    return (q.x > q.y) ? vec2(sgn.x, 0.0) : vec2(0.0, sgn.y);
+}
+
 GlassFragment glassRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadius, float dist, float edgeFactor, float concaveFactor)
 {
-    const float h = 1.0;
-    vec2 gradient = vec2(
-            roundedRectangleDist(position + vec2(h, 0), halfBlurSize, cornerRadius) - roundedRectangleDist(position - vec2(h, 0), halfBlurSize, cornerRadius),
-            roundedRectangleDist(position + vec2(0, h), halfBlurSize, cornerRadius) - roundedRectangleDist(position - vec2(0, h), halfBlurSize, cornerRadius)
-    );
+    // Analytic SDF normal (Kyant0): one exact sample instead of the
+    // finite-difference pair. The gradient radius is widened to keep the
+    // normal field smooth through the corners.
+    float minHalfSize = min(halfBlurSize.x, halfBlurSize.y);
+    float minR = min(min(cornerRadius.x, cornerRadius.y), min(cornerRadius.z, cornerRadius.w));
+    float gradRadius = min(minR * 1.5, minHalfSize);
+    vec2 gradient = gradSdRoundedBox(position, halfBlurSize, gradRadius);
 
-    vec2 normal = length(gradient) > 0.0 ? -normalize(gradient) : vec2(0.0, 1.0);
+    vec2 normal = length(gradient) > 1e-5 ? -normalize(gradient) : vec2(0.0, 1.0);
 
-    float finalStrength = min(0.4 * concaveFactor * refractionStrength, 1.0);
+    // The lens band: refraction lives only inside a band of width
+    // max(edgeSizePixels, 2px) * 1.5 from the edge. interiorDist grows inward
+    // from 0 at the rim; bandT goes 1.0 (rim) -> 0.0 (band inner edge) and
+    // circleMap turns that into the circular-arc falloff. Beyond the band the
+    // surface is perfectly flat, matching iOS "edge bends, center flat".
+    float interiorDist = -dist;
+    float bandWidth = max(edgeSizePixels, 2.0) * 1.5;
+    float bandT = 1.0 - clamp(interiorDist / bandWidth, 0.0, 1.0);
+    float lens = circleMap(bandT);
+
+    float finalStrength = min(0.4 * concaveFactor * refractionStrength, 1.0) * lens;
+
+    // Corner-weighted chromatic aberration (Kyant0): a real rectangular lens
+    // fringes most at its corners and not at all on the axes, so the colour
+    // split scales with |x*y| across the surface. refractionOffsetStrength
+    // (10 in the user config) controls how strongly the corners take over.
+    vec2 centeredNorm = position / halfBlurSize;
+    float cornerWeight = abs(centeredNorm.x * centeredNorm.y);
+    float fringingFactor = refractionRGBFringing * 0.3 * (0.3 + 0.7 * cornerWeight);
 
     vec2 refractOffsetG = -normal.xy * finalStrength;
     vec2 refractOffsetR = -normal.xy * finalStrength;
     vec2 refractOffsetB = -normal.xy * finalStrength;
 
-    // Different refraction offsets for each color channel
-    float fringingFactor = refractionRGBFringing * 0.3;
     if (fringingFactor > 0.0) {
         // Red bends most
         refractOffsetR = -normal.xy * (finalStrength * (1.0 + fringingFactor));
