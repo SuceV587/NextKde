@@ -161,8 +161,13 @@ PanelWindow {
                         border.width: index === root.selectedWindowIndex ? 1 : 0
                         border.color: Qt.rgba(1, 1, 1, 0.35)
 
-                        // Live thumbnail once the bridge captures it; the app
-                        // icon stays as the loading placeholder.
+                        // Live thumbnail once the bridge captured it earlier
+                        // (the Dock/QuickSearch also request these); the app
+                        // icon stays as the placeholder. Opening the overview
+                        // never triggers a capture itself -- ScreenShot2 on a
+                        // window hidden behind the full-screen overlay froze
+                        // the shell, so captures only happen on card click,
+                        // after the overview has closed.
                         Image {
                             id: preview
                             anchors {
@@ -179,34 +184,24 @@ PanelWindow {
                         }
                         AppIcon {
                             anchors.centerIn: parent
-                            width: 40
-                            height: 40
+                            width: 42
+                            height: 42
                             visible: !preview.visible
                             source: modelData.iconSource
                         }
-
-                        Row {
+                        Text {
                             anchors {
                                 left: parent.left; right: parent.right
                                 bottom: parent.bottom
-                                leftMargin: 12; rightMargin: 12; bottomMargin: 10
+                                leftMargin: 10; rightMargin: 10; bottomMargin: 8
                             }
-                            spacing: 8
-                            AppIcon {
-                                width: 20; height: 20
-                                anchors.verticalCenter: parent.verticalCenter
-                                source: modelData.iconSource
-                            }
-                            Text {
-                                width: parent.width - 28
-                                text: modelData.title
-                                color: "white"
-                                elide: Text.ElideRight
-                                font { pixelSize: 11; weight: Font.DemiBold }
-                                style: Text.Outline
-                                styleColor: Qt.rgba(0, 0, 0, 0.50)
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
+                            text: modelData.title
+                            color: "white"
+                            horizontalAlignment: Text.AlignHCenter
+                            elide: Text.ElideRight
+                            font { pixelSize: 11; weight: Font.DemiBold }
+                            style: Text.Outline
+                            styleColor: Qt.rgba(0, 0, 0, 0.50)
                         }
                     }
 
@@ -215,23 +210,16 @@ PanelWindow {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onEntered: {
-                            root.selectedWindowIndex = index
-                            // Debounce: the pointer sweeps across cards while
-                            // hunting for a window, and each capture is a
-                            // synchronous ScreenShot2 on the compositor. Wait
-                            // for the pointer to settle before requesting.
-                            hoverThumbnailTimer.stop()
-                            hoverThumbnailTimer.windowId = modelData.windowId
-                            hoverThumbnailTimer.restart()
-                        }
-                        onExited: {
-                            if (hoverThumbnailTimer.windowId === modelData.windowId)
-                                hoverThumbnailTimer.stop()
-                        }
+                        onEntered: root.selectedWindowIndex = index
                         onClicked: {
-                            WindowService.activateWindow(modelData.windowId)
+                            const windowId = modelData.windowId
+                            WindowService.activateWindow(windowId)
                             root.open = false
+                            // Captures happen only after the overview closes:
+                            // a capture while the window is hidden behind the
+                            // full-screen overlay froze the shell. The cached
+                            // thumbnail then shows on the next overview open.
+                            WindowService.requestThumbnail(windowId)
                         }
                     }
                 }
@@ -247,26 +235,13 @@ PanelWindow {
         }
     }
 
-    // Request the hovered window's thumbnail after the pointer has settled
-    // (300ms without moving to another card). One capture at a time.
-    Timer {
-        id: hoverThumbnailTimer
-        interval: 300
-        repeat: false
-        property string windowId: ""
-        onTriggered: {
-            if (root.open && windowId)
-                WindowService.requestThumbnail(windowId)
-        }
-    }
-
     onOpenChanged: {
         if (open) {
-            // Presentation state only. No D-Bus work here: opening the
-            // overview while firing desktop queries or thumbnail captures
-            // through the bridge consistently hung/crashed the shell, so the
-            // grid renders from the already-live WindowService model and each
-            // window card requests its single thumbnail only once hovered.
+            // Presentation state only. Captures never happen while the
+            // overview is open (a ScreenShot2 on a window hidden behind the
+            // full-screen overlay froze the shell); thumbnails shown here are
+            // ones the Dock/QuickSearch already requested, and new captures
+            // are deferred to the card click, after the overlay has closed.
             selectedDesktopIndex = Math.max(0, root.currentDesktopIndex)
             selectedWindowIndex = -1
         }
