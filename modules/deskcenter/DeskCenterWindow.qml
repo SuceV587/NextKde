@@ -53,10 +53,6 @@ PanelWindow {
     // File metadata is supplied by shell-data-service; this surface only
     // lays it out as a right-aligned desktop grid.
     readonly property var desktopFiles: DesktopFilesService
-    property var systemMetrics: ({})
-    property var systemHistory: ({ memory: [], cpu: [], frequency: [] })
-    property var systemMetricsReadProcess: null
-    readonly property string systemMetricsPath: Quickshell.stateDir + "/bar/usage-history.json"
 
     function formattedTimer() {
         const hours = Math.floor(timerSeconds / 3600)
@@ -96,53 +92,6 @@ PanelWindow {
         const hours = Math.floor(total / 3600)
         const minutes = Math.floor((total % 3600) / 60)
         return hours > 0 ? hours + "小时" + (minutes ? minutes + "分" : "") : minutes + "分"
-    }
-
-    function metricHistoryValues(name) {
-        const samples = systemHistory[name] ?? []
-        return samples.map(sample => Number(sample.value))
-            .filter(value => Number.isFinite(value))
-    }
-
-    function reloadSystemMetrics() {
-        if (systemMetricsReadProcess)
-            return
-        const process = systemMetricsReader.createObject(root, {
-            command: ["sh", "-c", "cat \"$1\" 2>/dev/null", "deskcenter-system-metrics", systemMetricsPath]
-        })
-        systemMetricsReadProcess = process
-        process.exited.connect(function() {
-            try {
-                const saved = JSON.parse((process.stdout?.text ?? "").trim())
-                if (saved.current)
-                    systemMetrics = saved.current
-                systemHistory = {
-                    memory: Array.isArray(saved.memory) ? saved.memory : [],
-                    cpu: Array.isArray(saved.cpu) ? saved.cpu : [],
-                    frequency: Array.isArray(saved.frequency) ? saved.frequency : []
-                }
-            } catch (_) {
-                // The top bar has not saved its first sample yet.
-            }
-            if (systemMetricsReadProcess === process)
-                systemMetricsReadProcess = null
-            process.destroy()
-        })
-        process.running = true
-    }
-
-    property Component systemMetricsReader: Component {
-        Process { stdout: StdioCollector {} }
-    }
-
-    Timer {
-        // This reads the bar's cached metrics; matching its ten-second
-        // sampler is enough, with a little slack to avoid synchronized work.
-        interval: 15000
-        running: true
-        repeat: true
-        triggeredOnStart: true
-        onTriggered: root.reloadSystemMetrics()
     }
 
     function addTimerMinute() {
@@ -838,19 +787,15 @@ PanelWindow {
                 id: systemContent
                 anchors.fill: parent
                 visible: card.modelData.id === "system"
-                // The Bar publishes the live snapshot directly. Disk state
-                // remains a cold-start fallback until that first sample lands.
-                readonly property var metrics: SystemMetricsService.ready
-                    ? SystemMetricsService : root.systemMetrics
+                // The shell-data-service snapshot drives this card through
+                // the shared MetricsService, so the rings and trends read the
+                // exact values the Bar's thermal indicator shows.
+                readonly property var metrics: MetricsService
                 function historyValues(name) {
-                    if (SystemMetricsService.ready) {
-                        const live = name === "memory" ? SystemMetricsService.memoryHistory
-                            : name === "cpu" ? SystemMetricsService.cpuHistory
-                            : SystemMetricsService.frequencyHistory
-                        return live.map(sample => Number(sample.value))
-                            .filter(value => Number.isFinite(value))
-                    }
-                    return root.metricHistoryValues(name)
+                    const live = name === "memory" ? MetricsService.memoryHistoryValues
+                        : name === "cpu" ? MetricsService.cpuHistoryValues
+                        : MetricsService.frequencyHistoryValues
+                    return live
                 }
                 // The system card is a 4:6 split: the Activity rings use the
                 // left 40%, while hover details have a calm 60% reading area.
@@ -955,7 +900,7 @@ PanelWindow {
                 }
 
                 // The lower two tenths of the left 4/10 column reuse the
-                // Bar sampler's cached temperatures; no second sensor poll.
+                // service snapshot's temperatures; no second sensor poll.
                 Item {
                     id: temperatureSummary
                     anchors { left: parent.left; leftMargin: parent.width * 0.02; bottom: parent.bottom; bottomMargin: parent.height * 0.045 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"os/exec"
@@ -21,24 +22,52 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+// MetricSample keeps one fixed-interval telemetry point. Ratios are 0..1 and
+// temperatures are in millidegrees Celsius, so every consumer formats the same
+// canonical units without touching /proc itself.
 type MetricSample struct {
-	At                                                         int64   `json:"at"`
-	CPU, Memory, Disk, Frequency, AverageMilliC, MaximumMilliC float64 `json:",omitempty"`
+	At            int64   `json:"at"`
+	CPU           float64 `json:"cpu,omitempty"`
+	Memory        float64 `json:"memory,omitempty"`
+	Disk          float64 `json:"disk,omitempty"`
+	Frequency     float64 `json:"frequencyMhz,omitempty"`
+	AverageMilliC float64 `json:"averageMilliC,omitempty"`
+	MaximumMilliC float64 `json:"maximumMilliC,omitempty"`
 }
 type Metrics struct {
-	CPU, Memory, Disk                          float64        `json:"cpu,memory,disk"`
-	FrequencyMHz, AverageMilliC, MaximumMilliC float64        `json:"frequencyMhz,averageMilliC,maximumMilliC"`
-	History                                    []MetricSample `json:"history"`
+	CPU              float64         `json:"cpu"`
+	Memory           float64         `json:"memory"`
+	Disk             float64         `json:"disk"`
+	FrequencyMHz     float64         `json:"frequencyMhz"`
+	AverageMilliC    float64         `json:"averageMilliC"`
+	MaximumMilliC    float64         `json:"maximumMilliC"`
+	MemoryUsedBytes  float64         `json:"memoryUsedBytes"`
+	MemoryTotalBytes float64         `json:"memoryTotalBytes"`
+	DiskUsedBytes    float64         `json:"diskUsedBytes"`
+	DiskTotalBytes   float64         `json:"diskTotalBytes"`
+	Sensors          []SensorReading `json:"sensors"`
+	History          []MetricSample  `json:"history"`
+}
+
+// SensorReading is one live hwmon/thermal reading, enumerated exactly like the
+// old shell sampler so the sensor dashboard keeps its device/label detail.
+type SensorReading struct {
+	Source string  `json:"source"`
+	Device string  `json:"device"`
+	Label  string  `json:"label"`
+	MilliC float64 `json:"milliC"`
 }
 type AppUsage struct {
-	Name, Icon string  `json:"name,omitempty"`
-	Seconds    float64 `json:"seconds"`
+	Name    string  `json:"name,omitempty"`
+	Icon    string  `json:"icon,omitempty"`
+	Seconds float64 `json:"seconds"`
 }
 type Activity struct {
-	Active      bool                `json:"active"`
-	ActiveApp   string              `json:"activeApp,omitempty"`
-	TodayApps   map[string]AppUsage `json:"todayApps"`
-	UptimeByDay map[string]float64  `json:"uptimeByDay"`
+	Active        bool                `json:"active"`
+	ActiveApp     string              `json:"activeApp,omitempty"`
+	TodayApps     map[string]AppUsage `json:"todayApps"`
+	UptimeByDay   map[string]float64  `json:"uptimeByDay"`
+	JournalSeeded bool                `json:"journalSeeded"`
 }
 type DesktopEntry struct {
 	Name       string `json:"name"`
@@ -65,17 +94,21 @@ type State struct {
 	Desktop  Desktop  `json:"desktop"`
 }
 type Event struct {
-	Type, AppID, Name, Icon string `json:"type,omitempty"`
-	Active                  *bool  `json:"active,omitempty"`
+	Type   string `json:"type,omitempty"`
+	AppID  string `json:"appID,omitempty"`
+	Name   string `json:"name,omitempty"`
+	Icon   string `json:"icon,omitempty"`
+	Active *bool  `json:"active,omitempty"`
 }
 
 type Service struct {
-	mu                      sync.Mutex
-	desktopSubscribersMu    sync.Mutex
-	desktopSubscribers      map[net.Conn]struct{}
-	state                   State
-	statePath, snapshotPath string
-	last                    time.Time
+	mu                        sync.Mutex
+	desktopSubscribersMu      sync.Mutex
+	desktopSubscribers        map[net.Conn]struct{}
+	state                     State
+	statePath, snapshotPath   string
+	last                      time.Time
+	prevCPUTotal, prevCPUIdle float64
 }
 
 func day(t time.Time) string { return t.Format("2006-01-02") }
@@ -123,18 +156,6 @@ func writeJSON(path string, value any) error {
 		return err
 	}
 	return os.Rename(tmp, path)
-}
-func (s *Service) settle(now time.Time) {
-	seconds := now.Sub(s.last).Seconds()
-	if seconds > 0 && seconds < 120 {
-		s.state.Activity.UptimeByDay[day(s.last)] += seconds
-		if s.state.Activity.Active && s.state.Activity.ActiveApp != "" {
-			app := s.state.Activity.TodayApps[s.state.Activity.ActiveApp]
-			app.Seconds += seconds
-			s.state.Activity.TodayApps[s.state.Activity.ActiveApp] = app
-		}
-	}
-	s.last = now
 }
 func (s *Service) persist() {
 	s.mu.Lock()
@@ -357,13 +378,29 @@ func watchDesktop(s *Service) {
 	}
 }
 
-func readCPU() float64 {
+// parseF64 reads a /proc or /sys file that holds a single non-negative number.
+func parseF64(path string) float64 {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	value, err := strconv.ParseFloat(strings.TrimSpace(string(raw)), 64)
+	if err != nil || value < 0 {
+		return 0
+	}
+	return value
+}
+
+// readCPU returns the machine-wide CPU busy ratio between this call and the
+// previous one. The first call after a restart reports 0 because there is no
+// prior /proc/stat delta to compare against.
+func (s *Service) readCPU() float64 {
 	raw, err := os.ReadFile("/proc/stat")
 	if err != nil {
 		return 0
 	}
 	fields := strings.Fields(strings.SplitN(string(raw), "\n", 2)[0])
-	if len(fields) < 6 {
+	if len(fields) < 5 {
 		return 0
 	}
 	total, idle := float64(0), float64(0)
@@ -374,63 +411,312 @@ func readCPU() float64 {
 			idle += n
 		}
 	}
-	_ = total
-	_ = idle
+	if s.prevCPUTotal > 0 && total > s.prevCPUTotal {
+		usage := 1 - (idle-s.prevCPUIdle)/(total-s.prevCPUTotal)
+		s.prevCPUTotal = total
+		s.prevCPUIdle = idle
+		return math.Max(0, math.Min(1, usage))
+	}
+	s.prevCPUTotal = total
+	s.prevCPUIdle = idle
 	return 0
 }
-func readMem() float64 {
+
+func readMem() (used, total float64) {
 	raw, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
-		return 0
+		return 0, 0
 	}
-	total, avail := float64(0), float64(0)
+	memTotal, memAvailable := float64(0), float64(0)
 	for _, l := range strings.Split(string(raw), "\n") {
 		f := strings.Fields(l)
 		if len(f) < 2 {
 			continue
 		}
 		v, _ := strconv.ParseFloat(f[1], 64)
-		if f[0] == "MemTotal:" {
-			total = v
-		}
-		if f[0] == "MemAvailable:" {
-			avail = v
+		switch f[0] {
+		case "MemTotal:":
+			memTotal = v
+		case "MemAvailable:":
+			memAvailable = v
 		}
 	}
-	if total == 0 {
-		return 0
+	if memTotal <= 0 {
+		return 0, 0
 	}
-	return 1 - avail/total
+	// /proc/meminfo counts in kibibytes.
+	used = math.Max(0, memTotal-memAvailable)
+	return used * 1024, memTotal * 1024
 }
-func readTemp() (float64, float64) {
-	entries, _ := filepath.Glob("/sys/class/thermal/thermal_zone*/temp")
-	sum, max := float64(0), float64(0)
-	for _, p := range entries {
-		raw, e := os.ReadFile(p)
-		if e != nil {
+
+func readDisk() (used, total float64) {
+	raw, err := os.ReadFile("/proc/mounts")
+	if err != nil {
+		return 0, 0
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[1] != "/" {
 			continue
 		}
-		v, _ := strconv.ParseFloat(strings.TrimSpace(string(raw)), 64)
-		if v > 0 {
-			sum += v
-			if v > max {
-				max = v
+		if out, err := exec.Command("df", "-B1", "--output=used,size", "/").Output(); err == nil {
+			if rows := strings.Split(strings.TrimSpace(string(out)), "\n"); len(rows) >= 2 {
+				values := strings.Fields(rows[1])
+				if len(values) == 2 {
+					used, _ = strconv.ParseFloat(values[0], 64)
+					total, _ = strconv.ParseFloat(values[1], 64)
+					return used, total
+				}
+			}
+		}
+		break
+	}
+	return 0, 0
+}
+
+func readFrequency() float64 {
+	// Prefer the live cpufreq policies; the /proc/cpuinfo fallback covers
+	// machines without an intel_pstate/CPUFreq driver reporting a current rate.
+	entries, _ := filepath.Glob("/sys/devices/system/cpu/cpufreq/policy*/scaling_cur_freq")
+	sum, count := float64(0), float64(0)
+	for _, p := range entries {
+		if value := parseF64(p); value > 0 {
+			sum += value
+			count++
+		}
+	}
+	if count > 0 {
+		return sum / count / 1000 // kHz -> MHz
+	}
+	raw, err := os.ReadFile("/proc/cpuinfo")
+	if err != nil {
+		return 0
+	}
+	sum, count = 0, 0
+	for _, line := range strings.Split(string(raw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 4 && fields[0] == "cpu" && fields[1] == "MHz" {
+			if value, err := strconv.ParseFloat(fields[3], 64); err == nil {
+				sum += value
+				count++
 			}
 		}
 	}
-	if max == 0 {
-		return -1, -1
+	if count == 0 {
+		return 0
 	}
-	return sum / float64(len(entries)), max
+	return sum / count
 }
+
+func readTemperature() (avg, maximum float64, readings []SensorReading) {
+	zones, _ := filepath.Glob("/sys/class/thermal/thermal_zone*/type")
+	zoneSum, zoneCount, zoneMax := float64(0), float64(0), float64(0)
+	for _, t := range zones {
+		label := strings.TrimSpace(string(readRaw(t)))
+		index := strings.TrimPrefix(t, "/sys/class/thermal/thermal_zone")
+		index = strings.TrimSuffix(index, "/type")
+		if !strings.Contains(strings.ToLower(label), "cpu") &&
+			!strings.Contains(strings.ToLower(label), "pkg") {
+			continue
+		}
+		value := parseF64("/sys/class/thermal/thermal_zone" + index + "/temp")
+		if value > 0 {
+			zoneSum += value
+			zoneCount++
+			if value > zoneMax {
+				zoneMax = value
+			}
+		}
+		readings = append(readings, SensorReading{
+			Source: "thermal", Device: "kernel", Label: label, MilliC: value,
+		})
+	}
+	hwmons, _ := filepath.Glob("/sys/class/hwmon/hwmon*")
+	for _, hwmon := range hwmons {
+		device := strings.TrimSpace(string(readRaw(hwmon + "/name")))
+		inputs, _ := filepath.Glob(hwmon + "/temp*_input")
+		for _, input := range inputs {
+			index := strings.TrimPrefix(input, hwmon+"/temp")
+			index = strings.TrimSuffix(index, "_input")
+			label := strings.TrimSpace(string(readRaw(hwmon + "/temp" + index + "_label")))
+			if label == "" {
+				label = "Temperature " + index
+			}
+			readings = append(readings, SensorReading{
+				Source: "hwmon", Device: device, Label: label, MilliC: parseF64(input),
+			})
+		}
+	}
+	if zoneCount == 0 || zoneMax <= 0 {
+		return -1, -1, readings
+	}
+	return zoneSum / zoneCount, zoneMax, readings
+}
+
+// readRaw returns a file's bytes trimmed of whitespace; missing/unreadable
+// files yield an empty slice so callers never fail on virtual filesystems.
+func readRaw(path string) []byte {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	return []byte(strings.TrimSpace(string(raw)))
+}
+
+// journalTimestampFirst returns the first entry's epoch timestamp of a boot
+// log without buffering the whole journal: head closes the pipe after one
+// line, so journalctl stops writing after its first record. The shell's exit
+// status is therefore 141 on a successful read; only the stdout line matters.
+func journalTimestampFirst(boot string) float64 {
+	out, err := exec.Command("sh", "-c",
+		"exec journalctl -b \"$1\" -o short-unix --no-pager 2>/dev/null | head -n1",
+		"journal-first", boot).Output()
+	if err != nil && len(out) == 0 {
+		return 0
+	}
+	return shortUnixTimestamp(strings.TrimSpace(string(out)))
+}
+
+// journalTimestampLast uses journalctl's own tail read, so a years-long boot
+// log costs one line instead of an unbounded in-memory copy.
+func journalTimestampLast(boot string) float64 {
+	out, err := exec.Command("journalctl", "-b", boot, "-o", "short-unix",
+		"--no-pager", "-n", "1").Output()
+	if err != nil && len(out) == 0 {
+		return 0
+	}
+	return shortUnixTimestamp(strings.TrimSpace(string(out)))
+}
+
+func shortUnixTimestamp(line string) float64 {
+	if line == "" {
+		return 0
+	}
+	// short-unix timestamps are epoch seconds with a fractional tail.
+	parsed, err := strconv.ParseFloat(strings.SplitN(line, " ", 2)[0], 64)
+	if err != nil || parsed <= 0 {
+		return 0
+	}
+	return parsed
+}
+
+// seedJournalHistory attributes uptime from past boots recorded by journald.
+// Only the boots before the current one are replayed; the running boot is
+// settled incrementally by settle(). It runs in the background so the first
+// snapshot is not delayed behind dozens of journalctl spawns, and each boot's
+// ledger update holds the mutex only for the interval add itself.
+func (s *Service) seedJournalHistory() {
+	s.mu.Lock()
+	seeded := s.state.Activity.JournalSeeded
+	s.mu.Unlock()
+	if seeded {
+		return
+	}
+	listRaw, err := exec.Command("journalctl", "--list-boots", "--no-pager").Output()
+	if err != nil {
+		return
+	}
+	boots := strings.Split(strings.TrimSpace(string(listRaw)), "\n")
+	if len(boots) <= 1 {
+		s.mu.Lock()
+		s.state.Activity.JournalSeeded = true
+		s.mu.Unlock()
+		return
+	}
+	// The first listed boot is the current one; historical uptime starts at
+	// the second. Boots beyond 84 stay outside the bounded daily view.
+	limit := len(boots)
+	if limit > 85 {
+		limit = 85
+	}
+	for i := 1; i < limit; i++ {
+		fields := strings.Fields(boots[i])
+		if len(fields) == 0 {
+			continue
+		}
+		boot := fields[0]
+		first := journalTimestampFirst(boot)
+		last := journalTimestampLast(boot)
+		if last <= first {
+			continue
+		}
+		s.mu.Lock()
+		s.addInterval(first*1000, last*1000, "")
+		s.mu.Unlock()
+	}
+	s.mu.Lock()
+	s.state.Activity.JournalSeeded = true
+	s.mu.Unlock()
+}
+
+// addInterval credits seconds between start and end (epoch millis) to the
+// matching calendar day. App attribution is empty for online time only.
+func (s *Service) addInterval(start, end float64, appID string) {
+	if end <= start {
+		return
+	}
+	for cursor := start; cursor < end; {
+		date := time.UnixMilli(int64(cursor))
+		tomorrow := time.Date(date.Year(), date.Month(), date.Day()+1, 0, 0, 0, 0, time.Local)
+		segmentEnd := math.Min(end, float64(tomorrow.UnixMilli()))
+		seconds := (segmentEnd - cursor) / 1000
+		if seconds > 0 {
+			key := day(date)
+			if appID == "" {
+				s.state.Activity.UptimeByDay[key] += seconds
+			} else {
+				app := s.state.Activity.TodayApps[appID]
+				app.Seconds += seconds
+				s.state.Activity.TodayApps[appID] = app
+			}
+		}
+		cursor = segmentEnd
+	}
+}
+
+// settle credits the wall-clock seconds since the last call into today's
+// uptime bucket and, while a foreground app is tracked, that app's session
+// total. The sub-120s guard ignores long pauses (suspend, clock jumps).
+func (s *Service) settle(now time.Time) {
+	seconds := now.Sub(s.last).Seconds()
+	if seconds > 0 && seconds < 120 {
+		s.addInterval(float64(s.last.UnixMilli()), float64(now.UnixMilli()), "")
+		if s.state.Activity.Active && s.state.Activity.ActiveApp != "" {
+			app := s.state.Activity.TodayApps[s.state.Activity.ActiveApp]
+			app.Seconds += seconds
+			s.state.Activity.TodayApps[s.state.Activity.ActiveApp] = app
+		}
+	}
+	s.last = now
+}
+
 func (s *Service) sample() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	avg, max := readTemp()
+	avg, max, readings := readTemperature()
+	memUsed, memTotal := readMem()
+	diskUsed, diskTotal := readDisk()
+	cpu := s.readCPU()
+	frequency := readFrequency()
+	s.state.Metrics.CPU = cpu
+	// Ratios must stay finite: a failed probe yields NaN, which json.Marshal
+	// rejects and would silently kill the whole snapshot write.
+	if memTotal > 0 {
+		s.state.Metrics.Memory = memUsed / memTotal
+	}
+	if diskTotal > 0 {
+		s.state.Metrics.Disk = diskUsed / diskTotal
+	}
+	s.state.Metrics.FrequencyMHz = frequency
 	s.state.Metrics.AverageMilliC = avg
 	s.state.Metrics.MaximumMilliC = max
-	s.state.Metrics.Memory = readMem()
-	sample := MetricSample{At: time.Now().UnixMilli(), Memory: s.state.Metrics.Memory, AverageMilliC: avg, MaximumMilliC: max}
+	s.state.Metrics.MemoryUsedBytes = memUsed
+	s.state.Metrics.MemoryTotalBytes = memTotal
+	s.state.Metrics.DiskUsedBytes = diskUsed
+	s.state.Metrics.DiskTotalBytes = diskTotal
+	s.state.Metrics.Sensors = readings
+	sample := MetricSample{At: time.Now().UnixMilli(), CPU: cpu, Memory: s.state.Metrics.Memory,
+		Disk: s.state.Metrics.Disk, Frequency: frequency, AverageMilliC: avg, MaximumMilliC: max}
 	s.state.Metrics.History = append(s.state.Metrics.History, sample)
 	if len(s.state.Metrics.History) > 360 {
 		s.state.Metrics.History = s.state.Metrics.History[len(s.state.Metrics.History)-360:]
@@ -508,10 +794,16 @@ func main() {
 		}
 	}()
 	tick := time.NewTicker(10 * time.Second)
-	save := time.NewTicker(60 * time.Second)
+	// Uptime attribution settles every second so a crash or reload loses at
+	// most one second instead of up to a minute. Metrics stay on the slower
+	// tick; a 1s snapshot write every ten seconds is an atomic json write.
+	settleTick := time.NewTicker(1 * time.Second)
+	save := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
+	defer settleTick.Stop()
 	defer save.Stop()
 	s.sample()
+	go s.seedJournalHistory()
 	s.refreshDesktop()
 	s.persist()
 	go watchDesktop(s)
@@ -519,6 +811,10 @@ func main() {
 		select {
 		case <-tick.C:
 			s.sample()
+		case <-settleTick.C:
+			s.mu.Lock()
+			s.settle(time.Now())
+			s.mu.Unlock()
 		case <-save.C:
 			s.persist()
 		}
