@@ -1253,6 +1253,14 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     // SDF in onscreen_rounded.glsl provide sub-pixel coverage instead.
     bool smoothQuickshellCard = false;
     qreal quickshellCardRadius = 0.0;
+    // The region structure alone (spansFullWidth + continuous centerline)
+    // gives us a reliable corner radius. We use it for the SDF mask even when
+    // the current repaint is a narrow strip (first frame of a new popup),
+    // because falling back to nativeCornerRadius (=0 on these windows) makes
+    // the first frame flash a square slab before the rounded card appears.
+    // Only the full-window replacement (blurring the whole background) is
+    // gated on fullCoverage, to avoid flicker from stale framebuffer content.
+    bool useInferredRadius = false;
     const bool isQuickshellSurface = w->window()->resourceClass().contains(QLatin1String("quickshell"), Qt::CaseInsensitive)
         || w->window()->resourceName().contains(QLatin1String("quickshell"), Qt::CaseInsensitive);
     if (isQuickshellSurface && frameShape.isEmpty()
@@ -1292,6 +1300,7 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
         smoothQuickshellCard = spansFullWidth
             && coveredUntil >= bounds.y() + bounds.height()
             && quickshellCardRadius >= 1.0;
+        useInferredRadius = smoothQuickshellCard;
     }
 
     if (smoothQuickshellCard) {
@@ -1570,7 +1579,12 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
                                  .translated(-scaledBackgroundRect.topLeft());
 #endif
     const BorderRadius nativeCornerRadius = cornerRadius.scaled(viewport.scale()).rounded();
-    const BorderRadius shaderCornerRadius = smoothQuickshellCard
+    // Round the SDF mask with the region-inferred radius whenever the region
+    // structure said "one rounded card", even if this repaint is only a strip
+    // (useInferredRadius). Only the full-window replacement needs
+    // smoothQuickshellCard, whose fullCoverage gate keeps stale framebuffer
+    // content from flickering on the first frame of a popup.
+    const BorderRadius shaderCornerRadius = useInferredRadius
         ? BorderRadius(quickshellCardRadius * viewport.scale(),
                        quickshellCardRadius * viewport.scale(),
                        quickshellCardRadius * viewport.scale(),
