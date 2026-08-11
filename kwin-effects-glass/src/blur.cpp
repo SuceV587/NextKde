@@ -1301,6 +1301,19 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
             && coveredUntil >= bounds.y() + bounds.height()
             && quickshellCardRadius >= 1.0;
         useInferredRadius = smoothQuickshellCard;
+        // Diagnostic: print only when the per-window state changes, so the
+        // first frames of a new popup show exactly why it renders the way it
+        // does (square slab vs rounded card).
+        static QHash<QString, QString> lastCardState;
+        const QString stateKey = QString::number(bounds.x()) + "," + QString::number(bounds.y());
+        const QString state = QStringLiteral("smooth=%1 useR=%2 spans=%3 r=%4 covered=%5")
+            .arg(smoothQuickshellCard).arg(useInferredRadius).arg(spansFullWidth)
+            .arg(quickshellCardRadius).arg(coveredUntil - bounds.y());
+        if (lastCardState.value(stateKey) != state) {
+            lastCardState[stateKey] = state;
+            qCWarning(KWIN_BLUR) << "[glass-card]" << w->window()->resourceName()
+                << "size=" << bounds.width() << "x" << bounds.height() << state;
+        }
     }
 
     if (smoothQuickshellCard) {
