@@ -215,9 +215,14 @@ PanelWindow {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onEntered: root.selectedWindowIndex = index
-                        onClicked: {
+                        onEntered: {
+                            root.selectedWindowIndex = index
+                            // One thumbnail per hovered window only: the bridge
+                            // captures it synchronously via KWin's ScreenShot2,
+                            // and concurrent captures froze the compositor.
                             WindowService.requestThumbnail(modelData.windowId)
+                        }
+                        onClicked: {
                             WindowService.activateWindow(modelData.windowId)
                             root.open = false
                         }
@@ -237,35 +242,13 @@ PanelWindow {
 
     onOpenChanged: {
         if (open) {
-            // Re-read desktops (they may have changed since last open).
-            WindowService.refreshDesktops()
+            // Presentation state only. No D-Bus work here: opening the
+            // overview while firing desktop queries or thumbnail captures
+            // through the bridge consistently hung/crashed the shell, so the
+            // grid renders from the already-live WindowService model and each
+            // window card requests its single thumbnail only when hovered.
             selectedDesktopIndex = Math.max(0, root.currentDesktopIndex)
             selectedWindowIndex = -1
-            // Request thumbnails in small batches. The bridge captures each
-            // thumbnail through KWin's ScreenShot2 on the compositor thread;
-            // firing every window at once on open stalled the compositor and
-            // froze the whole session for a moment (a full-screen compositor
-            // freeze reads as a shell hang). Stagger them over ~1.2s.
-            thumbnailTimer.restart()
-        }
-    }
-
-    // Request the next windows' thumbnails on each tick until the visible
-    // grid is covered, then stop.
-    Timer {
-        id: thumbnailTimer
-        interval: 140
-        repeat: true
-        running: false
-        property int nextIndex: 0
-        onTriggered: {
-            const windows = root.currentWindows
-            const batchEnd = Math.min(windows.length, thumbnailTimer.nextIndex + 2)
-            for (let i = thumbnailTimer.nextIndex; i < batchEnd; i++)
-                WindowService.requestThumbnail(windows[i].windowId)
-            thumbnailTimer.nextIndex = batchEnd
-            if (batchEnd >= windows.length)
-                running = false
         }
     }
 }
