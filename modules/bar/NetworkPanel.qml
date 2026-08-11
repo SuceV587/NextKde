@@ -373,172 +373,171 @@ PopupWindow {
             }
         }
 
-        Rectangle {
-            id: networkListCard
-            width: parent.width
-            height: parent.height
-            radius: 19
-            // Transparent so the compositor blur region (BackgroundEffect on
-            // this panel) shows through - real liquid glass with windows
-            // visible behind it. A subtle tint + border keep text readable.
-            color: Qt.rgba(1, 1, 1, 0.08)
-            border.width: 1
-            border.color: Qt.rgba(0.74, 0.95, 1, 0.28)
+    }
+    Rectangle {
+        id: networkListCard
+        anchors.fill: parent
+        radius: 19
+        // Transparent so the compositor blur region (BackgroundEffect on
+        // this panel) shows through - real liquid glass with windows
+        // visible behind it. A subtle tint + border keep text readable.
+        color: Qt.rgba(1, 1, 1, 0.08)
+        border.width: 1
+        border.color: Qt.rgba(0.74, 0.95, 1, 0.28)
 
-            Text {
-                visible: false
-                anchors { left: parent.left; top: parent.top; leftMargin: 13; topMargin: 10 }
-                text: NetworkService.wifiEnabled ? "附近 Wi‑Fi" : "Wi‑Fi 已关闭"
-                color: ThemeService.foregroundColor
-                style: Text.Outline
-                styleColor: Qt.rgba(0, 0, 0, 0.50)
-                opacity: 0.78
-                font { pixelSize: 11; weight: Font.DemiBold }
+        Text {
+            visible: false
+            anchors { left: parent.left; top: parent.top; leftMargin: 13; topMargin: 10 }
+            text: NetworkService.wifiEnabled ? "附近 Wi‑Fi" : "Wi‑Fi 已关闭"
+            color: ThemeService.foregroundColor
+            style: Text.Outline
+            styleColor: Qt.rgba(0, 0, 0, 0.50)
+            opacity: 0.78
+            font { pixelSize: 11; weight: Font.DemiBold }
+        }
+
+        ListView {
+            id: wifiList
+            anchors {
+                left: parent.left; right: parent.right; top: parent.top; bottom: settingsFooter.top
+                leftMargin: 8; rightMargin: 8; topMargin: 8; bottomMargin: 0
             }
-
-            ListView {
-                id: wifiList
-                anchors {
-                    left: parent.left; right: parent.right; top: parent.top; bottom: settingsFooter.top
-                    leftMargin: 8; rightMargin: 8; topMargin: 8; bottomMargin: 0
-                }
-                clip: true
-                spacing: 2
-                model: NetworkService.wifiEnabled ? NetworkService.nearbyWifi : []
-                delegate: Rectangle {
-                    required property var modelData
-                    width: wifiList.width
-                    height: 46
-                    radius: 10
-                    color: networkRowMouse.containsMouse
-                        ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
-                    Behavior on color { ColorAnimation { duration: 110 } }
-                    Text {
-                        visible: modelData.active
-                        anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
-                        text: "✓"
-                        color: ThemeService.foregroundColor
-                        style: Text.Outline
-                        styleColor: Qt.rgba(0, 0, 0, 0.50)
-                        font { pixelSize: 19; weight: Font.DemiBold }
-                    }
-                    Canvas {
-                        id: rowWifiGlyph
-                        width: 24
-                        height: 24
-                        anchors { left: parent.left; leftMargin: 32; verticalCenter: parent.verticalCenter }
-                        onPaint: {
-                            const ctx = getContext("2d")
-                            ctx.reset()
-                            ctx.strokeStyle = ThemeService.foregroundColor
-                            ctx.fillStyle = ThemeService.foregroundColor
-                            ctx.globalAlpha = 0.92
-                            ctx.lineWidth = 1.9
-                            ctx.lineCap = "round"
-                            const rings = modelData.signalStrength < 25 ? 1
-                                : (modelData.signalStrength < 50 ? 2 : 3)
-                            for (let ring = 0; ring < rings; ring++) {
-                                const ringRadius = 3.3 + ring * 2.7
-                                ctx.beginPath()
-                                ctx.arc(12, 17.1, ringRadius,
-                                    Math.PI * 1.22, Math.PI * 1.78)
-                                ctx.stroke()
-                            }
-                            ctx.beginPath()
-                            ctx.arc(12, 16.7, 1.4, 0, Math.PI * 2)
-                            ctx.fill()
-                        }
-                    }
-                    // Draw the encryption mark instead of relying on a lock
-                    // glyph: the configured CJK font can lack that glyph and
-                    // renders it as a square on some installations.
-                    Canvas {
-                        id: rowSecurityGlyph
-                        visible: modelData.secured
-                        width: 8
-                        height: 11
-                        // Keep one tight icon gap, then reserve a larger
-                        // readable gap before the SSID (see label margin).
-                        anchors { left: rowWifiGlyph.right; leftMargin: 1; verticalCenter: parent.verticalCenter }
-                        onPaint: {
-                            const ctx = getContext("2d")
-                            ctx.reset()
-                            ctx.strokeStyle = ThemeService.foregroundColor
-                            ctx.fillStyle = ThemeService.foregroundColor
-                            ctx.globalAlpha = 0.82
-                            ctx.lineWidth = 1.2
-                            ctx.lineCap = "round"
-                            ctx.beginPath()
-                            ctx.arc(4, 4.7, 2.35, Math.PI * 1.12, Math.PI * 1.88)
-                            ctx.stroke()
-                            ctx.fillRect(0.7, 4.8, 6.6, 5.5)
-                            ctx.fillStyle = "rgba(0, 0, 0, 0.28)"
-                            ctx.beginPath()
-                            ctx.arc(4, 7.3, 0.75, 0, Math.PI * 2)
-                            ctx.fill()
-                        }
-                    }
-                    Text {
-                        // Reserve the checkmark slot in every row. Connected
-                        // state changes only the checkmark, never alignment.
-                        anchors {
-                            left: parent.left
-                            leftMargin: modelData.secured ? 73 : 64
-                            right: parent.right
-                            rightMargin: 12
-                            verticalCenter: parent.verticalCenter
-                        }
-                        text: modelData.ssid
-                        color: ThemeService.foregroundColor
-                        style: Text.Outline
-                        styleColor: Qt.rgba(0, 0, 0, 0.50)
-                        elide: Text.ElideRight
-                        font { pixelSize: 12; weight: Font.DemiBold }
-                    }
-                    MouseArea {
-                        id: networkRowMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: panel.showNetworkDialog(modelData)
-                    }
-                }
-                GlassText {
-                    anchors.centerIn: parent
-                    visible: NetworkService.wifiEnabled && !NetworkService.wifiScanInProgress
-                        && NetworkService.nearbyWifi.length === 0
-                    text: "未发现可用 Wi‑Fi"
-                    color: ThemeService.foregroundColor
-                    opacity: 0.5
-                    font.pixelSize: 12
-                }
-            }
-
-            // Match the familiar system-picker affordance: a fixed bottom
-            // action, separated from the scrollable access-point list.
-            Item {
-                id: settingsFooter
-                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                height: 50
-
-                Rectangle {
-                    anchors { left: parent.left; right: parent.right; top: parent.top }
-                    height: 1
-                    color: Qt.rgba(1, 1, 1, 0.16)
-                }
+            clip: true
+            spacing: 2
+            model: NetworkService.wifiEnabled ? NetworkService.nearbyWifi : []
+            delegate: Rectangle {
+                required property var modelData
+                width: wifiList.width
+                height: 46
+                radius: 10
+                color: networkRowMouse.containsMouse
+                    ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                Behavior on color { ColorAnimation { duration: 110 } }
                 Text {
-                    anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter }
-                    text: "无线局域网设置…"
+                    visible: modelData.active
+                    anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
+                    text: "✓"
                     color: ThemeService.foregroundColor
                     style: Text.Outline
                     styleColor: Qt.rgba(0, 0, 0, 0.50)
-                    font { pixelSize: 14; weight: Font.DemiBold }
+                    font { pixelSize: 19; weight: Font.DemiBold }
+                }
+                Canvas {
+                    id: rowWifiGlyph
+                    width: 24
+                    height: 24
+                    anchors { left: parent.left; leftMargin: 32; verticalCenter: parent.verticalCenter }
+                    onPaint: {
+                        const ctx = getContext("2d")
+                        ctx.reset()
+                        ctx.strokeStyle = ThemeService.foregroundColor
+                        ctx.fillStyle = ThemeService.foregroundColor
+                        ctx.globalAlpha = 0.92
+                        ctx.lineWidth = 1.9
+                        ctx.lineCap = "round"
+                        const rings = modelData.signalStrength < 25 ? 1
+                            : (modelData.signalStrength < 50 ? 2 : 3)
+                        for (let ring = 0; ring < rings; ring++) {
+                            const ringRadius = 3.3 + ring * 2.7
+                            ctx.beginPath()
+                            ctx.arc(12, 17.1, ringRadius,
+                                Math.PI * 1.22, Math.PI * 1.78)
+                            ctx.stroke()
+                        }
+                        ctx.beginPath()
+                        ctx.arc(12, 16.7, 1.4, 0, Math.PI * 2)
+                        ctx.fill()
+                    }
+                }
+                // Draw the encryption mark instead of relying on a lock
+                // glyph: the configured CJK font can lack that glyph and
+                // renders it as a square on some installations.
+                Canvas {
+                    id: rowSecurityGlyph
+                    visible: modelData.secured
+                    width: 8
+                    height: 11
+                    // Keep one tight icon gap, then reserve a larger
+                    // readable gap before the SSID (see label margin).
+                    anchors { left: rowWifiGlyph.right; leftMargin: 1; verticalCenter: parent.verticalCenter }
+                    onPaint: {
+                        const ctx = getContext("2d")
+                        ctx.reset()
+                        ctx.strokeStyle = ThemeService.foregroundColor
+                        ctx.fillStyle = ThemeService.foregroundColor
+                        ctx.globalAlpha = 0.82
+                        ctx.lineWidth = 1.2
+                        ctx.lineCap = "round"
+                        ctx.beginPath()
+                        ctx.arc(4, 4.7, 2.35, Math.PI * 1.12, Math.PI * 1.88)
+                        ctx.stroke()
+                        ctx.fillRect(0.7, 4.8, 6.6, 5.5)
+                        ctx.fillStyle = "rgba(0, 0, 0, 0.28)"
+                        ctx.beginPath()
+                        ctx.arc(4, 7.3, 0.75, 0, Math.PI * 2)
+                        ctx.fill()
+                    }
+                }
+                Text {
+                    // Reserve the checkmark slot in every row. Connected
+                    // state changes only the checkmark, never alignment.
+                    anchors {
+                        left: parent.left
+                        leftMargin: modelData.secured ? 73 : 64
+                        right: parent.right
+                        rightMargin: 12
+                        verticalCenter: parent.verticalCenter
+                    }
+                    text: modelData.ssid
+                    color: ThemeService.foregroundColor
+                    style: Text.Outline
+                    styleColor: Qt.rgba(0, 0, 0, 0.50)
+                    elide: Text.ElideRight
+                    font { pixelSize: 12; weight: Font.DemiBold }
                 }
                 MouseArea {
+                    id: networkRowMouse
                     anchors.fill: parent
+                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: panel.openWirelessSettings()
+                    onClicked: panel.showNetworkDialog(modelData)
                 }
+            }
+            GlassText {
+                anchors.centerIn: parent
+                visible: NetworkService.wifiEnabled && !NetworkService.wifiScanInProgress
+                    && NetworkService.nearbyWifi.length === 0
+                text: "未发现可用 Wi‑Fi"
+                color: ThemeService.foregroundColor
+                opacity: 0.5
+                font.pixelSize: 12
+            }
+        }
+
+        // Match the familiar system-picker affordance: a fixed bottom
+        // action, separated from the scrollable access-point list.
+        Item {
+            id: settingsFooter
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: 50
+
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; top: parent.top }
+                height: 1
+                color: Qt.rgba(1, 1, 1, 0.16)
+            }
+            Text {
+                anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter }
+                text: "无线局域网设置…"
+                color: ThemeService.foregroundColor
+                style: Text.Outline
+                styleColor: Qt.rgba(0, 0, 0, 0.50)
+                font { pixelSize: 14; weight: Font.DemiBold }
+            }
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: panel.openWirelessSettings()
             }
         }
     }
