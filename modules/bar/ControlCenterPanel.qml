@@ -10,6 +10,11 @@ import qs.modules.notifications
 // Compact desktop adaptation of the supplied Control Center reference.
 // Its geometry intentionally stays small enough for a top-bar popup while
 // preserving the reference's two-column, pill-and-media-card hierarchy.
+//
+// Per-card liquid glass: each card is a LiquidGlassCard that independently
+// samples the wallpaper texture at its own screen position. Gaps between cards
+// are transparent and show the real desktop wallpaper (the iOS "hollow" look).
+// This replaces the old single-slab KWin blur that covered the whole panel.
 PopupWindow {
     id: panel
 
@@ -27,20 +32,22 @@ PopupWindow {
     grabFocus: true
     anchor { item: panel.anchorItem; edges: Edges.Bottom; gravity: Edges.Bottom; margins.bottom: -6 }
 
-    // One continuous liquid-glass slab behind the whole control center,
-    // instead of eight per-card blobs that left hollow gaps between cards.
-    // The slab extends past the content column (15px breathing room on every
-    // side) so the glass reads as a frame around the controls rather than
-    // hugging their edges. contentColumn uses anchors.margins: 10; this slab
-    // uses margins: -5, so the gap between slab edge and content is 15px.
-    Item {
-        id: glassSlab
-        anchors.fill: parent
-        anchors.margins: 5
+    // ── Shared wallpaper texture provider ──
+    // One hidden wallpaper Image + ShaderEffectSource shared by all cards.
+    // Each card samples the correct screen region independently.
+    WallpaperTextureProvider {
+        id: wallpaperProvider
+        screen: panel.screen
     }
-    BackgroundEffect.blurRegion: RoundedBlurRegion {
-        item: glassSlab
-        radius: 34
+
+    // Helper: compute a card's screen-space position. The popup's screen origin
+    // is its x/y (screen-absolute once placed by the compositor). Card position
+    // within the popup is resolved via mapToItem to the contentItem root.
+    // We recompute on geometry changes because declarative mapToItem bindings
+    // don't reliably notify (see DockActiveIndicator.qml:34 caveat).
+    function _cardScreenPos(card) {
+        var local = card.mapToItem(panel.contentItem, 0, 0)
+        return Qt.point(panel.x + local.x, panel.y + local.y)
     }
 
     function toggle(item) {
@@ -115,14 +122,19 @@ PopupWindow {
                 height: parent.height
                 spacing: 8
 
-                Rectangle {
+                LiquidGlassCard {
                     id: wifiCard
                     width: parent.width
                     height: 59
                     radius: height / 2
-                    color: Qt.rgba(1, 1, 1, 0.10)
+                    wallpaperTexture: wallpaperProvider.texture
+                    screenSize: wallpaperProvider.screenSize
+                    cardScreenPos: panel._cardScreenPos(wifiCard)
+                    refractionStrength: 0.5
+                    tintColor: Qt.rgba(1, 1, 1, 0.08)
                     border.width: 1
                     border.color: Qt.rgba(0.74, 0.95, 1, 0.34)
+
                     Rectangle {
                         width: 39; height: 39; radius: width / 2
                         anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
@@ -180,15 +192,20 @@ PopupWindow {
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: panel.networkRequested() }
                 }
 
-                Rectangle {
+                LiquidGlassCard {
                     id: bluetoothCard
                     width: parent.width
                     height: 59
                     radius: height / 2
-                    color: Qt.rgba(1, 1, 1, 0.10)
+                    wallpaperTexture: wallpaperProvider.texture
+                    screenSize: wallpaperProvider.screenSize
+                    cardScreenPos: panel._cardScreenPos(bluetoothCard)
+                    refractionStrength: 0.5
+                    tintColor: Qt.rgba(1, 1, 1, 0.08)
                     opacity: ControlCenterService.bluetoothAvailable ? 1 : 0.48
                     border.width: 1
                     border.color: Qt.rgba(0.74, 0.95, 1, 0.34)
+
                     Rectangle {
                         width: 39; height: 39; radius: width / 2
                         anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
@@ -248,12 +265,16 @@ PopupWindow {
                 }
             }
 
-            Rectangle {
+            LiquidGlassCard {
                 id: mediaCard
                 width: parent.width - 145
                 height: parent.height
                 radius: 25
-                color: Qt.rgba(1, 1, 1, 0.10)
+                wallpaperTexture: wallpaperProvider.texture
+                screenSize: wallpaperProvider.screenSize
+                cardScreenPos: panel._cardScreenPos(mediaCard)
+                refractionStrength: 0.6
+                tintColor: Qt.rgba(1, 1, 1, 0.10)
                 border.width: 1
                 border.color: Qt.rgba(0.72, 0.95, 1, 0.32)
 
@@ -332,13 +353,19 @@ PopupWindow {
             Row {
                 anchors.fill: parent
                 spacing: 10
-                Rectangle {
+
+                LiquidGlassCard {
                     id: screenshotButton
                     width: 54; height: 54; radius: width / 2
+                    wallpaperTexture: wallpaperProvider.texture
+                    screenSize: wallpaperProvider.screenSize
+                    cardScreenPos: panel._cardScreenPos(screenshotButton)
+                    refractionStrength: 0.4
+                    tintColor: Qt.rgba(1, 1, 1, 0.08)
+                    border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.24)
+
                     scale: screenshotPointer.pressed ? 0.91 : (screenshotPointer.containsMouse ? 1.06 : 1.0)
                     Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
-                    color: Qt.rgba(1, 1, 1, 0.10)
-                    border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.24)
                     Image {
                         anchors.centerIn: parent
                         width: 25
@@ -351,13 +378,19 @@ PopupWindow {
                     }
                     MouseArea { id: screenshotPointer; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ControlCenterService.captureInteractiveScreenshot() }
                 }
-                Rectangle {
+
+                LiquidGlassCard {
                     id: logoutButton
                     width: 54; height: 54; radius: width / 2
+                    wallpaperTexture: wallpaperProvider.texture
+                    screenSize: wallpaperProvider.screenSize
+                    cardScreenPos: panel._cardScreenPos(logoutButton)
+                    refractionStrength: 0.4
+                    tintColor: Qt.rgba(1, 1, 1, 0.08)
+                    border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.24)
+
                     scale: logoutPointer.pressed ? 0.91 : (logoutPointer.containsMouse ? 1.06 : 1.0)
                     Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
-                    color: Qt.rgba(1, 1, 1, 0.10)
-                    border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.24)
                     Image {
                         anchors.centerIn: parent
                         width: 24
@@ -370,19 +403,25 @@ PopupWindow {
                     }
                     MouseArea { id: logoutPointer; anchors.fill: parent; hoverEnabled: true; enabled: !ControlCenterService.logoutInProgress; cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor; onClicked: panel.logoutConfirmationVisible = true }
                 }
-                Rectangle {
+
+                LiquidGlassCard {
                     id: dndButton
                     // Fill the remaining row width so Do Not Disturb reads as
                     // a named mode instead of a third anonymous action.
                     width: parent.width - 128
                     height: 54
                     radius: height / 2
-                    scale: dndPointer.pressed ? 0.97 : (dndPointer.containsMouse ? 1.025 : 1.0)
-                    Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
-                    color: Qt.rgba(1, 1, 1, 0.10)
+                    wallpaperTexture: wallpaperProvider.texture
+                    screenSize: wallpaperProvider.screenSize
+                    cardScreenPos: panel._cardScreenPos(dndButton)
+                    refractionStrength: 0.4
+                    tintColor: Qt.rgba(1, 1, 1, 0.08)
                     border.width: 1
                     border.color: ControlCenterService.doNotDisturbEnabled
                         ? "#0a84ff" : Qt.rgba(1, 1, 1, 0.24)
+
+                    scale: dndPointer.pressed ? 0.97 : (dndPointer.containsMouse ? 1.025 : 1.0)
+                    Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
                     Image {
                         anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter }
                         width: 23
@@ -413,13 +452,18 @@ PopupWindow {
 
         // Keep the reference's Display row, but make its unavailable backend
         // explicit rather than offering a slider that cannot change anything.
-        Rectangle {
+        LiquidGlassCard {
             id: brightnessCard
             width: parent.width
             height: 57
             radius: 19
-            color: Qt.rgba(1, 1, 1, 0.10)
+            wallpaperTexture: wallpaperProvider.texture
+            screenSize: wallpaperProvider.screenSize
+            cardScreenPos: panel._cardScreenPos(brightnessCard)
+            refractionStrength: 0.5
+            tintColor: Qt.rgba(1, 1, 1, 0.08)
             border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.14)
+
             Text { anchors { left: parent.left; top: parent.top; leftMargin: 14; topMargin: 8 } text: "显示亮度"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.56; font { pixelSize: 11; weight: Font.DemiBold } }
             Text { anchors { right: parent.right; top: parent.top; rightMargin: 14; topMargin: 8 } text: "未检测到后端"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.40; font.pixelSize: 9 }
             Rectangle {
@@ -430,13 +474,18 @@ PopupWindow {
             Text { anchors { left: parent.left; leftMargin: 12; bottom: parent.bottom; bottomMargin: 5 } text: "☀"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.55; font.pixelSize: 13 }
         }
 
-        Rectangle {
+        LiquidGlassCard {
             id: soundCard
             width: parent.width
             height: 57
             radius: 19
-            color: Qt.rgba(1, 1, 1, 0.10)
+            wallpaperTexture: wallpaperProvider.texture
+            screenSize: wallpaperProvider.screenSize
+            cardScreenPos: panel._cardScreenPos(soundCard)
+            refractionStrength: 0.5
+            tintColor: Qt.rgba(1, 1, 1, 0.08)
             border.width: 1; border.color: Qt.rgba(0.72, 0.93, 1, 0.27)
+
             Text { anchors { left: parent.left; top: parent.top; leftMargin: 14; topMargin: 8 } text: "声音"; color: "white"; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); font { pixelSize: 11; weight: Font.DemiBold } }
             Text { anchors { right: parent.right; top: parent.top; rightMargin: 14; topMargin: 8 } text: Math.round(panel.volumePreview) + "%"; color: "white"; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.72; font.pixelSize: 10 }
             Canvas {
@@ -480,11 +529,16 @@ PopupWindow {
         // notification snapshots. Reads from ControlCenterService.notificationHistory
         // (populated by NotificationGroupService). Compact -- a header with a
         // clear button and a ListView capped to a few visible rows.
-        Rectangle {
+        LiquidGlassCard {
+            id: historyCard
             width: parent.width
             height: 110
             radius: 19
-            color: Qt.rgba(1, 1, 1, 0.10)
+            wallpaperTexture: wallpaperProvider.texture
+            screenSize: wallpaperProvider.screenSize
+            cardScreenPos: panel._cardScreenPos(historyCard)
+            refractionStrength: 0.5
+            tintColor: Qt.rgba(1, 1, 1, 0.08)
             border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.14)
 
