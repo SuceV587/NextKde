@@ -64,7 +64,8 @@ function includeWindow(window) {
 }
 
 // The ids of the virtual desktops a window is on. KWin scripting exposes
-// `window.desktops` as a list of VirtualDesktop objects; each has an id.
+// `window.desktops` as a list of VirtualDesktop objects with an id; some
+// versions expose bare id strings, so accept both shapes.
 function desktopIds(window) {
     try {
         const desktops = window.desktops;
@@ -72,9 +73,10 @@ function desktopIds(window) {
             return [];
         const ids = [];
         for (let i = 0; i < desktops.length; i++) {
-            const id = desktops[i] && desktops[i].id;
+            const item = desktops[i];
+            const id = item && typeof item === "object" ? item.id : item;
             if (id)
-                ids.push(normalizeId(id));
+                ids.push(normalizeId(String(id)));
         }
         return ids;
     } catch (error) {
@@ -89,7 +91,6 @@ function snapshot() {
         const window = all[i];
         if (!includeWindow(window))
             continue;
-
         windows.push({
             id: windowId(window),
             pid: Number(propertyValue(window, "pid", 0)),
@@ -153,12 +154,20 @@ function findDesktop(id) {
 function publishDesktops() {
     const desktops = workspace.desktops;
     const list = [];
-    for (let i = 0; i < desktops.length; i++)
-        list.push({ id: normalizeId(desktops[i].id), name: String(desktops[i].name || "") });
+    for (let i = 0; i < desktops.length; i++) {
+        const item = desktops[i];
+        const id = item && typeof item === "object" ? item.id : item;
+        list.push({
+            id: normalizeId(String(id || "")),
+            name: item && typeof item === "object" ? String(item.name || "") : String(item || "")
+        });
+    }
+    const current = workspace.currentDesktop;
+    const currentId = current && typeof current === "object" ? current.id : current;
     callDBus(service, path, iface, "Publish", JSON.stringify({
         type: "desktops",
         desktops: list,
-        current: normalizeId(workspace.currentDesktop.id)
+        current: normalizeId(String(currentId || ""))
     }));
 }
 
