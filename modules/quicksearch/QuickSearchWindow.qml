@@ -25,7 +25,10 @@ PanelWindow {
     property real revealProgress: open ? 1.0 : 0.0
 
     Behavior on revealProgress {
-        NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
+        NumberAnimation {
+            duration: 90
+            easing.type: Easing.OutCubic
+        }
     }
 
     signal closeRequested
@@ -123,6 +126,8 @@ PanelWindow {
 
     function reset() {
         query = "";
+        // Window mode opens with the most recently used window selected (the
+        // first MRU result); Alt+Tab proposes the previous window immediately.
         selectedIndex = 0;
         focusTimer.restart();
         if (mode === "clipboard")
@@ -202,6 +207,15 @@ PanelWindow {
         repeat: true
         running: root.open && root.mode === "clipboard"
         onTriggered: ClipboardService.refresh()
+    }
+
+    // Thumbnail captures are one-shot; a slow poll re-requests rows whose
+    // capture failed or arrived after the window entered the list.
+    Timer {
+        interval: 2000
+        repeat: true
+        running: root.open && root.mode === "window"
+        onTriggered: root.requestWindowThumbnails()
     }
 
     // There is intentionally no dimmed visual overlay. This transparent input
@@ -393,7 +407,7 @@ PanelWindow {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: 11
+                    radius: 20
                     color: resultItem.index === root.selectedIndex ? Qt.rgba(1, 1, 1, 0.16) : "transparent"
                 }
 
@@ -412,7 +426,28 @@ PanelWindow {
                     border.color: Qt.rgba(0.66, 0.82, 1, 0.42)
                 }
 
+                // Live KWin preview for window rows once the bridge has
+                // captured it; the app icon stays as the loading placeholder.
+                Image {
+                    id: windowThumbnail
+                    visible: (resultItem.modelData.kind === "window")
+                        && !!WindowService.thumbnailUrl(resultItem.modelData.windowId)
+                    width: 64
+                    height: 40
+                    anchors {
+                        left: parent.left
+                        leftMargin: 12
+                        verticalCenter: parent.verticalCenter
+                    }
+                    source: WindowService.thumbnailUrl(resultItem.modelData.windowId)
+                    sourceSize: Qt.size(128, 80)
+                    fillMode: Image.PreserveAspectCrop
+                    clip: true
+                    smooth: true
+                }
+
                 AppIcon {
+                    visible: !windowThumbnail.visible
                     width: resultItem.modelData.isImage ? 20 : 30
                     height: width
                     anchors {
@@ -426,7 +461,10 @@ PanelWindow {
                 Column {
                     anchors {
                         left: parent.left
-                        leftMargin: 54
+                        // Window rows reserve a thumbnail slot whether or not
+                        // the capture has landed yet, so the label does not
+                        // jump when the preview arrives.
+                        leftMargin: resultItem.modelData.kind === "window" ? 88 : 54
                         right: parent.right
                         rightMargin: root.mode === "clipboard" && resultItem.index === 0 ? 62 : 12
                         verticalCenter: parent.verticalCenter
