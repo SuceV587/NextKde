@@ -4,9 +4,10 @@ import QtQuick
 import Quickshell.Io
 
 // NetworkService is the single NetworkManager adapter for shell surfaces.
-// Phase one is intentionally read-only: it normalizes `nmcli` output into a
-// stable interface. Future Wi-Fi scanning, connect, credential, and forget
-// operations belong here as explicit methods rather than in Bar components.
+// It normalizes `nmcli` output into a stable interface and owns the Wi-Fi
+// write operations (connect / connectEnterprise / disconnect / forget /
+// radio toggle) as explicit methods, each reporting success or failure back
+// to its caller so a Bar icon never silently changes system networking.
 QtObject {
     id: service
 
@@ -23,8 +24,8 @@ QtObject {
     property string ssid: ""
     property int signalStrength: -1 // 0..100; -1 when irrelevant/unavailable
     property string ipv4: ""
-    // Nearby access points are a presentation-ready, de-duplicated list.
-    // Future connection UI consumes this instead of parsing nmcli itself.
+    // Nearby access points are a presentation-ready, de-duplicated list that
+    // the connection UI consumes instead of parsing nmcli itself.
     property var nearbyWifi: []
     property bool wifiScanInProgress: false
     property int wifiScanRevision: 0
