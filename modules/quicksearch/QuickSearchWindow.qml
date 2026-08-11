@@ -209,15 +209,6 @@ PanelWindow {
         onTriggered: ClipboardService.refresh()
     }
 
-    // Thumbnail captures are one-shot; a slow poll re-requests rows whose
-    // capture failed or arrived after the window entered the list.
-    Timer {
-        interval: 2000
-        repeat: true
-        running: root.open && root.mode === "window"
-        onTriggered: root.requestWindowThumbnails()
-    }
-
     // There is intentionally no dimmed visual overlay. This transparent input
     // catcher preserves the natural Spotlight behaviour: a click outside the
     // compact search card simply dismisses it.
@@ -426,28 +417,7 @@ PanelWindow {
                     border.color: Qt.rgba(0.66, 0.82, 1, 0.42)
                 }
 
-                // Live KWin preview for window rows once the bridge has
-                // captured it; the app icon stays as the loading placeholder.
-                Image {
-                    id: windowThumbnail
-                    visible: (resultItem.modelData.kind === "window")
-                        && !!WindowService.thumbnailUrl(resultItem.modelData.windowId)
-                    width: 64
-                    height: 40
-                    anchors {
-                        left: parent.left
-                        leftMargin: 12
-                        verticalCenter: parent.verticalCenter
-                    }
-                    source: WindowService.thumbnailUrl(resultItem.modelData.windowId)
-                    sourceSize: Qt.size(128, 80)
-                    fillMode: Image.PreserveAspectCrop
-                    clip: true
-                    smooth: true
-                }
-
                 AppIcon {
-                    visible: !windowThumbnail.visible
                     width: resultItem.modelData.isImage ? 20 : 30
                     height: width
                     anchors {
@@ -461,10 +431,7 @@ PanelWindow {
                 Column {
                     anchors {
                         left: parent.left
-                        // Window rows reserve a thumbnail slot whether or not
-                        // the capture has landed yet, so the label does not
-                        // jump when the preview arrives.
-                        leftMargin: resultItem.modelData.kind === "window" ? 88 : 54
+                        leftMargin: 54
                         right: parent.right
                         rightMargin: root.mode === "clipboard" && resultItem.index === 0 ? 62 : 12
                         verticalCenter: parent.verticalCenter
