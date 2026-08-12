@@ -235,6 +235,7 @@ Item {
 
     // ── Card 3: Media player ─────────────────────────────────────────
     ControlCenterCard {
+        id: mediaCard
         coordinator: coordinator
         offsetTop: 20
         offsetRight: 20
@@ -251,7 +252,10 @@ Item {
         Rectangle {
             id: mediaBackdrop
             anchors.fill: parent
-            radius: parent.cardRadius
+            // `parent` here is the card's contentHost (a plain Item), which
+            // has no cardRadius; read the card's blurRadius instead so the
+            // backdrop corners follow the card's SDF-rounded shape.
+            radius: mediaCard.blurRadius
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: Qt.rgba(WallpaperPaletteService.primary.r, WallpaperPaletteService.primary.g, WallpaperPaletteService.primary.b, 0.16) }

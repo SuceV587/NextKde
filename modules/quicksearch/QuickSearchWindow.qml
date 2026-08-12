@@ -1,4 +1,5 @@
 import QtQuick
+import Qt5Compat.GraphicalEffects
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
@@ -124,6 +125,97 @@ PanelWindow {
         bottom: true
     }
 
+    // iOS App-Library style liquid header band, mirroring the launcher's
+    // LiquidSearchBar. The whole top strip is one continuous frosted lens over
+    // the result view: it captures the region directly beneath the band and
+    // blurs whatever entries scroll under it, so the entire top flows with
+    // content. The capture rect tracks the view's contentY so the lens always
+    // shows the live content below. The search field floats centered on this
+    // band as a liquid-glass capsule, so there is no seam between the field
+    // and its flanks.
+    component LiquidSearchBand: Item {
+        id: searchBand
+        // The result view (ListView or GridView) whose scrolling content this
+        // lens frosts over. Both are Flickables, so a Flickable reference
+        // exposes contentY and lets the band follow whichever viewMode is
+        // active.
+        required property Flickable sourceView
+        // The band spans the header's full width; only its height is fixed.
+        height: 49
+
+        // Region of the result view directly beneath this band, in the view's
+        // own (viewport) coordinates. A Flickable is captured as its rendered
+        // viewport - the visible window already reflects contentY - so the
+        // source rect must NOT add contentY again.
+        //
+        // The band floats above the view's top edge, so mapping it into the
+        // view gives a negative y: the band sits over the view's empty top
+        // margin. That is exactly what we want to frost. Before any scrolling
+        // the slice over the view is empty, so the band rests on clean glass;
+        // as entries scroll up they slide into the band's slice and become its
+        // flowing background. Pixels outside the view's bounds capture as
+        // transparent, which simply shows the dialog's blurred backdrop.
+        readonly property rect _lensRect: {
+            if (!sourceView)
+                return Qt.rect(0, 0, 0, 0)
+            const topLeft = searchBand.mapToItem(sourceView, 0, 0)
+            return Qt.rect(topLeft.x, topLeft.y,
+                searchBand.width, searchBand.height)
+        }
+
+        ShaderEffectSource {
+            id: lensSource
+            visible: false
+            sourceItem: searchBand.sourceView
+            sourceRect: searchBand._lensRect
+            live: true
+            hideSource: false
+            smooth: true
+        }
+        FastBlur {
+            id: lensBlur
+            anchors.fill: parent
+            source: lensSource
+            radius: 16
+            transparentBorder: true
+            cached: true
+        }
+        // Clip the blur to the card's own top corners and let the bottom fade
+        // out, so the band reads as the card's top edge itself rather than a
+        // separate rounded pill floating over it. The mask is a vertical
+        // gradient: fully opaque at the top, transparent at the bottom.
+        OpacityMask {
+            anchors.fill: parent
+            source: lensBlur
+            maskSource: lensFade
+        }
+        Item {
+            id: lensFade
+            anchors.fill: parent
+            visible: false
+            layer.enabled: true
+            // Rounded only at the top corners (matching the card radius) so
+            // the band's upper edge merges with the card outline.
+            Rectangle {
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                }
+                height: parent.height
+                radius: 20
+                // Extend below the band so only the top corners stay rounded;
+                // the bottom edge is handled by the fade, not a hard corner.
+                gradient: Gradient {
+                    orientation: Gradient.Vertical
+                    GradientStop { position: 0.0; color: "white" }
+                    GradientStop { position: 0.55; color: "white" }
+                    GradientStop { position: 1.0; color: "transparent" }
+                }
+            }
+        }
+    }
+
     function reset() {
         query = "";
         // Window mode opens with the most recently used window selected (the
@@ -221,7 +313,9 @@ PanelWindow {
     Rectangle {
         id: dialog
         width: 580
-        height: searchHeader.height + (root.resultCount > 0 ? (root.viewMode === "grid" ? gridView.height : resultView.height) + 8 : 46)
+        height: root.resultCount > 0
+            ? 14 + (root.viewMode === "grid" ? gridView.height : resultView.height) + 8
+            : searchHeader.height + 46
         // Shared readability outline so white/foreground text stays legible on
         // light wallpapers where KWin tint alone isn't enough. Mirrors the
         // notification card's textOutlineColor convention.
@@ -258,17 +352,87 @@ PanelWindow {
         Item {
             id: searchHeader
             width: parent.width
-            height: 62
+            height: 49
+            // Float above the result views so the liquid band frosts over them
+            // instead of pushing them down in the layout.
+            z: 1
+
+            // The liquid band is the header's background: it blurs whatever
+            // result content scrolls beneath it.
+            LiquidSearchBand {
+                id: searchBand
+                anchors.fill: parent
+                sourceView: root.viewMode === "grid" ? gridView : resultView
+            }
+
+            // The editable search field: a liquid-glass capsule resting in the
+            // flowing band. The base stays faint so the band's own blur shows
+            // through the body, keeping the capsule translucent and in tune
+            // with the flowing strip instead of reading as a solid dark plate.
+            // The bottom shade is dropped (it is what made the pill look
+            // heavy); the specular top reflection and wallpaper tint keep the
+            // liquid finish. A faint focus ring marks it as editable.
+            LiquidGlassSurface {
+                id: fieldPill
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    leftMargin: 14
+                    rightMargin: 14
+                    top: parent.top
+                    topMargin: 9
+                }
+                height: 35
+                radius: height / 2
+                baseColor: Qt.rgba(1, 1, 1, 0.07)
+                surfaceOpacity: 1.0
+                materialDepth: 1.0
+                bottomShadeVisible: false
+                ambientPrimary: WallpaperPaletteService.primary
+                ambientSecondary: WallpaperPaletteService.secondary
+                ambientStrength: 0.8
+
+                // Inner top-edge glow: a thin bright line hugging the capsule's
+                // upper rim, the hallmark of iOS liquid components.
+                Rectangle {
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        top: parent.top
+                        leftMargin: fieldPill.radius * 0.7
+                        rightMargin: fieldPill.radius * 0.7
+                    }
+                    height: 1
+                    radius: 0.5
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.0) }
+                        GradientStop { position: 0.25; color: Qt.rgba(1, 1, 1, 0.28) }
+                        GradientStop { position: 0.5; color: Qt.rgba(1, 1, 1, 0.4) }
+                        GradientStop { position: 0.75; color: Qt.rgba(1, 1, 1, 0.28) }
+                        GradientStop { position: 1.0; color: Qt.rgba(1, 1, 1, 0.0) }
+                    }
+                }
+
+                // Focus ring over the glass body.
+                Rectangle {
+                    anchors.fill: parent
+                    radius: fieldPill.radius
+                    color: "transparent"
+                    border.width: searchInput.activeFocus ? 1 : 0
+                    border.color: Qt.rgba(1, 1, 1, 0.4)
+                }
+            }
 
             Text {
                 anchors {
-                    left: parent.left
-                    leftMargin: 20
-                    verticalCenter: parent.verticalCenter
+                    left: fieldPill.left
+                    leftMargin: 14
+                    verticalCenter: fieldPill.verticalCenter
                 }
                 text: "⌕"
                 color: Qt.rgba(1, 1, 1, 0.72)
-                font.pixelSize: 26
+                font.pixelSize: 20
                 style: Text.Outline
                 styleColor: dialog.textOutlineColor
             }
@@ -276,16 +440,16 @@ PanelWindow {
             TextInput {
                 id: searchInput
                 anchors {
-                    left: parent.left
-                    leftMargin: 52
-                    right: parent.right
-                    rightMargin: 146
-                    verticalCenter: parent.verticalCenter
+                    left: fieldPill.left
+                    leftMargin: 44
+                    right: fieldPill.right
+                    rightMargin: 130
+                    verticalCenter: fieldPill.verticalCenter
                 }
                 color: "white"
                 font {
                     family: "Noto Sans CJK SC"
-                    pixelSize: 18
+                    pixelSize: 15
                 }
                 clip: true
                 selectByMouse: true
@@ -328,9 +492,9 @@ PanelWindow {
 
             Row {
                 anchors {
-                    right: parent.right
-                    rightMargin: 14
-                    verticalCenter: parent.verticalCenter
+                    right: fieldPill.right
+                    rightMargin: 12
+                    verticalCenter: fieldPill.verticalCenter
                 }
                 spacing: 8
 
@@ -377,14 +541,22 @@ PanelWindow {
         ListView {
             id: resultView
             visible: root.viewMode === "list"
+            // Align the view's top with the liquid band's top so the band's
+            // capture rect (y = 0) always lands inside the view's bounds - a
+            // stable, flicker-free lens. The Flickable topMargin offsets the
+            // first entry to just below the band (the same on-screen spot it
+            // had before), so the band frosts the empty margin at rest and
+            // frosts entries as they scroll up under it.
             anchors {
-                top: searchHeader.bottom
+                top: parent.top
                 left: parent.left
                 right: parent.right
+                topMargin: 14
                 leftMargin: 8
                 rightMargin: 8
             }
-            height: root.visibleResultCount * 52
+            topMargin: 49
+            height: 49 + root.visibleResultCount * 52
             clip: true
             model: root.results
             currentIndex: root.selectedIndex
@@ -502,14 +674,19 @@ PanelWindow {
         GridView {
             id: gridView
             visible: root.viewMode === "grid"
+            // Same alignment as the list view: the view's top matches the
+            // liquid band's top, and the Flickable topMargin offsets the first
+            // row just below the band so the lens is stable and flicker-free.
             anchors {
-                top: searchHeader.bottom
+                top: parent.top
                 left: parent.left
                 right: parent.right
+                topMargin: 14
                 leftMargin: 8
                 rightMargin: 8
             }
-            height: root.visibleGridRowCount * 94
+            topMargin: 49
+            height: 49 + root.visibleGridRowCount * 94
             cellWidth: width / root.gridColumnCount
             cellHeight: 94
             clip: true
@@ -637,7 +814,8 @@ PanelWindow {
         Text {
             visible: root.resultCount === 0
             anchors {
-                top: searchHeader.bottom
+                top: parent.top
+                topMargin: 49
                 left: parent.left
                 right: parent.right
             }

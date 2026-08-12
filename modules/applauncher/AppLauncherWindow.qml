@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Dialogs
+import Qt5Compat.GraphicalEffects
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
@@ -341,7 +342,7 @@ PanelWindow {
     function clearSearch() {
         if (!query.length)
             return false
-        searchInput.text = ""
+        searchBar.inputItem.text = ""
         query = ""
         selectedIndex = 0
         keyboardSelectionActive = false
@@ -567,6 +568,240 @@ PanelWindow {
         }
     }
 
+    // iOS App-Library style liquid header band. The whole top strip is one
+    // continuous frosted lens over the grid: it captures the grid region
+    // directly beneath the band and blurs whatever icons scroll under it, so
+    // the entire top flows with content - not just an isolated search pill.
+    // The capture rect tracks the grid's contentY so the lens always shows the
+    // live content below. The search field floats centered on this band with a
+    // subtle highlight to mark it as editable, but the blur belongs to the
+    // full-width band, so there is no seam between the field and its flanks.
+    component LiquidSearchBar: Item {
+        id: searchBar
+        // The grid whose scrolling content this lens frosts over.
+        required property GridView sourceGrid
+        // Exposed so the launcher can drive focus and read the query.
+        property alias inputItem: searchInput
+        // The band spans the header's full width; only its height is fixed.
+        height: 49
+
+        // Region of the grid directly beneath this band, in the grid's own
+        // (viewport) coordinates. A GridView is captured as its rendered
+        // viewport - the visible window already reflects contentY - so the
+        // source rect must NOT add contentY again. Doing so pushes the capture
+        // past the grid's bounds as it scrolls, and the lens frosts blank
+        // space beyond the first rows. The grid's top is aligned with the
+        // band's top, so the band's slice (y = 0) always lands inside the
+        // grid's bounds: at rest it frosts the grid's empty top margin, and as
+        // icons scroll up they slide into the slice and become the flowing
+        // background.
+        readonly property rect _lensRect: {
+            if (!sourceGrid)
+                return Qt.rect(0, 0, 0, 0)
+            const topLeft = searchBar.mapToItem(sourceGrid, 0, 0)
+            return Qt.rect(topLeft.x, topLeft.y,
+                searchBar.width, searchBar.height)
+        }
+
+        ShaderEffectSource {
+            id: lensSource
+            visible: false
+            sourceItem: searchBar.sourceGrid
+            sourceRect: searchBar._lensRect
+            live: true
+            hideSource: false
+            smooth: true
+        }
+        FastBlur {
+            id: lensBlur
+            anchors.fill: parent
+            source: lensSource
+            radius: 16
+            transparentBorder: true
+            cached: true
+        }
+        // Clip the blur to the card's own top corners and let the bottom fade
+        // out, so the band reads as the card's top edge itself rather than a
+        // separate rounded pill floating over it. The mask is a vertical
+        // gradient: fully opaque at the top, transparent at the bottom.
+        OpacityMask {
+            anchors.fill: parent
+            source: lensBlur
+            maskSource: lensFade
+        }
+        Item {
+            id: lensFade
+            anchors.fill: parent
+            visible: false
+            layer.enabled: true
+            // Rounded only at the top corners (matching the card radius) so
+            // the band's upper edge merges with the card outline.
+            Rectangle {
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                }
+                height: parent.height
+                radius: 20
+                // Extend below the band so only the top corners stay rounded;
+                // the bottom edge is handled by the fade, not a hard corner.
+                gradient: Gradient {
+                    orientation: Gradient.Vertical
+                    GradientStop { position: 0.0; color: "white" }
+                    GradientStop { position: 0.55; color: "white" }
+                    GradientStop { position: 1.0; color: "transparent" }
+                }
+            }
+        }
+
+        // A soft top-down tint keeps the search text readable while letting
+        // the band dissolve into the content below (no hard lower edge).
+        Rectangle {
+            anchors.fill: parent
+            radius: 20
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.6; color: "transparent" }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+        }
+        // Specular sheen concentrated at the very top edge, like light on the
+        // card's glass rim.
+        Rectangle {
+            anchors.fill: parent
+            radius: 20
+            gradient: Gradient {
+                orientation: Gradient.Vertical
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 0.35; color: "transparent" }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+        }
+
+        // The editable search field: a centered capsule rendered with the
+        // same liquid-glass material as the launcher card, so it reads as a
+        // solid glass lens resting in the flowing band rather than a flat
+        // dark plate. A faint focus ring marks it as editable.
+        LiquidGlassSurface {
+            id: fieldPill
+            anchors {
+                horizontalCenter: parent.horizontalCenter
+                verticalCenter: parent.verticalCenter
+            }
+            width: Math.min(460, Math.max(300, searchBar.width * 0.46))
+            height: 35
+            radius: height / 2
+            baseColor: Qt.rgba(0, 0, 0, 0.22)
+            surfaceOpacity: 1.0
+            materialDepth: 1.0
+            ambientPrimary: WallpaperPaletteService.primary
+            ambientSecondary: WallpaperPaletteService.secondary
+            ambientStrength: 0.8
+
+            // Focus ring over the glass body.
+            Rectangle {
+                anchors.fill: parent
+                radius: fieldPill.radius
+                color: "transparent"
+                border.width: searchInput.activeFocus ? 1 : 0
+                border.color: Qt.rgba(1, 1, 1, 0.4)
+            }
+        }
+
+        GlassText {
+            anchors {
+                left: fieldPill.left
+                leftMargin: 11
+                verticalCenter: fieldPill.verticalCenter
+            }
+            text: "⌕"
+            color: AppLauncherService.dockForegroundColor
+            opacity: 0.65
+            font.pixelSize: 17
+        }
+
+        TextInput {
+            id: searchInput
+            anchors {
+                left: fieldPill.left
+                right: fieldPill.right
+                verticalCenter: fieldPill.verticalCenter
+                leftMargin: 32
+                rightMargin: text.length > 0 ? 32 : 10
+            }
+            color: AppLauncherService.dockForegroundColor
+            selectionColor: Qt.rgba(1, 1, 1, 0.30)
+            selectedTextColor: AppLauncherService.dockForegroundColor
+            font.pixelSize: 12
+            clip: true
+            enabled: !root.editMode && !root.openFolder
+            onTextEdited: {
+                root.query = text
+                root.selectedIndex = 0
+                root.keyboardSelectionActive = text.length > 0
+            }
+            Keys.onPressed: function(event) {
+                const columns = appGrid.columnCount
+                if (event.key === Qt.Key_Left) {
+                    root.moveSelection(-1)
+                } else if (event.key === Qt.Key_Right) {
+                    root.moveSelection(1)
+                } else if (event.key === Qt.Key_Up) {
+                    root.moveSelection(-columns)
+                } else if (event.key === Qt.Key_Down) {
+                    root.moveSelection(columns)
+                } else if (event.key === Qt.Key_Return
+                        || event.key === Qt.Key_Enter) {
+                    root.activateSelected()
+                } else if (event.key === Qt.Key_Escape) {
+                    if (!root.clearSearch())
+                        AppLauncherService.hide()
+                } else {
+                    return
+                }
+                event.accepted = true
+            }
+        }
+
+        GlassText {
+            anchors {
+                right: fieldPill.right
+                rightMargin: 10
+                verticalCenter: fieldPill.verticalCenter
+            }
+            visible: searchInput.text.length > 0
+            text: "×"
+            color: AppLauncherService.dockForegroundColor
+            opacity: searchClearMouse.containsMouse ? 0.95 : 0.58
+            font {
+                pixelSize: 17
+                weight: Font.DemiBold
+            }
+            MouseArea {
+                id: searchClearMouse
+                anchors.fill: parent
+                anchors.margins: -4
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.clearSearch()
+            }
+        }
+
+        GlassText {
+            anchors {
+                left: searchInput.left
+                verticalCenter: fieldPill.verticalCenter
+            }
+            visible: searchInput.text.length === 0
+            text: "搜索应用"
+            color: AppLauncherService.dockForegroundColor
+            opacity: 0.45
+            font.pixelSize: 12
+        }
+    }
+
     visible: root.panelVisible
     onVisibleChanged: {
         console.log("[AppLauncherWindow] visible=" + visible
@@ -620,7 +855,7 @@ PanelWindow {
         id: searchFocusTimer
         interval: 1
         repeat: false
-        onTriggered: searchInput.forceActiveFocus()
+        onTriggered: searchBar.inputItem.forceActiveFocus()
     }
 
     // Reserved for future compositor-synchronised transitions. Closing is
@@ -842,134 +1077,30 @@ PanelWindow {
             Item {
                 id: header
                 enabled: root.editingApplication === null
+                // Float above the grid: the grid now fills the whole card and
+                // scrolls beneath this header, so the header must stack over it
+                // instead of pushing it down in the layout.
+                z: 1
                 anchors {
                     top: parent.top
                     left: parent.left
                     right: parent.right
-                    margins: 22
+                    topMargin: 14
+                    leftMargin: 22
+                    rightMargin: 22
                 }
-                height: 30
+                height: 49
 
-                GlassText {
+                // One continuous liquid band across the whole top: the search
+                // field is centered inside it, and the flanking glass flows
+                // with the same scrolling content, so there is no seam.
+                LiquidSearchBar {
+                    id: searchBar
+                    sourceGrid: appGrid
                     anchors {
                         left: parent.left
-                        verticalCenter: parent.verticalCenter
-                    }
-                    text: "应用程序"
-                    color: AppLauncherService.dockForegroundColor
-                    opacity: 0.90
-                    font {
-                        family: "SF Pro Display"
-                        pixelSize: 18
-                        weight: Font.DemiBold
-                    }
-                }
-
-                Rectangle {
-                    id: searchField
-                    anchors {
                         right: parent.right
                         verticalCenter: parent.verticalCenter
-                    }
-                    width: Math.min(260, Math.max(180, parent.width * 0.30))
-                    height: 30
-                    radius: 15
-                    color: Qt.rgba(0, 0, 0, 0.16)
-                    border.width: searchInput.activeFocus ? 1 : 0
-                    border.color: Qt.rgba(1, 1, 1, 0.34)
-
-                    GlassText {
-                        anchors {
-                            left: parent.left
-                            leftMargin: 11
-                            verticalCenter: parent.verticalCenter
-                        }
-                        text: "⌕"
-                        color: AppLauncherService.dockForegroundColor
-                        opacity: 0.65
-                        font.pixelSize: 17
-                    }
-
-                    TextInput {
-                        id: searchInput
-                        anchors {
-                            left: parent.left
-                            right: parent.right
-                            verticalCenter: parent.verticalCenter
-                            leftMargin: 32
-                            rightMargin: text.length > 0 ? 32 : 10
-                        }
-                        color: AppLauncherService.dockForegroundColor
-                        selectionColor: Qt.rgba(1, 1, 1, 0.30)
-                        selectedTextColor: AppLauncherService.dockForegroundColor
-                        font.pixelSize: 12
-                        clip: true
-                        enabled: !root.editMode && !root.openFolder
-                        onTextEdited: {
-                            root.query = text
-                            root.selectedIndex = 0
-                            root.keyboardSelectionActive = text.length > 0
-                        }
-                        Keys.onPressed: function(event) {
-                            const columns = appGrid.columnCount
-                            if (event.key === Qt.Key_Left) {
-                                root.moveSelection(-1)
-                            } else if (event.key === Qt.Key_Right) {
-                                root.moveSelection(1)
-                            } else if (event.key === Qt.Key_Up) {
-                                root.moveSelection(-columns)
-                            } else if (event.key === Qt.Key_Down) {
-                                root.moveSelection(columns)
-                            } else if (event.key === Qt.Key_Return
-                                    || event.key === Qt.Key_Enter) {
-                                root.activateSelected()
-                            } else if (event.key === Qt.Key_Escape) {
-                                if (!root.clearSearch())
-                                    AppLauncherService.hide()
-                            } else {
-                                return
-                            }
-                            event.accepted = true
-                        }
-                    }
-
-                    // A visible clear affordance avoids forcing users to
-                    // select/backspace a long query. It only exists while a
-                    // query is active, keeping the resting search field calm.
-                    GlassText {
-                        anchors {
-                            right: parent.right
-                            rightMargin: 10
-                            verticalCenter: parent.verticalCenter
-                        }
-                        visible: searchInput.text.length > 0
-                        text: "×"
-                        color: AppLauncherService.dockForegroundColor
-                        opacity: searchClearMouse.containsMouse ? 0.95 : 0.58
-                        font {
-                            pixelSize: 17
-                            weight: Font.DemiBold
-                        }
-                        MouseArea {
-                            id: searchClearMouse
-                            anchors.fill: parent
-                            anchors.margins: -4
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.clearSearch()
-                        }
-                    }
-
-                    GlassText {
-                        anchors {
-                            left: searchInput.left
-                            verticalCenter: parent.verticalCenter
-                        }
-                        visible: searchInput.text.length === 0
-                        text: "搜索应用"
-                        color: AppLauncherService.dockForegroundColor
-                        opacity: 0.45
-                        font.pixelSize: 12
                     }
                 }
 
@@ -979,8 +1110,7 @@ PanelWindow {
                     height: 26
                     radius: height / 2
                     anchors {
-                        right: searchField.left
-                        rightMargin: 14
+                        right: parent.right
                         verticalCenter: parent.verticalCenter
                     }
                     // Keep this chrome independent from layout and animate
@@ -1020,14 +1150,21 @@ PanelWindow {
             GridView {
                 id: appGrid
                 enabled: root.editingApplication === null
+                // Align the grid's top with the liquid band's top so the
+                // band's capture rect (y = 0) always lands inside the grid's
+                // bounds - a stable, flicker-free lens. The Flickable
+                // topMargin offsets the first row to just below the band (the
+                // same on-screen spot it had before), so the band frosts the
+                // empty margin at rest and frosts icons as they scroll up.
                 anchors {
-                    top: header.bottom
+                    top: parent.top
                     left: parent.left
                     right: parent.right
                     bottom: parent.bottom
                     margins: 18
-                    topMargin: 10
+                    topMargin: 14
                 }
+                topMargin: 57
                 clip: true
                 // Fill the launcher width with equal columns instead of
                 // leaving a fixed-cell remainder at the right edge. The
