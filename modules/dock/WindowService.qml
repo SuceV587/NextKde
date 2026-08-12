@@ -235,10 +235,12 @@ QtObject {
             } : source;
             const old = _findOldRecord(toplevel, provider, handleId);
             const identity = AppIdentityService.resolve(toplevel.appId);
-            // For KWin, the bridge resolves the desktop icon name through the
-            // active KDE icon theme. Only a user's explicit Dock override may
-            // take precedence over that authoritative themed result.
-            const iconSource = useKwin && source.iconPath && !identity.hasIconOverride
+            // Presentation owns every icon lookup so Dock, QuickSearch,
+            // notifications and AppLauncher render the exact same source,
+            // and the icon engine picks a size-appropriate asset. The KWin
+            // bridge's themed path is only a fallback for icon names that
+            // Quickshell's own theme lookup cannot resolve.
+            const iconSource = useKwin && !identity.iconSource && source.iconPath
                 ? "file://" + source.iconPath : identity.iconSource;
             // zwlr-foreign-toplevel does not require an urgency field, so
             // read it defensively. KWin's bridge always provides `urgent`.

@@ -34,6 +34,7 @@ Item {
     readonly property bool hasWeather: WeatherService.available
     readonly property bool hasInfo: hasPlayingMusic || hasWeather
     readonly property int screenWidth: Quickshell.screens[0]?.width ?? 1920
+    readonly property int screenHeight: Quickshell.screens[0]?.height ?? 1080
     readonly property real baseHeight: ConfigService.baseHeight
     readonly property real maxWidthRatio: ConfigService.maxWidthRatio
     readonly property var proportions: ConfigService.proportions
@@ -300,6 +301,7 @@ Item {
         // app-launcher surface is implemented. Keeping it outside the Repeater
         // makes it immutable with respect to pinned-app ordering.
         DockIcon {
+            id: appLauncherIcon
             iconSize: container.iconSize
             activeBackgroundGap: container.activeBackgroundGap
             iconSource: Qt.resolvedUrl("../../assets/appLancher.svg")
@@ -319,6 +321,17 @@ Item {
                     DockModelService.setDockPopupVisible(
                         DockModelService.activeDockPopup, false)
                 console.log("[DockContainer] app launcher requested")
+                // Publish the icon's screen-space centre so the launcher grid
+                // can scatter its icons out from exactly this point. The dock
+                // window is left- and bottom-anchored with a 5px bottom margin,
+                // so the in-window x is already the screen x, and the screen y
+                // is the window's top (screenHeight - margin - window height)
+                // plus the in-window y.
+                const centre = appLauncherIcon.mapToItem(null,
+                    appLauncherIcon.width / 2, appLauncherIcon.height / 2)
+                const screenY = container.screenHeight - 5
+                    - container.computedDockHeight + centre.y
+                AppLauncherService.setLauncherOrigin(centre.x, screenY)
                 AppLauncherService.toggle()
             }
         }

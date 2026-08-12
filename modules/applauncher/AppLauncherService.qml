@@ -21,6 +21,15 @@ QtObject {
     property color dockAmbientPrimary: "transparent"
     property color dockAmbientSecondary: "transparent"
     property color dockForegroundColor: "white"
+    // Screen-space centre of the dock's launcher icon at the moment it was
+    // tapped. The launcher window (a full-screen surface) reads this as the
+    // origin every app icon scatters from when the grid opens. A negative x
+    // means "no origin captured" so the launcher falls back to its own centre.
+    property point launcherOriginPoint: Qt.point(-1, -1)
+
+    function setLauncherOrigin(screenX, screenY) {
+        service.launcherOriginPoint = Qt.point(screenX, screenY)
+    }
 
     function setDockPresentation(width, height, background, primary, secondary, foreground) {
         service.dockWidth = width

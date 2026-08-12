@@ -15,9 +15,7 @@ Region {
     property Item coordinateSpace: null
     property real radius: Math.min(item.width, item.height) / 2
 
-    readonly property point itemPosition: coordinateSpace
-        ? item.mapToItem(coordinateSpace, 0, 0)
-        : Qt.point(item.x, item.y)
+    readonly property point itemPosition: coordinateSpace ? item.mapToItem(coordinateSpace, 0, 0) : Qt.point(item.x, item.y)
     readonly property int roundedRadius: Math.max(0, Math.min(Math.round(radius), Math.floor(Math.min(item.width, item.height) / 2)))
 
     // Vertical center of the rounded rectangle.
