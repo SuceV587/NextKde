@@ -253,7 +253,6 @@ PanelWindow {
     }
 
     onOpenChanged: {
-        DockModelService.setActiveIndicatorHold(open);
         if (open) {
             reset();
             if (mode === "clipboard")

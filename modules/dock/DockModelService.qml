@@ -21,7 +21,6 @@ QtObject {
     property ListModel windowModel: ListModel {}
     readonly property int windowCount: windowModel.count
 
-    property var _bouncedKeys: ({})
     // DockIcon instances own their PopupWindows, but the Dock presents only
     // one context menu at a time.
     property var activeContextMenu: null
@@ -30,12 +29,6 @@ QtObject {
     // without one shared owner, two anchors can remain open and fight over
     // placement and pointer focus.
     property var activeDockPopup: null
-    // External surfaces such as QuickSearch can temporarily own focus while a
-    // user chooses the next Dock window. Preserve the last indicator target
-    // during that hand-off so the next activation still has a travel origin.
-    property bool preserveActiveIndicator: false
-    property string requestedActivationWindowId: ""
-
     // Some Dock popups (the context menu) need to keep their Wayland surface
     // alive briefly for an exit animation. Other popup types can still use the
     // native `visible` property directly through this shared gateway.
@@ -61,10 +54,6 @@ QtObject {
             popup.visible = false
     }
 
-    function setActiveIndicatorHold(hold) {
-        svc.preserveActiveIndicator = !!hold;
-    }
-
     function openDockPopup(popup) {
         if (!popup)
             return;
@@ -77,15 +66,6 @@ QtObject {
     function releaseDockPopup(popup) {
         if (svc.activeDockPopup === popup)
             svc.activeDockPopup = null;
-    }
-
-    function shouldBounce(key) {
-        if (!key)
-            return false;
-        if (svc._bouncedKeys[key])
-            return false;
-        svc._bouncedKeys[key] = true;
-        return true;
     }
 
     function _refreshPinned() {
@@ -116,8 +96,18 @@ QtObject {
             }
 
         }
-        svc.pinnedItems = items;
-        svc.pinnedCount = items.length;
+        // Only replace the model when its content actually changed. The array
+        // is the Repeater's model; assigning a new array rebuilds every pinned
+        // delegate, and _refreshPinned runs on every window revision (every
+        // window open/close), so an unchanged list must not churn the Repeater.
+        const same = items.length === svc.pinnedItems.length
+            && items.every((item, i) => item.appId === svc.pinnedItems[i].appId
+                && item.isRunning === svc.pinnedItems[i].isRunning
+                && item.isActivated === svc.pinnedItems[i].isActivated)
+        if (!same) {
+            svc.pinnedItems = items;
+            svc.pinnedCount = items.length;
+        }
     }
 
     function _refreshWindowItems() {
@@ -227,9 +217,8 @@ QtObject {
     }
 
     function activateWindow(windowId) {
-        // This is presentation intent only; WindowService remains the sole
-        // authority for the actual Wayland activation request.
-        svc.requestedActivationWindowId = windowId;
+        // WindowService remains the sole authority for the actual Wayland
+        // activation request.
         WindowService.activateWindow(windowId);
     }
 

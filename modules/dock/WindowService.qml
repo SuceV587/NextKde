@@ -22,18 +22,14 @@ QtObject {
 
     property int _nextWindowNumber: 1
     property var _recordsById: ({})
-    // Most-recently-used window order, newest first. `_rebuild` maintains it
-    // from activation and lifecycle changes so the Alt+Tab-style switcher can
-    // walk it without relying on provider snapshot ordering. The currently
-    // activated window stays last: a switcher opens on the previous window
-    // rather than on itself.
-    property var _mruOrder: []
-
     // KWin does not implement zwlr-foreign-toplevel-management-v1. Its local
     // bridge receives snapshots from our KWin Script over D-Bus and is used
     // only when the standard Wayland provider has no windows.
     property var _kwinWindows: []
     property bool _kwinReceivedInitialSnapshot: false
+    // Serialized form of the last applied KWin snapshot. Redundant snapshots
+    // (same content re-published) are dropped without scheduling a rebuild.
+    property string _lastSnapshotJson: ""
     property var _pendingKwinActivation: null
     property bool _kwinScriptStarted: false
     property var _thumbnailUrlsByHandle: ({})
@@ -324,73 +320,18 @@ QtObject {
         svc._recordsById = nextById;
         const active = nextRecords.find(record => record.toplevel.activated);
         svc.activeWindowId = active?.windowId ?? "";
-        svc._updateMru(nextRecords, svc.activeWindowId);
         svc.revision++;
     }
-
-    // Rebuild the MRU list from the current records. Surviving windows keep
-    // their relative order, new windows jump to the front, and the activated
-    // window is moved to the end so a switcher never proposes the window the
-    // user is already looking at.
-    function _updateMru(records, activeWindowId) {
-        const present = ({});
-        for (let i = 0; i < records.length; i++)
-            present[records[i].windowId] = true;
-        const ordered = svc._mruOrder.filter(id => present[id]);
-        const already = ({});
-        for (let i = 0; i < ordered.length; i++)
-            already[ordered[i]] = true;
-        for (let i = 0; i < records.length; i++) {
-            const id = records[i].windowId;
-            if (!already[id]) {
-                ordered.unshift(id);
-                already[id] = true;
-            }
-        }
-        const activeIndex = ordered.indexOf(activeWindowId);
-        if (activeIndex >= 0) {
-            ordered.splice(activeIndex, 1);
-            ordered.push(activeWindowId);
-        }
-        svc._mruOrder = ordered;
-    }
-
-    // Window ids in MRU order (newest first, active window last). Consumers
-    // that read the records array directly should map through this order.
-    readonly property var mruOrder: svc._mruOrder
 
     // ── Virtual desktops (KWin D-Bus, via the bridge) ──
     // List of { id, name, order }. The overview maps each window's
     // record.desktopIds against these ids to place windows on desktops.
     property var desktops: []
     property string currentDesktopId: ""
-    // Signals carried by the bridge's desktop events (see _consumeKwinBridgeLine).
-    signal desktopListChanged()
-    signal currentDesktopChanged()
-
-    function desktopById(id) {
-        for (let i = 0; i < svc.desktops.length; i++) {
-            if (svc.desktops[i].id === id)
-                return svc.desktops[i]
-        }
-        return null
-    }
-
-    // Query the current desktop list + the active desktop from KWin D-Bus.
-    // The bridge command channel is synchronous over stdin, so the reply
-    // arrives on a later bridge line; the desktop events carry it.
-    function refreshDesktops() {
-        _sendKwinCommand({ action: "desktops" })
-    }
 
     // Switch to a virtual desktop by id (KWin performs the actual switch).
     function switchDesktop(id) {
         _sendKwinCommand({ action: "switch-desktop", id: id })
-    }
-
-    // Move a window onto another virtual desktop (and optionally switch to it).
-    function moveWindowToDesktop(windowId, desktopId, activate) {
-        _sendKwinCommand({ action: "move-to-desktop", windowId: windowId, desktopId: desktopId, activate: !!activate })
     }
 
     function windowById(windowId) {
@@ -487,6 +428,14 @@ QtObject {
                     console.log("[WindowService] bridge event type=" + event.type
                         + (event.stage ? " stage=" + event.stage : ""));
                 if (event.type === "snapshot" && Array.isArray(event.windows)) {
+                        // Coalesce redundant snapshots. The KWin script already
+                        // publishes only on change, but a second filter here
+                        // keeps the model rebuild rate bounded even if a future
+                        // provider stops deduplicating.
+                        const snapshotJson = JSON.stringify(event.windows);
+                        if (snapshotJson === svc._lastSnapshotJson)
+                            return;
+                        svc._lastSnapshotJson = snapshotJson;
                         // Keep activation direct. Virtual-desktop transient
                         // filtering is handled separately; delaying this
                         // authoritative list also delayed focus changes.
@@ -514,8 +463,6 @@ QtObject {
                         if (Array.isArray(event.desktops)) {
                             svc.desktops = event.desktops;
                             svc.currentDesktopId = event.current ?? "";
-                            svc.desktopListChanged();
-                            svc.currentDesktopChanged();
                         }
                 }
             } catch (e) {

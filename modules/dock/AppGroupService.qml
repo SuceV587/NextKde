@@ -63,14 +63,5 @@ QtObject {
         svc.revision++;
     }
 
-    function groupForApp(desktopId) {
-        const wanted = AppIdentityService.normalize(desktopId);
-        for (let i = 0; i < groups.length; i++) {
-            if (AppIdentityService.normalize(groups[i].desktopId) === wanted)
-                return groups[i];
-        }
-        return null;
-    }
-
     Component.onCompleted: rebuild()
 }

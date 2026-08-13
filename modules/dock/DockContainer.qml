@@ -73,10 +73,69 @@ Item {
     readonly property bool isEditing: editMode || draggedPinnedLoader !== null
     readonly property real draggedPointerX: draggedPinnedLoader
         ? draggedPinnedLoader.dragPointerX : -1
-    // A presentation-only target for DockActiveIndicator. The delayed clear
-    // avoids a transient fade when WindowService reports the old window's
-    // deactivation one signal before reporting the next window's activation.
-    property Item activeIcon: null
+    function _findIcon(item, predicate) {
+        if (!item)
+            return null
+        if (predicate(item))
+            return item
+        const children = item.children ?? []
+        for (let i = 0; i < children.length; i++) {
+            const found = _findIcon(children[i], predicate)
+            if (found)
+                return found
+        }
+        return null
+    }
+
+    function _activeIcon() {
+        const activeId = WindowService.activeWindowId
+        if (!activeId)
+            return null
+
+        for (let i = 0; i < windowsRepeater.count; i++) {
+            const found = _findIcon(windowsRepeater.itemAt(i),
+                item => item.windowId === activeId)
+            if (found)
+                return found
+        }
+        for (let i = 0; i < pinnedRepeater.count; i++) {
+            const found = _findIcon(pinnedRepeater.itemAt(i),
+                item => item.windowId === activeId)
+            if (found)
+                return found
+        }
+
+        // A pinned app's main icon represents its active window when its
+        // exact per-window child is not exposed in the presentation.
+        for (let i = 0; i < pinnedRepeater.count; i++) {
+            const found = _findIcon(pinnedRepeater.itemAt(i),
+                item => item.isActivated === true && item.isWindowItem === false)
+            if (found)
+                return found
+        }
+        return null
+    }
+
+    function syncActiveIndicator() {
+        activeIndicator.setTarget(_activeIcon())
+    }
+
+    Timer {
+        id: activeIndicatorSync
+        // Window model changes and the Dock width resize are delivered in
+        // separate event-loop turns. Sample only after the adaptive layout
+        // has reached its final geometry; otherwise a new window can make
+        // the indicator animate to an intermediate left-shifted position.
+        interval: DockAnimation.dockResizeDuration + 20
+        repeat: false
+        onTriggered: container.syncActiveIndicator()
+    }
+
+    Connections {
+        target: WindowService
+        function onActiveWindowIdChanged() { activeIndicatorSync.restart() }
+        function onRevisionChanged() { activeIndicatorSync.restart() }
+    }
 
     function publishLauncherGeometry() {
         console.log("[DockContainer] publish launcher "
@@ -90,7 +149,10 @@ Item {
             ThemeService.foregroundColor)
     }
 
-    Component.onCompleted: publishLauncherGeometry()
+    Component.onCompleted: {
+        publishLauncherGeometry()
+        activeIndicatorSync.restart()
+    }
     onComputedDockWidthChanged: publishLauncherGeometry()
     onComputedDockHeightChanged: publishLauncherGeometry()
 
@@ -112,52 +174,6 @@ Item {
         function onUnpinRequested(appId) { DockModelService.unpinApp(appId) }
     }
 
-    function reportActiveIcon(icon, activated) {
-        if (activated) {
-            activeIconClear.stop()
-            activeIcon = icon
-            activeIndicator.requestSync()
-        } else if (activeIcon === icon) {
-            if (!DockModelService.preserveActiveIndicator)
-                activeIconClear.restart()
-        }
-    }
-
-    function _windowTaskIcon(windowId) {
-        for (let i = 0; i < windowsRepeater.count; i++) {
-            const candidate = windowsRepeater.itemAt(i)
-            if (candidate && candidate.windowId === windowId)
-                return candidate
-        }
-        return null
-    }
-
-    function animateRequestedWindow(windowId) {
-        const target = _windowTaskIcon(windowId)
-        if (!target)
-            return
-        activeIconClear.stop()
-        activeIcon = target
-        activeIndicator.requestSync()
-    }
-
-    function syncActiveIcon(icon) {
-        if (activeIcon === icon)
-            activeIndicator.requestSync()
-    }
-
-    Timer {
-        id: activeIconClear
-        // Focus providers can emit deactivation and activation in separate
-        // event-loop turns (notably QuickSearch). Keep the old target briefly
-        // so the next target still receives a continuous travel animation.
-        interval: 180
-        repeat: false
-        onTriggered: {
-            if (container.activeIcon && !container.activeIcon.isActivated)
-                container.activeIcon = null
-        }
-    }
     // Nearest top-level slot for the in-progress reorder preview.
     readonly property int dragInsertIndex: {
         if (!draggedPinnedLoader)
@@ -187,12 +203,15 @@ Item {
     height: implicitHeight
 
     // ── Smooth resize transitions ──
-    Behavior on width {
-        NumberAnimation {
-            duration: DockAnimation.dockResizeDuration
-            easing.type: DockAnimation.dockResizeEasing
-        }
-    }
+    // Width animation disabled: the animated width interacts badly with the
+    // shared active indicator (two competing motion sources). The dock snaps
+    // to its target width; height keeps its animation (rarely changes).
+    // Behavior on width {
+    //     NumberAnimation {
+    //         duration: DockAnimation.dockResizeDuration
+    //         easing.type: DockAnimation.dockResizeEasing
+    //     }
+    // }
     Behavior on height {
         NumberAnimation {
             duration: DockAnimation.dockResizeDuration
@@ -225,12 +244,6 @@ Item {
             if (container.editMode && !container.draggedPinnedLoader)
                 container.editMode = false
         }
-    }
-
-    DockActiveIndicator {
-        id: activeIndicator
-        target: container.activeIcon
-        moveDuration: 260
     }
 
     Platform.Menu {
@@ -269,19 +282,6 @@ Item {
         }
     }
 
-    Connections {
-        target: DockModelService
-        function onRequestedActivationWindowIdChanged() {
-            container.animateRequestedWindow(DockModelService.requestedActivationWindowId)
-        }
-        function onPreserveActiveIndicatorChanged() {
-            if (!DockModelService.preserveActiveIndicator
-                    && container.activeIcon
-                    && !container.activeIcon.isActivated)
-                activeIconClear.restart()
-        }
-    }
-
     Row {
         id: contentRow
         anchors.verticalCenter: parent.verticalCenter
@@ -290,10 +290,6 @@ Item {
         leftPadding: container.hPadding
         rightPadding: container.hPadding
         height: container.computedDockHeight
-        onXChanged: activeIndicator.requestSync()
-        onYChanged: activeIndicator.requestSync()
-        onWidthChanged: activeIndicator.requestSync()
-        onHeightChanged: activeIndicator.requestSync()
 
         // ── Pinned apps ──
         // Fixed launcher slot. This project-owned image avoids icon-theme
@@ -310,7 +306,6 @@ Item {
             allowEdit: false
             dismissAppLauncherOnInteraction: false
             isPinnedItem: false
-            bounceKey: ""
             onActivate: {
                 if (container.isEditing) {
                     container.editMode = false
@@ -321,17 +316,6 @@ Item {
                     DockModelService.setDockPopupVisible(
                         DockModelService.activeDockPopup, false)
                 console.log("[DockContainer] app launcher requested")
-                // Publish the icon's screen-space centre so the launcher grid
-                // can scatter its icons out from exactly this point. The dock
-                // window is left- and bottom-anchored with a 5px bottom margin,
-                // so the in-window x is already the screen x, and the screen y
-                // is the window's top (screenHeight - margin - window height)
-                // plus the in-window y.
-                const centre = appLauncherIcon.mapToItem(null,
-                    appLauncherIcon.width / 2, appLauncherIcon.height / 2)
-                const screenY = container.screenHeight - 5
-                    - container.computedDockHeight + centre.y
-                AppLauncherService.setLauncherOrigin(centre.x, screenY)
                 AppLauncherService.toggle()
             }
         }
@@ -348,7 +332,6 @@ Item {
             customContextMenu: true
             allowEdit: false
             isPinnedItem: false
-            bounceKey: ""
             statusBadge: DockTrashService.hasItems
             onActivate: {
                 if (!container.isEditing)
@@ -540,11 +523,9 @@ Item {
                             displayName: pinnedItemLoader.itemData.name ?? ""
                             isRunning: pinnedItemLoader.itemData.isRunning ?? false
                             isActivated: pinnedItemLoader.itemData.isActivated ?? false
-                            activeIndicatorHost: container
                             appId: pinnedItemLoader.itemData.appId ?? ""
                             isWindowItem: false
                             isPinnedItem: true
-                            bounceKey: ""   // pinned never bounce
                             editMode: container.isEditing
                             isDragging: reorderDrag.active || pinnedItemLoader.settling
                             onRequestEdit: container.editMode = true
@@ -569,12 +550,10 @@ Item {
                                     isRunning: true
                                     isActivated: modelData.toplevel.activated ?? false
                                     isUrgent: modelData.isUrgent ?? false
-                                    activeIndicatorHost: container
                                     appId: modelData.identity.desktopId ?? ""
                                     windowId: modelData.windowId ?? ""
                                     isWindowItem: true
                                     isPinnedItem: false
-                                    bounceKey: modelData.windowId ?? ""
                                     onActivate: DockModelService.toggleWindow(windowId)
                                 }
                             }
@@ -609,12 +588,10 @@ Item {
                 isRunning: true
                 isActivated: model.isActivated ?? false
                 isUrgent: model.isUrgent ?? false
-                activeIndicatorHost: container
                 appId: model.appId ?? ""
                 windowId: model.windowId ?? ""
                 isWindowItem: true
                 isPinnedItem: false
-                bounceKey: model.windowId ?? ""
                 onActivate: {
                     container.editMode = false
                     DockModelService.toggleWindow(windowId)
@@ -636,6 +613,20 @@ Item {
             dockHeight: container.computedDockHeight
             widthUnits: container.musicUnits
             visible: container.hasInfo
+        }
+    }
+
+    // The indicator lives in the same coordinate layer as the Row. When the
+    // centered Dock shifts during a width resize, the old icon and its
+    // background move together without any polling or per-frame coordinate
+    // calculation. It remains outside the Row so it cannot affect layout.
+    Item {
+        id: contentOverlay
+        anchors.fill: contentRow
+        z: -1
+
+        DockActiveIndicator {
+            id: activeIndicator
         }
     }
 }

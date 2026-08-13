@@ -15,18 +15,11 @@ QtObject {
 
     // ═══════════════════════════════════════════════════════════
     // Dock resize (triggered by window open/close, music appear)
+    // OutCubic: fast start, soft stop. InCubic's slow start was rejected by
+    // A/B test — it reads as "creeping" even at 100ms.
     // ═══════════════════════════════════════════════════════════
-    readonly property int dockResizeDuration: 280
-    readonly property var dockResizeEasing:   Easing.OutCubic
-
-    // ═══════════════════════════════════════════════════════════
-    // Icon bounce-in (new window or pinned app appears)
-    // SpringAnimation: overshoots then settles to 1.0
-    // ═══════════════════════════════════════════════════════════
-    readonly property int   iconBounceDuration:  450
-    readonly property real  iconBounceSpring:    0.35    // damping  (lower = more bouncy)
-    readonly property real  iconBounceVelocity:  0.40    // initial speed
-    readonly property real  iconBounceOvershoot: 1.18    // visual peak scale
+    readonly property int   dockResizeDuration: 100
+    readonly property var   dockResizeEasing:   Easing.OutCubic
 
     // ═══════════════════════════════════════════════════════════
     // Icon hover magnification
@@ -37,6 +30,13 @@ QtObject {
     readonly property real  iconHoverScale:     1.20
     readonly property var   iconHoverEasing:    Easing.OutCubic
 
+    // Shared active-window background transition.
+    // Mid-speed liquid transition: deliberately slower than the original
+    // indicator motion so the water-drop deformation remains readable.
+    readonly property int   activeIndicatorMoveDuration: 300
+    readonly property int   activeIndicatorStretchInDuration: 120
+    readonly property int   activeIndicatorSettleDuration: 250
+
     // ═══════════════════════════════════════════════════════════
     // Music player expand / collapse
     // ═══════════════════════════════════════════════════════════
@@ -44,14 +44,18 @@ QtObject {
     readonly property var   musicExpandEasing:   Easing.InOutCubic
 
     // ═══════════════════════════════════════════════════════════
-    // Running indicator pulse (dot under icon when window opens)
-    // ═══════════════════════════════════════════════════════════
-    readonly property int   indicatorPulseDuration: 500
-    readonly property real  indicatorPulseScale:    1.5
-
-    // ═══════════════════════════════════════════════════════════
     // Dock appearance / disappearance
     // ═══════════════════════════════════════════════════════════
     readonly property int   dockFadeDuration:   200
     readonly property var   dockFadeEasing:     Easing.InOutCubic
+
+    // ═══════════════════════════════════════════════════════════
+    // Directional motion semantics (Material-inspired, same idea as
+    // end-4/dots-hyprland): entering elements decelerate into place
+    // (fast start, soft settle), exiting elements accelerate away
+    // (slow start, quick departure). Use these in explicit animations
+    // that have a direction — not on two-way Behaviors.
+    // ═══════════════════════════════════════════════════════════
+    readonly property var elementEnterEasing: Easing.OutCubic
+    readonly property var elementExitEasing:  Easing.InCubic
 }

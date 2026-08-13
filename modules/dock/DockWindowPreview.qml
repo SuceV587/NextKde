@@ -68,7 +68,8 @@ PopupWindow {
         property: "revealProgress"
         to: 1.0
         duration: 120
-        easing.type: Easing.OutCubic
+        // Enter: decelerate into place.
+        easing.type: DockAnimation.elementEnterEasing
     }
 
     SequentialAnimation {
@@ -78,7 +79,8 @@ PopupWindow {
             property: "revealProgress"
             to: 0.0
             duration: 90
-            easing.type: Easing.InCubic
+            // Exit: accelerate away.
+            easing.type: DockAnimation.elementExitEasing
         }
         ScriptAction {
             script: {

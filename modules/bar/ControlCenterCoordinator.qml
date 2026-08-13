@@ -47,6 +47,10 @@ QtObject {
 
     function openAll() {
         open = true
+        // Sort by vertical position so the cascade always runs top-to-bottom
+        // (iOS control center), regardless of QML declaration order. The
+        // notification history card (bottom) must appear last.
+        cards.sort((a, b) => a.offsetTop - b.offsetTop)
         _openingIndex = 0
         _cascadeCard()
     }

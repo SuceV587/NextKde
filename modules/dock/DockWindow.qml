@@ -39,7 +39,9 @@ PanelWindow {
             horizontalCenter: parent.horizontalCenter
             bottom: parent.bottom
         }
-        width: dockContainer.computedDockWidth
+        // Follow the animated container width: the resize Behavior drives
+        // the background (and its blur region) smoothly along with the icons.
+        width: dockContainer.width
         height: dockContainer.computedDockHeight
 
         // LiquidGlassSurface temporarily disabled to isolate KWin effect rendering.

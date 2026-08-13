@@ -84,6 +84,12 @@ function desktopIds(window) {
     }
 }
 
+// Cached serialized snapshot. KWin can emit the same window state many times
+// per second (e.g. a signal that fires repeatedly while nothing changed);
+// republishing identical snapshots would make Quickshell rebuild its whole
+// window model on every copy. Publish only on actual change.
+let lastSnapshotJson = "";
+
 function snapshot() {
     const windows = [];
     const all = workspace.windowList();
@@ -108,7 +114,11 @@ function snapshot() {
             onAllDesktops: !!propertyValue(window, "onAllDesktops", false)
         });
     }
-    callDBus(service, path, iface, "Publish", JSON.stringify({ type: "snapshot", windows: windows }));
+    const json = JSON.stringify({ type: "snapshot", windows: windows });
+    if (json === lastSnapshotJson)
+        return;
+    lastSnapshotJson = json;
+    callDBus(service, path, iface, "Publish", json);
 }
 
 // KWin emits several property changes while switching virtual desktops. Wait

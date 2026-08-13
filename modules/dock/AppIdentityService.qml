@@ -221,14 +221,6 @@ QtObject {
         return resolve(rawId).desktopId;
     }
 
-    // Consumers that receive an application identifier together with an icon
-    // hint (notifications, portals, etc.) should use this rather than doing a
-    // second theme lookup. It preserves the Dock's desktop-entry fallbacks.
-    function iconSourceFor(rawId, preferredIcon) {
-        const preferred = _iconPath(preferredIcon);
-        return preferred || resolve(rawId).iconSource;
-    }
-
     function sameApp(left, right) {
         const a = typeof left === "object" ? left.desktopId : canonicalId(left);
         const b = typeof right === "object" ? right.desktopId : canonicalId(right);
