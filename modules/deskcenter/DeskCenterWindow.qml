@@ -1,4 +1,5 @@
 import QtQuick
+import QtQml.Models
 import QtCore
 import Qt.labs.platform as Platform
 import Quickshell
@@ -1580,7 +1581,7 @@ PanelWindow {
         y: root.topInset
         width: root.width - x - root.sideMargin
         height: root.height - y - root.bottomInset
-        clip: true
+        clip: false
         readonly property int iconSize: desktopLayout.iconSize
         // Keep the label optically paired with the three user-selectable
         // icon sizes instead of leaving it at a fixed desktop-small size.
@@ -1939,6 +1940,17 @@ PanelWindow {
             desktopLayout.sync()
         }
 
+        function saveVisualOrder() {
+            const next = []
+            for (let index = 0; index < desktopFileVisualModel.items.count; ++index) {
+                const item = desktopFileVisualModel.items.get(index)
+                if (item?.model)
+                    next.push(item.model)
+            }
+            if (next.length === orderedEntries.length)
+                saveOrder(next)
+        }
+
         function arrange(compare) {
             const next = root.desktopFiles.entries.slice().sort(function(left, right) {
                 const leftIsFolder = left.kind === "folder"
@@ -2258,6 +2270,7 @@ PanelWindow {
             id: externalDesktopDrop
             anchors.fill: parent
             z: 20
+            enabled: false
             onEntered: function(drag) {
                 // Ignore a desktop icon's own outgoing URI drag.
                 drag.accepted = drag.hasUrls && !drag.source
@@ -2291,6 +2304,7 @@ PanelWindow {
             id: desktopBackgroundPointer
             anchors.fill: parent
             acceptedButtons: Qt.RightButton | Qt.LeftButton
+            enabled: false
             onPressed: function(mouse) {
                 if (mouse.button === Qt.RightButton) {
                     // Right-click is pointer-only: requesting focus here can
@@ -2345,7 +2359,7 @@ PanelWindow {
             width: Math.abs(desktopFileGrid.selectionEndX - desktopFileGrid.selectionStartX)
             height: Math.abs(desktopFileGrid.selectionEndY - desktopFileGrid.selectionStartY)
             opacity: desktopFileGrid.selectionBoxActive ? 1 : 0
-            visible: opacity > 0.01
+            visible: false
             color: Qt.rgba(0, 0, 0, 0.20)
             border { width: 1; color: Qt.rgba(1, 1, 1, 0.34) }
             z: 1
@@ -2354,108 +2368,95 @@ PanelWindow {
             }
         }
 
-        Repeater {
-            model: desktopFileGrid.orderedEntries
-            delegate: Item {
+        GridView {
+            id: desktopFileView
+            anchors.fill: parent
+            visible: false
+            interactive: false
+            clip: true
+            flow: GridView.FlowLeftToRight
+            layoutDirection: Qt.RightToLeft
+            verticalLayoutDirection: GridView.TopToBottom
+            cellWidth: desktopFileGrid.itemWidth
+            cellHeight: desktopFileGrid.itemHeight
+            displaced: Transition {
+                NumberAnimation { properties: "x,y"; easing.type: Easing.OutQuad }
+            }
+            model: DelegateModel {
+                id: desktopFileVisualModel
+                model: desktopFileGrid.orderedEntries
+                delegate: DropArea {
                 id: fileDelegate
                 required property var modelData
-                required property int index
-                readonly property int gridColumn: desktopFileGrid.columnCount - 1
-                    - Math.floor(index / desktopFileGrid.rowCount)
-                readonly property int gridRow: index % desktopFileGrid.rowCount
-                property bool dragMoved: false
-                property bool dragEnabled: true
-                property bool dragHandlerStarted: false
-                property bool opening: false
-                property double previousClickTime: 0
-                property real dropPointerX: 0
-                property real dropPointerY: 0
-                property var dragEntries: []
-                property double suppressOpenUntil: 0
-                readonly property bool isRenaming: desktopFileGrid.renamingPath === modelData.path
-                function commitReorderDrag() {
-                    const dropPath = desktopFileGrid.dropFolderPath
-                    const hadReorderPreview = desktopFileGrid.reorderInsertionIndex >= 0
-                    const target = desktopFileGrid.indexAt(dropPointerX, dropPointerY)
-                    const targetEntry = desktopFileGrid.folderAtDropPoint(
-                        dropPointerX, dropPointerY, modelData.path)
-                    desktopFileGrid.clearFolderDropTarget()
-                    desktopFileGrid.clearReorderInsertion()
-                    if (!dragMoved)
-                        return
-                    previousClickTime = 0
-                    suppressOpenUntil = Date.now() + 350
-                    desktopFileGrid.clearGroupDrag()
-                    if (dropPath !== "" && targetEntry?.path === dropPath) {
-                        root.desktopFiles.moveEntriesToFolder(
-                            dragEntries, targetEntry, function() {
-                                desktopFileGrid.setSelectedPaths([])
-                            })
-                    } else {
-                        desktopFileGrid.reorder(modelData.path, target, hadReorderPreview)
-                    }
-                    desktopFileGrid.reorderDragging = false
-                    desktopFileGrid.reorderDragSourcePath = ""
-                    desktopFileGrid.reorderActiveHandler = null
-                    desktopFileGrid.reorderDragOffsetX = 0
-                    desktopFileGrid.reorderDragOffsetY = 0
+                width: desktopFileView.cellWidth
+                height: desktopFileView.cellHeight
+                onEntered: function(drag) {
+                    desktopFileVisualModel.items.move(
+                        drag.source.DelegateModel.itemsIndex,
+                        minimalDragIcon.DelegateModel.itemsIndex)
                 }
-                readonly property bool followsGroupDrag: desktopFileGrid.draggingPath !== ""
-                    && desktopFileGrid.draggingPath !== modelData.path
-                    && desktopFileGrid.isSelected(modelData.path)
-                readonly property bool isReorderDragSource:
-                    desktopFileGrid.reorderDragging
-                    && desktopFileGrid.reorderDragSourcePath === modelData.path
-                readonly property var reorderSettleOrigin: desktopFileGrid.reorderSettleFrom[modelData.path]
-                readonly property bool followsReorderSettle: !followsGroupDrag
-                    && !desktopFileGrid.reorderDragging
-                    && desktopFileGrid.reorderSettleActive && reorderSettleOrigin !== undefined
-                readonly property real reorderSettleOffsetX: followsReorderSettle
-                    ? reorderSettleOrigin.x - gridColumn * desktopFileGrid.itemWidth : 0
-                readonly property real reorderSettleOffsetY: followsReorderSettle
-                    ? reorderSettleOrigin.y - gridRow * desktopFileGrid.itemHeight : 0
-                readonly property var reorderPreviewOffset:
-                    desktopFileGrid.reorderPreviewOffsets[modelData.path] ?? ({ x: 0, y: 0 })
-                x: gridColumn * desktopFileGrid.itemWidth
-                y: gridRow * desktopFileGrid.itemHeight
-                width: desktopFileGrid.itemWidth
-                height: desktopFileGrid.itemHeight
-                visible: gridColumn >= 0 && y + height <= desktopFileGrid.height
-                z: isReorderDragSource ? 10
-                    : followsGroupDrag ? 9 : 0
-                transform: [
-                    // This transform belongs only to the item under the
-                    // pointer. It binds straight to Qt's gesture value and
-                    // intentionally has no Behavior: it must never chase the
-                    // cursor through the neighbour-reorder animation.
-                    Translate {
-                        x: fileDelegate.isReorderDragSource
-                            ? reorderDrag.activeTranslation.x : 0
-                        y: fileDelegate.isReorderDragSource
-                            ? reorderDrag.activeTranslation.y : 0
-                    },
-                    // All layout motion is isolated here, so it can stay
-                    // smooth for displaced neighbours without affecting the
-                    // dragged item itself.
-                    Translate {
-                        x: fileDelegate.isReorderDragSource ? 0
-                            : fileDelegate.followsGroupDrag ? desktopFileGrid.groupDragOffsetX
-                            : fileDelegate.reorderSettleOffsetX + fileDelegate.reorderPreviewOffset.x
-                        y: fileDelegate.isReorderDragSource ? 0
-                            : fileDelegate.followsGroupDrag ? desktopFileGrid.groupDragOffsetY
-                            : fileDelegate.reorderSettleOffsetY + fileDelegate.reorderPreviewOffset.y
-                        Behavior on x {
-                            enabled: !fileDelegate.followsGroupDrag
-                                && !fileDelegate.isReorderDragSource
-                            NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
-                        }
-                        Behavior on y {
-                            enabled: !fileDelegate.followsGroupDrag
-                                && !fileDelegate.isReorderDragSource
-                            NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+
+                // Intentionally mirrors Qt's Dynamic View Ordering example:
+                // a visual DelegateModel, a DropArea per cell, and one item
+                // reparented to the GridView while DragHandler moves it.
+                Item {
+                    id: minimalDragIcon
+                    width: fileDelegate.width
+                    height: fileDelegate.height
+                    z: minimalDragHandler.active ? 100 : 0
+                    Drag.active: minimalDragHandler.active
+                    Drag.source: minimalDragIcon
+                    Drag.hotSpot.x: width / 2
+                    Drag.hotSpot.y: height / 2
+                    states: State {
+                        when: minimalDragHandler.active
+                        ParentChange { target: minimalDragIcon; parent: desktopFileView.contentItem }
+                    }
+
+                    Text {
+                        anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 8 }
+                        text: desktopFileGrid.iconFor(modelData.kind)
+                        color: Qt.rgba(1, 1, 1, 0.88)
+                        style: Text.Outline
+                        styleColor: Qt.rgba(0, 0, 0, 0.50)
+                        font { family: "LXGW WenKai Mono Nerd Font"; pixelSize: desktopFileGrid.iconSize * 0.75 }
+                    }
+                    Text {
+                        anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: desktopFileGrid.iconSize + 12; leftMargin: 5; rightMargin: 5 }
+                        text: desktopFileGrid.displayName(modelData)
+                        elide: Text.ElideRight
+                        maximumLineCount: 2
+                        wrapMode: Text.Wrap
+                        horizontalAlignment: Text.AlignHCenter
+                        color: "white"
+                        style: Text.Outline
+                        styleColor: Qt.rgba(0, 0, 0, 0.72)
+                        font { pixelSize: desktopFileGrid.fileNameFontSize; weight: desktopFileGrid.fileNameFontWeight }
+                    }
+                    DragHandler {
+                        id: minimalDragHandler
+                        onActiveChanged: {
+                            if (!active)
+                                desktopFileGrid.saveVisualOrder()
                         }
                     }
-                ]
+                }
+
+                Item {
+                    id: fileVisual
+                    visible: false
+                    width: fileDelegate.width
+                    height: fileDelegate.height
+                    z: reorderDrag.active ? 100 : 0
+                    Drag.active: reorderDrag.active && fileDelegate.draggingSingle
+                    Drag.source: fileDelegate
+                    Drag.hotSpot.x: width / 2
+                    Drag.hotSpot.y: height / 2
+                    states: State {
+                        when: reorderDrag.active && fileDelegate.draggingSingle
+                        ParentChange { target: fileVisual; parent: desktopFileView.contentItem }
+                        PropertyChanges { target: fileVisual; x: fileDelegate.x; y: fileDelegate.y }
+                    }
 
                 Rectangle {
                     // Match the actual pointer target rather than colouring
@@ -2717,6 +2718,7 @@ PanelWindow {
                 }
                 MouseArea {
                     id: filePointer
+                    enabled: false
                     // The complete cell used to be clickable, leaving no
                     // genuine blank area between adjacent files.  Keep a
                     // compact content target around the icon and label.
@@ -2733,42 +2735,23 @@ PanelWindow {
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                     hoverEnabled: true
                     onPressed: function(mouse) {
-                        desktopFileGrid.clearFolderDropTarget()
-                        desktopFileGrid.clearGroupDrag()
-                        desktopFileGrid.clearReorderSettle()
-                        desktopFileGrid.clearReorderInsertion()
                         if (mouse.button === Qt.RightButton) {
                             if (!desktopFileGrid.isSelected(modelData.path))
                                 desktopFileGrid.selectOnly(modelData.path)
                             desktopFileGrid.contextEntry = modelData
                             desktopFileGrid.showMenu(modelData)
                         } else {
-                            parent.dragEnabled = !(mouse.modifiers & Qt.ControlModifier)
+                            fileDelegate.dragEnabled = !(mouse.modifiers & Qt.ControlModifier)
                             if (mouse.modifiers & Qt.ControlModifier)
                                 desktopFileGrid.toggleSelection(modelData.path)
                             else if (!desktopFileGrid.isSelected(modelData.path))
                                 desktopFileGrid.selectOnly(modelData.path)
-                            parent.dragEntries = desktopFileGrid.selectedEntries()
-                            parent.dragMoved = false
-                            const point = filePointer.mapToItem(desktopFileGrid, mouse.x, mouse.y)
-                            desktopFileGrid.reorderPressPointerX = point.x
-                            desktopFileGrid.reorderPressPointerY = point.y
-                            desktopFileGrid.reorderDragOffsetX = 0
-                            desktopFileGrid.reorderDragOffsetY = 0
-                            desktopFileGrid.reorderPointerX = point.x
-                            desktopFileGrid.reorderPointerY = point.y
-                            desktopFileGrid.reorderDragEntryCount = parent.dragEntries.length
-                            desktopFileGrid.reorderDragging = false
+                            fileDelegate.dragMoved = false
                             desktopFileGrid.activateKeyboard()
                         }
                     }
-                    onReleased: function(mouse) {
-                        parent.dragEnabled = true
-                        if (mouse.button === Qt.LeftButton && !parent.dragHandlerStarted)
-                            desktopFileGrid.clearFolderDropTarget()
-                    }
                     onClicked: function(mouse) {
-                        if (parent.dragMoved || mouse.button !== Qt.LeftButton
+                        if (fileDelegate.dragMoved || mouse.button !== Qt.LeftButton
                                 || (mouse.modifiers & Qt.ControlModifier))
                             return
                         if (!desktopFileGrid.isSelected(modelData.path)) {
@@ -2780,14 +2763,14 @@ PanelWindow {
                         const now = Date.now()
                         const elapsed = now - previousClickTime
                         previousClickTime = now
-                        if (!parent.dragMoved && elapsed >= 350 && elapsed <= 1200)
+                        if (!fileDelegate.dragMoved && elapsed >= 350 && elapsed <= 1200)
                             desktopFileGrid.beginInlineRename(modelData)
                     }
                     onDoubleClicked: function(mouse) {
-                        if (parent.dragMoved || Date.now() < parent.suppressOpenUntil
+                        if (fileDelegate.dragMoved || Date.now() < fileDelegate.suppressOpenUntil
                                 || mouse.button !== Qt.LeftButton)
                             return
-                        parent.opening = true
+                        fileDelegate.opening = true
                         openFeedback.restart()
                     }
                 }
@@ -2796,22 +2779,19 @@ PanelWindow {
                 // pointer position from an item that is itself transformed.
                 DragHandler {
                     id: reorderDrag
-                    target: null
-                    enabled: fileDelegate.dragEnabled
+                    enabled: false
+                    target: fileVisual
                     acceptedButtons: Qt.LeftButton
-                    dragThreshold: 4
+                    acceptedModifiers: Qt.NoModifier
                     onActiveChanged: {
                         if (active) {
                             fileDelegate.dragHandlerStarted = true
                             fileDelegate.dragMoved = true
-                            desktopFileGrid.reorderDragging = true
-                            desktopFileGrid.reorderDragSourcePath = modelData.path
-                            desktopFileGrid.reorderPreviewSourcePath = modelData.path
-                            desktopFileGrid.reorderActiveHandler = reorderDrag
-                            desktopFileGrid.reorderDragOffsetX = 0
-                            desktopFileGrid.reorderDragOffsetY = 0
+                            fileDelegate.draggingSingle = true
                         } else if (fileDelegate.dragHandlerStarted) {
-                            fileDelegate.commitReorderDrag()
+                            if (fileDelegate.draggingSingle)
+                                desktopFileGrid.saveVisualOrder()
+                            fileDelegate.draggingSingle = false
                             fileDelegate.dragHandlerStarted = false
                         }
                     }
@@ -2904,6 +2884,21 @@ PanelWindow {
             }
         }
 
+            }
+        }
+
+        FreeSlotDesktopDemo {
+            x: -desktopFileGrid.x
+            y: -desktopFileGrid.y
+            width: root.width
+            height: root.height
+            validX: desktopFileGrid.x
+            validY: desktopFileGrid.y
+            validWidth: desktopFileGrid.width
+            validHeight: desktopFileGrid.height
+            z: 30
+        }
+
         // A quiet icon-sized placeholder marks the future slot without
         // moving neighbours, keeping ordering distinct from a folder drop.
         Rectangle {
@@ -2918,8 +2913,7 @@ PanelWindow {
             width: Math.max(36, desktopFileGrid.itemWidth - 14)
             height: Math.max(40, desktopFileGrid.itemHeight - 8)
             radius: 11
-            visible: desktopFileGrid.reorderInsertionIndex >= 0
-                && desktopFileGrid.folderDropCandidatePath === ""
+            visible: false
             opacity: visible ? 0.42 : 0
             color: Qt.rgba(1, 1, 1, 0.055)
             border { width: 1; color: Qt.rgba(1, 1, 1, 0.48) }
