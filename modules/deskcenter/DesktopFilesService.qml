@@ -14,31 +14,50 @@ QtObject {
     property bool ready: false
     property string lastError: ""
     property var _readProcess: null
+    property bool _reloadPending: false
     property bool desktopSubscriptionEnabled: true
     property var openWith: ({ loading: false, mime: "", defaultId: "", handlers: [] })
-    // The URI list is also published through wl-copy, while this state keeps
-    // the cut/copy distinction for a later paste in this shell session.
+    // This mirrors the last operation initiated by this shell for UI state;
+    // the actual paste mode is always read back from the current MIME data.
     property string clipboardMode: ""
     property var clipboardPaths: []
 
-    function requestDesktopRefresh() {
+    function serviceEvent(event, callback) {
         const process = processFactory.createObject(service, {
             command: ["sh", "-c",
-                "runtime=${XDG_RUNTIME_DIR:-/tmp}; printf '%s\\n' '{\"type\":\"refresh_desktop\"}' | socat - UNIX-CONNECT:\"$runtime/shell-data-service.sock\"",
-                "desktop-files-refresh"]
+                "runtime=${XDG_RUNTIME_DIR:-/tmp}; printf '%s\\n' \"$1\" | socat - UNIX-CONNECT:\"$runtime/shell-data-service.sock\"",
+                "desktop-service-event", JSON.stringify(event)]
         })
-        process.exited.connect(function() {
-            // The socket command returns as soon as it has been delivered.
-            // Give the service one short turn to atomically publish its scan.
-            service.fastRefresh.restart()
+        process.exited.connect(function(exitCode) {
+            let response = null
+            const lines = (process.stdout?.text ?? "").trim().split(/\r?\n/)
+            for (let index = lines.length - 1; index >= 0; --index) {
+                try {
+                    response = JSON.parse(lines[index])
+                    break
+                } catch (_) {}
+            }
+            if (callback)
+                callback(response, exitCode, process.stderr?.text ?? "")
             process.destroy()
         })
         process.running = true
     }
 
+    function requestDesktopRefresh() {
+        serviceEvent({ type: "refresh_desktop" }, function() {
+            // The service completes its full scan and atomic snapshot write
+            // before closing this one-shot request.
+            service.reload()
+        })
+    }
+
     function reload() {
-        if (_readProcess)
+        if (_readProcess) {
+            _reloadPending = true
             return
+        }
+        _reloadPending = false
         const process = processFactory.createObject(service, {
             command: ["sh", "-c",
                 "state=${XDG_STATE_HOME:-$HOME/.local/state}; cat \"$state/quickshell/shell-data-service/snapshot.json\" 2>/dev/null",
@@ -59,6 +78,8 @@ QtObject {
             if (service._readProcess === process)
                 service._readProcess = null
             process.destroy()
+            if (service._reloadPending)
+                Qt.callLater(service.reload)
         })
         process.running = true
     }
@@ -217,7 +238,7 @@ QtObject {
         process.running = true
     }
 
-    function renameEntry(entry, name) {
+    function renameEntry(entry, name, onSuccess) {
         if (!entry?.path || !directory || !validName(name)) {
             lastError = "名称不能为空，且不能包含 /"
             return false
@@ -237,8 +258,11 @@ QtObject {
         process.exited.connect(function(exitCode) {
             if (exitCode !== 0)
                 service.lastError = "该名称已被占用"
-            else
+            else {
+                if (onSuccess)
+                    onSuccess(target)
                 requestDesktopRefresh()
+            }
             process.destroy()
         })
         process.running = true
@@ -306,79 +330,38 @@ QtObject {
             .filter(function(path) { return !!path })
         if (paths.length === 0)
             return
-        const uriList = paths.map(function(path) {
-            return "file://" + encodeURIComponent(path).replace(/%2F/gi, "/")
-        }).join("\r\n") + "\r\n"
-        // Record the semantic operation before wl-copy completes. Otherwise
-        // a quick Ctrl+X then Ctrl+V races the helper process and silently
-        // falls back to copy.
-        service.clipboardMode = mode
+        const operation = mode === "cut" ? "cut" : "copy"
+        service.clipboardMode = operation
         service.clipboardPaths = paths
-        const process = processFactory.createObject(service, {
-            command: ["sh", "-c", "printf '%s' \"$1\" | wl-copy --type text/uri-list",
-                "desktop-file-copy", uriList]
-        })
-        process.exited.connect(function(exitCode) {
-            if (exitCode !== 0) {
+        serviceEvent({ type: "clipboard_set", mode: operation, paths: paths },
+            function(response, exitCode, stderr) {
+            if (!response?.ok) {
                 service.clipboardMode = ""
                 service.clipboardPaths = []
-                service.lastError = "无法写入剪贴板"
-                console.warn("[DesktopFiles] wl-copy failed: " + (process.stderr?.text ?? ""))
+                service.lastError = "无法写入文件剪贴板，请安装并启动 shell-data-service"
+                console.warn("[DesktopFiles] clipboard helper failed: "
+                    + (response?.error ?? stderr ?? ("exit " + exitCode)))
             }
-            process.destroy()
         })
-        process.running = true
-    }
-
-    function filePathsFromUriList(raw) {
-        const paths = []
-        const lines = String(raw ?? "").split(/\r?\n/)
-        for (let index = 0; index < lines.length; ++index) {
-            const uri = lines[index].trim()
-            if (!uri || uri.startsWith("#") || !uri.startsWith("file://"))
-                continue
-            try {
-                const path = decodeURIComponent(uri.slice("file://".length))
-                if (path.startsWith("/") && paths.indexOf(path) < 0)
-                    paths.push(path)
-            } catch (_) {}
-        }
-        return paths
-    }
-
-    function samePathList(left, right) {
-        if (left.length !== right.length)
-            return false
-        for (let index = 0; index < left.length; ++index) {
-            if (left[index] !== right[index])
-                return false
-        }
-        return true
     }
 
     function pasteIntoDesktop() {
         if (!directory)
             return
-        const reader = processFactory.createObject(service, {
-            command: ["wl-paste", "--no-newline", "--type", "text/uri-list"]
-        })
-        reader.exited.connect(function(exitCode) {
-            // wl-copy is asynchronous.  When the user immediately presses
-            // Ctrl+V after Ctrl+X, wl-paste can still return the previous
-            // clipboard selection.  Our own cut operation already has an
-            // authoritative path list, so use it for this shell session.
-            const trackedCut = service.clipboardMode === "cut"
-                    && service.clipboardPaths.length > 0
-            const paths = trackedCut ? service.clipboardPaths.slice()
-                : (exitCode === 0 ? service.filePathsFromUriList(reader.stdout?.text) : [])
-            reader.destroy()
+        serviceEvent({ type: "clipboard_read" }, function(response, exitCode, stderr) {
+            const paths = response?.ok && Array.isArray(response.paths)
+                ? response.paths : []
             if (paths.length === 0) {
                 service.lastError = "剪贴板中没有可粘贴的文件"
-                if (exitCode !== 0)
-                    console.warn("[DesktopFiles] wl-paste failed: " + (reader.stderr?.text ?? ""))
+                if (!response?.ok)
+                    console.warn("[DesktopFiles] clipboard read failed: "
+                        + (response?.error ?? stderr ?? ("exit " + exitCode)))
                 return
             }
-            const mode = trackedCut ? "cut" : "copy"
+            // KDE's application/x-kde-cutselection and GNOME's compatible
+            // MIME marker are decoded by the Qt helper. Never infer cut from
+            // stale in-process state after another app replaces the clipboard.
+            const mode = response.mode === "cut" ? "cut" : "copy"
             const script = "mode=$1; destination=$2; shift 2\n"
                 + "for source do\n"
                 + "  test -e \"$source\" || continue\n"
@@ -408,10 +391,9 @@ QtObject {
             })
             worker.running = true
         })
-        reader.running = true
     }
 
-    function importExternalUrls(urls) {
+    function importExternalUrls(urls, action) {
         if (!directory)
             return
         const paths = (urls ?? []).map(function(url) {
@@ -423,31 +405,37 @@ QtObject {
             lastError = "只能拖入本地文件"
             return
         }
-        const script = "destination=$1; shift\n"
+        const operation = action === Qt.MoveAction ? "move" : "copy"
+        const script = "mode=$1; destination=$2; shift 2\n"
             + "for source do\n"
             + "  test -e \"$source\" || continue\n"
+            + "  if test \"$mode\" = move && test \"$(dirname \"$source\")\" = \"$destination\"; then continue; fi\n"
             + "  base=${source##*/}; candidate=\"$destination/$base\"; count=1\n"
             + "  while test -e \"$candidate\"; do\n"
             + "    stem=${base%.*}; extension=.${base##*.}\n"
             + "    if test \"$stem\" = \"$base\" || test -z \"$stem\"; then candidate=\"$destination/$base (副本 $count)\"; else candidate=\"$destination/$stem (副本 $count)$extension\"; fi\n"
             + "    count=$((count + 1))\n"
             + "  done\n"
-            + "  cp -a -- \"$source\" \"$candidate\" || exit 1\n"
+            + "  if test \"$mode\" = move; then mv -- \"$source\" \"$candidate\"; else cp -a -- \"$source\" \"$candidate\"; fi || exit 1\n"
             + "done"
         lastError = ""
-        run(["sh", "-c", script, "desktop-external-drop", directory].concat(paths), requestDesktopRefresh)
+        run(["sh", "-c", script, "desktop-external-drop", operation,
+            directory].concat(paths), requestDesktopRefresh)
     }
 
     property Process desktopSubscription: Process {
-        // The Go service owns the inotify watcher. Keep this local socket open
-        // for change notifications; reload() then reads its atomic snapshot.
+        // The Go service owns fsnotify and sends a marker only after its full
+        // directory scan has been atomically persisted. The explicit
+        // subscription also causes one immediate initial-state marker.
         command: ["sh", "-c",
             "runtime=${XDG_RUNTIME_DIR:-/tmp}; exec socat - UNIX-CONNECT:\"$runtime/shell-data-service.sock\"",
             "desktop-files-subscription"]
         running: service.desktopSubscriptionEnabled
+        stdinEnabled: true
+        onStarted: write('{"type":"subscribe_desktop"}\n')
         stdout: SplitParser {
             splitMarker: "\n"
-            onRead: _ => service.fastRefresh.restart()
+            onRead: _ => service.reload()
         }
         stderr: SplitParser { splitMarker: "\n" }
         onExited: {
@@ -459,11 +447,6 @@ QtObject {
         interval: 1000
         repeat: false
         onTriggered: service.desktopSubscriptionEnabled = true
-    }
-    property Timer fastRefresh: Timer {
-        interval: 120
-        repeat: false
-        onTriggered: service.reload()
     }
     property Component processFactory: Component {
         Process {

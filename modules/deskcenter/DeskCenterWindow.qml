@@ -239,10 +239,15 @@ PanelWindow {
             height: root.spanSize(placement?.rows ?? 1)
             Behavior on height { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
 
-            // Compact analogue clock, matching the one-unit reference tile.
-            Item {
+            // Instantiate only this card's content. `visible: false` keeps a
+            // QML tree alive, so the old delegate built every widget for every
+            // card even though only one could be shown.
+            Loader {
                 anchors.fill: parent
-                visible: card.modelData.id === "clock"
+                active: card.modelData.id === "clock"
+                sourceComponent: Component {
+                    Item {
+                anchors.fill: parent
                 clip: true
 
                 Item {
@@ -483,10 +488,15 @@ PanelWindow {
                     }
                 }
             }
+                }
+            }
 
-            Item {
+            Loader {
                 anchors.fill: parent
-                visible: card.modelData.id === "date"
+                active: card.modelData.id === "date"
+                sourceComponent: Component {
+                    Item {
+                anchors.fill: parent
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; top: parent.top }
                     height: 27
@@ -506,10 +516,15 @@ PanelWindow {
                     font.pixelSize: 9
                 }
             }
+                }
+            }
 
-            Item {
+            Loader {
                 anchors.fill: parent
-                visible: card.modelData.id === "weather"
+                active: card.modelData.id === "weather"
+                sourceComponent: Component {
+                    Item {
+                anchors.fill: parent
 
                 // The card-level gradient establishes the theme, while this
                 // explicit content-layer wash keeps that transition visible
@@ -722,10 +737,15 @@ PanelWindow {
                 }
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: WeatherService.refresh() }
             }
+                }
+            }
 
-            Item {
+            Loader {
                 anchors.fill: parent
-                visible: card.modelData.id === "status"
+                active: card.modelData.id === "status"
+                sourceComponent: Component {
+                    Item {
+                anchors.fill: parent
                 Row {
                     anchors.centerIn: parent
                     spacing: 18
@@ -766,10 +786,15 @@ PanelWindow {
                     }
                 }
             }
+                }
+            }
 
-            Item {
+            Loader {
                 anchors.fill: parent
-                visible: card.modelData.id === "photo"
+                active: card.modelData.id === "photo"
+                sourceComponent: Component {
+                    Item {
+                anchors.fill: parent
                 Image { anchors.fill: parent; source: "../../assets/defaultCover.png"; fillMode: Image.PreserveAspectCrop; asynchronous: true }
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -783,11 +808,16 @@ PanelWindow {
                     font { pixelSize: 11; weight: Font.DemiBold }
                 }
             }
+                }
+            }
 
-            Item {
+            Loader {
+                anchors.fill: parent
+                active: card.modelData.id === "system"
+                sourceComponent: Component {
+                    Item {
                 id: systemContent
                 anchors.fill: parent
-                visible: card.modelData.id === "system"
                 // The shell-data-service snapshot drives this card through
                 // the shared MetricsService, so the rings and trends read the
                 // exact values the Bar's thermal indicator shows.
@@ -1022,11 +1052,16 @@ PanelWindow {
                     }
                 }
             }
+                }
+            }
 
-            Item {
+            Loader {
+                anchors.fill: parent
+                active: card.modelData.id === "activity"
+                sourceComponent: Component {
+                    Item {
                 id: activityContent
                 anchors.fill: parent
-                visible: card.modelData.id === "activity"
 
                 Item {
                     id: activityBody
@@ -1142,10 +1177,15 @@ PanelWindow {
                     }
                 }
             }
+                }
+            }
 
-            Item {
+            Loader {
                 anchors.fill: parent
-                visible: card.modelData.id === "notes"
+                active: card.modelData.id === "notes"
+                sourceComponent: Component {
+                    Item {
+                anchors.fill: parent
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; top: parent.top }
                     height: 27
@@ -1164,10 +1204,15 @@ PanelWindow {
                     font.pixelSize: 11
                 }
             }
+                }
+            }
 
-            Item {
+            Loader {
                 anchors.fill: parent
-                visible: card.modelData.id === "overview"
+                active: card.modelData.id === "overview"
+                sourceComponent: Component {
+                    Item {
+                anchors.fill: parent
                 Text {
                     text: "桌面工作区"
                     color: "white"
@@ -1182,11 +1227,16 @@ PanelWindow {
                     font.pixelSize: 14
                 }
             }
+                }
+            }
 
-            Item {
+            Loader {
+                anchors.fill: parent
+                active: card.modelData.id === "music"
+                sourceComponent: Component {
+                    Item {
                 id: musicContent
                 anchors.fill: parent
-                visible: card.modelData.id === "music"
                 readonly property var player: DockMprisService.activePlayer
                 readonly property bool hasPlayer: player !== null
                 readonly property url artworkSource: {
@@ -1294,6 +1344,10 @@ PanelWindow {
                                 visible: false
                                 source: musicContent.artworkSource
                                 fillMode: Image.PreserveAspectCrop
+                                sourceSize.width: Math.max(1, Math.ceil(width * 2))
+                                sourceSize.height: Math.max(1, Math.ceil(height * 2))
+                                asynchronous: true
+                                cache: false
                             }
                             OpacityMask {
                                 anchors.fill: parent
@@ -1375,9 +1429,14 @@ PanelWindow {
                             }
                         }
                         Row {
-                            anchors { horizontalCenter: parent.horizontalCenter; top: musicProgressTimes.visible ? musicProgressTimes.bottom : musicArtist.bottom; topMargin: 8 }
-                            height: 34
-                            spacing: 16
+                            id: musicControls
+                            anchors {
+                                horizontalCenter: parent.horizontalCenter
+                                bottom: parent.bottom
+                                bottomMargin: 2
+                            }
+                            height: 30
+                            spacing: 14
                             Repeater {
                                 model: ["⏮", musicContent.player?.isPlaying ? "⏸" : "▶", "⏭"]
                                 delegate: Rectangle {
@@ -1387,7 +1446,7 @@ PanelWindow {
                                 && (index === 0 ? (musicContent.player?.canGoPrevious ?? false)
                                     : index === 2 ? (musicContent.player?.canGoNext ?? false)
                                     : (musicContent.player?.canTogglePlaying ?? false))
-                            width: index === 1 ? 34 : 28
+                            width: index === 1 ? 30 : 24
                             height: width
                             y: (parent.height - height) / 2
                             radius: width / 2
@@ -1398,7 +1457,11 @@ PanelWindow {
                                 anchors.centerIn: parent
                                 text: modelData
                                 color: Qt.rgba(1, 1, 1, parent.controlEnabled ? 0.88 : 0.28)
-                                font { family: "SF Pro Display"; pixelSize: index === 1 ? 18 : 13; weight: Font.DemiBold }
+                                font {
+                                    family: "SF Pro Display"
+                                    pixelSize: index === 1 ? 15 : 11
+                                    weight: Font.DemiBold
+                                }
                             }
                             MouseArea {
                                 anchors.fill: parent
@@ -1416,10 +1479,15 @@ PanelWindow {
                     }
                 }
             }
+                }
+            }
 
-            Item {
+            Loader {
                 anchors.fill: parent
-                visible: card.modelData.id === "shortcuts"
+                active: card.modelData.id === "shortcuts"
+                sourceComponent: Component {
+                    Item {
+                anchors.fill: parent
                 Row {
                     anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 18; rightMargin: 18; topMargin: 44 }
                     spacing: 10
@@ -1450,11 +1518,16 @@ PanelWindow {
                     }
                 }
             }
+                }
+            }
 
-            Item {
+            Loader {
+                anchors.fill: parent
+                active: card.modelData.id === "calendar"
+                sourceComponent: Component {
+                    Item {
                 id: calendarContent
                 anchors.fill: parent
-                visible: card.modelData.id === "calendar"
                 readonly property int year: clock.date.getFullYear()
                 readonly property int month: clock.date.getMonth()
                 // Monday-first month layout: 星期一 is the first column and
@@ -1569,6 +1642,8 @@ PanelWindow {
                     }
                 }
             }
+                }
+            }
         }
     }
 
@@ -1637,9 +1712,9 @@ PanelWindow {
             property string orderJson: "[]"
             property int iconSize: 56
             property bool showExtensions: true
-            // Per-folder customisation keyed by absolute path. Each value is
-            // { "color": "#hex", "emoji": "📁" }. Empty emoji keeps the Nerd
-            // Font folder glyph but tints it with the chosen color.
+            // Per-entry customisation keyed by absolute path. Existing folder
+            // settings keep using this key for backwards compatibility.
+            // Each value is { "color": "#hex", "emoji": "📁" }.
             property string folderCustomJson: "{}"
         }
 
@@ -1840,12 +1915,6 @@ PanelWindow {
         }
 
         function ordered(source) {
-            // Prune stale folder-customisation entries whose paths no longer
-            // exist on the desktop. This prevents a deleted-then-recreated
-            // folder from inheriting a stale customisation, and keeps the
-            // persisted JSON from growing without bound.
-            pruneFolderCustom(source)
-
             let saved = []
             try { saved = JSON.parse(desktopLayout.orderJson) } catch (_) {}
             const positions = ({})
@@ -1868,35 +1937,6 @@ PanelWindow {
                 if (rightIndex === undefined) return -1
                 return leftIndex - rightIndex
             })
-        }
-
-        function pruneFolderCustom(source) {
-            // Never prune when the entry list is empty - that happens during
-            // startup before the snapshot loads, and pruning would wipe all
-            // saved customisations.
-            if (!source || source.length === 0)
-                return
-            let map
-            try { map = JSON.parse(desktopLayout.folderCustomJson) } catch (_) { return }
-            const livePaths = ({})
-            for (let index = 0; index < source.length; ++index) {
-                const entry = source[index]
-                if (entry && entry.kind === "folder" && entry.path)
-                    livePaths[entry.path] = true
-            }
-            let changed = false
-            const keys = Object.keys(map)
-            for (let i = 0; i < keys.length; ++i) {
-                const key = keys[i]
-                if (!livePaths[key]) {
-                    delete map[key]
-                    changed = true
-                }
-            }
-            if (changed) {
-                desktopLayout.folderCustomJson = JSON.stringify(map)
-                desktopLayout.sync()
-            }
         }
 
         function reorder(path, destinationIndex, wasPreviewed) {
@@ -2008,7 +2048,36 @@ PanelWindow {
             if (!entry?.path)
                 return
             root.desktopFiles.lastError = ""
-            renamingPath = entry.path
+            const path = entry.path
+            // Platform.Menu owns focus while it is closing. Defer editor
+            // activation by one event-loop turn so the menu cannot immediately
+            // steal focus back and trigger the editor's focus-loss commit.
+            Qt.callLater(function() {
+                freeSlotDesktop.beginRename(path)
+            })
+        }
+
+        function commitRename(entry, name) {
+            const newName = (name ?? "").trim()
+            if (!entry?.path || !root.desktopFiles.validName(newName)) {
+                root.desktopFiles.lastError = "名称不能为空，且不能包含 /"
+                return false
+            }
+            const newPath = root.desktopFiles.directory + "/" + newName
+            if (newPath !== entry.path) {
+                const clash = root.desktopFiles.entries.some(function(candidate) {
+                    return candidate.path === newPath
+                })
+                if (clash) {
+                    root.desktopFiles.lastError = "该名称已被占用"
+                    return false
+                }
+            }
+            const oldPath = entry.path
+            return root.desktopFiles.renameEntry(entry, newName, function() {
+                if (newPath !== oldPath)
+                    desktopFileGrid.migrateFolderCustom(oldPath, newPath)
+            })
         }
 
         function createNewFolder() {
@@ -2166,6 +2235,7 @@ PanelWindow {
 
         function clearDesktopSelection() {
             selectedPaths = []
+            freeSlotDesktop.selectedIds = []
             desktopContextMenu.close()
             contextEntry = null
         }
@@ -2187,6 +2257,7 @@ PanelWindow {
             else if (kind === "trash") {
                 const entries = selectedEntries()
                 selectedPaths = []
+                freeSlotDesktop.selectedIds = []
                 root.desktopFiles.trashEntries(entries, function() {
                     DockTrashService.celebrateDeposit()
                 })
@@ -2258,7 +2329,11 @@ PanelWindow {
         Connections {
             target: root.desktopFiles
             function onEntriesChanged() {
-                desktopFileGrid.startPendingRename()
+                // Let orderedEntries and the free-slot surface consume the new
+                // service snapshot before focusing the newly-created item.
+                Qt.callLater(function() {
+                    desktopFileGrid.startPendingRename()
+                })
             }
             function onLastErrorChanged() {
                 if (root.desktopFiles.lastError)
@@ -2384,7 +2459,13 @@ PanelWindow {
             }
             model: DelegateModel {
                 id: desktopFileVisualModel
-                model: desktopFileGrid.orderedEntries
+                // FreeSlotDesktopDemo is the active desktop implementation.
+                // This legacy GridView remains only as dormant reference code;
+                // an invisible QML view can still instantiate delegates, which
+                // would decode every image thumbnail a second time. Keep its
+                // model empty unless it is deliberately made visible again.
+                model: desktopFileView.visible
+                    ? desktopFileGrid.orderedEntries : []
                 delegate: DropArea {
                 id: fileDelegate
                 required property var modelData
@@ -2541,7 +2622,13 @@ PanelWindow {
                             anchors.fill: parent
                             source: modelData.kind === "image" ? "file://" + modelData.path : ""
                             fillMode: Image.PreserveAspectCrop
+                            // Keep this dormant legacy delegate safe if it is
+                            // ever re-enabled: desktop thumbnails must never
+                            // decode their original multi-megapixel images.
+                            sourceSize.width: Math.max(1, Math.ceil(width * 2))
+                            sourceSize.height: Math.max(1, Math.ceil(height * 2))
                             asynchronous: true
+                            cache: false
                             smooth: true
                             // OpacityMask below renders this source. A plain
                             // Rectangle.clip only clips to a rectangle and
@@ -2888,6 +2975,7 @@ PanelWindow {
         }
 
         FreeSlotDesktopDemo {
+            id: freeSlotDesktop
             x: -desktopFileGrid.x
             y: -desktopFileGrid.y
             width: root.width
@@ -2896,6 +2984,36 @@ PanelWindow {
             validY: desktopFileGrid.y
             validWidth: desktopFileGrid.width
             validHeight: desktopFileGrid.height
+            cellWidth: desktopFileGrid.itemWidth
+            cellHeight: desktopFileGrid.itemHeight
+            iconVisualSize: desktopFileGrid.iconSize + 12
+            showExtensions: desktopLayout.showExtensions
+            folderCustomizations: desktopFileGrid._folderCustomCache
+            renameCallback: function(entry, name) {
+                return desktopFileGrid.commitRename(entry, name)
+            }
+            // Reuse the existing notify-backed service snapshot together with
+            // the persisted desktop order. The drag demo only replaces the
+            // layout algorithm, not the desktop's data pipeline.
+            entries: desktopFileGrid.orderedEntries
+            onMoveIntoFolderRequested: function(sourceEntries, targetFolder) {
+                root.desktopFiles.moveEntriesToFolder(sourceEntries, targetFolder)
+            }
+            onSelectedIdsChanged: {
+                desktopFileGrid.setSelectedPaths(selectedIds)
+            }
+            onContextMenuRequested: function(entry) {
+                desktopFileGrid.setSelectedPaths(freeSlotDesktop.selectedIds)
+                desktopFileGrid.contextEntry = entry
+                desktopFileGrid.showMenu(entry)
+            }
+            onOpenRequested: function(entry) {
+                root.desktopFiles.openEntry(entry)
+            }
+            onActivityRequested: desktopFileGrid.activateKeyboard()
+            onExternalUrlsDropped: function(urls, action) {
+                root.desktopFiles.importExternalUrls(urls, action)
+            }
             z: 30
         }
 
@@ -2929,12 +3047,14 @@ PanelWindow {
             Platform.MenuItem { icon.name: "edit-rename"; text: "重命名"; visible: desktopFileGrid.selectedEntries().length === 1; onTriggered: desktopFileGrid.triggerContextAction("rename") }
             Platform.Menu {
                 icon.name: "preferences-desktop-color"
-                title: "自定义图标"
-                visible: desktopFileGrid.contextEntry !== null && desktopFileGrid.contextEntry.kind === "folder"
+                title: "自定义外观"
+                visible: desktopFileGrid.contextEntry !== null
                 // Color submenu: static items, check-marked when active.
                 Platform.Menu {
                     icon.name: "color-fill"
-                    title: "颜色"
+                    title: desktopFileGrid.contextEntry
+                            && desktopFileGrid.contextEntry.kind === "folder"
+                        ? "文件夹颜色" : "标题颜色"
                     Platform.MenuItem { text: "默认"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === ""; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "") }
                     Platform.MenuItem { text: "🔴 红"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#FF6B6B"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#FF6B6B") }
                     Platform.MenuItem { text: "🟠 橙"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#FFA94D"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#FFA94D") }

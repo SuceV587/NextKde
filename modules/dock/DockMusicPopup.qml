@@ -131,9 +131,11 @@ PopupWindow {
                     id: coverImage
                     anchors.fill: parent
                     source: popup.artworkSource
+                    sourceSize.width: Math.max(1, Math.ceil(width * 2))
+                    sourceSize.height: Math.max(1, Math.ceil(height * 2))
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
-                    cache: true
+                    cache: false
                     smooth: true
                     layer.enabled: true
                     layer.effect: MultiEffect {

@@ -172,8 +172,10 @@ Item {
                 id: albumArt
                 anchors.fill: parent
                 source: widget.artworkSource
+                sourceSize.width: Math.max(1, Math.ceil(width * 2))
+                sourceSize.height: Math.max(1, Math.ceil(height * 2))
                 asynchronous: true
-                cache: true
+                cache: false
                 fillMode: Image.PreserveAspectCrop
                 smooth: true
                 layer.enabled: true

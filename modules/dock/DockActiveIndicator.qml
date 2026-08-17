@@ -17,27 +17,26 @@ Item {
     property real stretchAmount: 0
     property real stretchProgress: 0
     property real travelDirection: 1
-    readonly property real leadingRadius: Math.min(height / 2,
-        baseRadius + height * 0.52 * stretchProgress)
-    // Keep the tail rounded and let it become softer while stretching. The
-    // pinch belongs in the bridge/neck, not in a squared-off trailing corner.
-    readonly property real trailingRadius: Math.min(height / 2,
-        baseRadius + height * 0.20 * stretchProgress)
-    readonly property real leftRadius: travelDirection > 0
-        ? trailingRadius : leadingRadius
-    readonly property real rightRadius: travelDirection > 0
-        ? leadingRadius : trailingRadius
-    readonly property real sideInset: height * 0.22 * stretchProgress
-    readonly property real leftX: travelDirection > 0 ? sideInset : 0
-    readonly property real rightX: travelDirection > 0 ? width : width - sideInset
+    // A moving selection behaves like a horizontal droplet: a full leading
+    // head flows toward the destination while a short rounded tail follows.
+    readonly property real sideInset: height * 0.14 * stretchProgress
+    readonly property real leftX: sideInset
+    readonly property real rightX: width - sideInset
     readonly property real liquidSpan: rightX - leftX
-    // Pull the upper and lower edges inward around the trailing third. This
-    // creates a visible neck behind the leading bulb instead of a uniformly
-    // stretched capsule.
-    readonly property real neckDepth: height * 0.28 * stretchProgress
-    readonly property real rightwardNeckX: leftX + liquidSpan * 0.38
-    readonly property real leftwardNeckX: rightX - liquidSpan * 0.38
+    readonly property real tailCenterY: height / 2
+    readonly property real tailInsetY: height * 0.15 * stretchProgress
+    readonly property real tailTopY: tailInsetY
+    readonly property real tailBottomY: height - tailInsetY
+    readonly property real tailRadius: tailCenterY - tailInsetY
+    readonly property real leadingRadius: Math.min(height / 2,
+        liquidSpan / 2)
+    readonly property real leadingStartX: rightX - leadingRadius
+    readonly property real trailingStartX: leftX + tailRadius
     property bool hasPosition: false
+
+    function directionX(rightwardX) {
+        return travelDirection > 0 ? rightwardX : width - rightwardX
+    }
 
     width: baseSize + stretchAmount * stretchProgress
     // The body swells slightly upward/downward while being pulled sideways,
@@ -122,123 +121,73 @@ Item {
         layer.enabled: true
 
         ShapePath {
-            // Rightward travel: small tail on the left, full bulb on the right.
-            fillColor: indicator.travelDirection > 0 ? "white" : "transparent"
+            // The leading head stays full-height. The shorter trailing cap
+            // connects with horizontal tangents, so the body flows smoothly
+            // instead of pinching at the centre.
+            fillColor: "white"
             strokeWidth: -1
 
-            startX: indicator.leftX + indicator.leftRadius
-            startY: 0
+            startX: indicator.directionX(indicator.trailingStartX)
+            startY: indicator.tailTopY
             PathCubic {
-                // The curve sinks into a narrow neck, then rises into the
-                // large leading bulb. At rest neckDepth is zero, so this is
-                // the original straight top edge.
-                control1X: indicator.rightwardNeckX - indicator.liquidSpan * 0.15
-                control1Y: indicator.neckDepth
-                control2X: indicator.rightwardNeckX + indicator.liquidSpan * 0.12
-                control2Y: indicator.neckDepth
-                x: indicator.rightX - indicator.rightRadius
-                y: 0
-            }
-            PathCubic {
-                control1X: indicator.rightX - indicator.rightRadius * 0.45
-                control1Y: 0
-                control2X: indicator.rightX
-                control2Y: indicator.rightRadius * 0.45
-                x: indicator.rightX
-                y: indicator.rightRadius
-            }
-            PathLine { x: indicator.rightX; y: indicator.height - indicator.rightRadius }
-            PathCubic {
-                control1X: indicator.rightX
-                control1Y: indicator.height - indicator.rightRadius * 0.45
-                control2X: indicator.rightX - indicator.rightRadius * 0.45
-                control2Y: indicator.height
-                x: indicator.rightX - indicator.rightRadius
-                y: indicator.height
-            }
-            PathCubic {
-                control1X: indicator.rightwardNeckX + indicator.liquidSpan * 0.12
-                control1Y: indicator.height - indicator.neckDepth
-                control2X: indicator.rightwardNeckX - indicator.liquidSpan * 0.15
-                control2Y: indicator.height - indicator.neckDepth
-                x: indicator.leftX + indicator.leftRadius
-                y: indicator.height
-            }
-            PathLine {
-                x: indicator.leftX
-                y: indicator.height - indicator.leftRadius
-            }
-            PathLine { x: indicator.leftX; y: indicator.leftRadius }
-            PathCubic {
-                control1X: indicator.leftX
-                control1Y: indicator.leftRadius * 0.45
-                control2X: indicator.leftX + indicator.leftRadius * 0.45
+                control1X: indicator.directionX(indicator.trailingStartX
+                    + indicator.liquidSpan * 0.24)
+                control1Y: indicator.tailTopY
+                control2X: indicator.directionX(indicator.leadingStartX
+                    - indicator.liquidSpan * 0.16)
                 control2Y: 0
-                x: indicator.leftX + indicator.leftRadius
-                y: 0
-            }
-            PathLine {
-                x: indicator.leftX + indicator.leftRadius
-                y: 0
-            }
-        }
-
-        ShapePath {
-            // Mirrored contour for leftward travel.
-            fillColor: indicator.travelDirection < 0 ? "white" : "transparent"
-            strokeWidth: -1
-
-            startX: indicator.leftX + indicator.leftRadius
-            startY: 0
-            PathCubic {
-                control1X: indicator.leftwardNeckX - indicator.liquidSpan * 0.12
-                control1Y: indicator.neckDepth
-                control2X: indicator.leftwardNeckX + indicator.liquidSpan * 0.15
-                control2Y: indicator.neckDepth
-                x: indicator.rightX - indicator.rightRadius
+                x: indicator.directionX(indicator.leadingStartX)
                 y: 0
             }
             PathCubic {
-                control1X: indicator.rightX - indicator.rightRadius * 0.45
+                control1X: indicator.directionX(indicator.leadingStartX
+                    + indicator.leadingRadius * 0.55)
                 control1Y: 0
-                control2X: indicator.rightX
-                control2Y: indicator.rightRadius * 0.45
-                x: indicator.rightX
-                y: indicator.rightRadius
+                control2X: indicator.directionX(indicator.rightX)
+                control2Y: indicator.tailCenterY
+                    - indicator.leadingRadius * 0.55
+                x: indicator.directionX(indicator.rightX)
+                y: indicator.tailCenterY
             }
-            PathLine { x: indicator.rightX; y: indicator.height - indicator.rightRadius }
             PathCubic {
-                control1X: indicator.rightX
-                control1Y: indicator.height - indicator.rightRadius * 0.45
-                control2X: indicator.rightX - indicator.rightRadius * 0.45
+                control1X: indicator.directionX(indicator.rightX)
+                control1Y: indicator.tailCenterY
+                    + indicator.leadingRadius * 0.55
+                control2X: indicator.directionX(indicator.leadingStartX
+                    + indicator.leadingRadius * 0.55)
                 control2Y: indicator.height
-                x: indicator.rightX - indicator.rightRadius
+                x: indicator.directionX(indicator.leadingStartX)
                 y: indicator.height
             }
             PathCubic {
-                control1X: indicator.leftwardNeckX + indicator.liquidSpan * 0.15
-                control1Y: indicator.height - indicator.neckDepth
-                control2X: indicator.leftwardNeckX - indicator.liquidSpan * 0.12
-                control2Y: indicator.height - indicator.neckDepth
-                x: indicator.leftX + indicator.leftRadius
-                y: indicator.height
-            }
-            PathCubic {
-                control1X: indicator.leftX + indicator.leftRadius * 0.45
+                control1X: indicator.directionX(indicator.leadingStartX
+                    - indicator.liquidSpan * 0.16)
                 control1Y: indicator.height
-                control2X: indicator.leftX
-                control2Y: indicator.height - indicator.leftRadius * 0.45
-                x: indicator.leftX
-                y: indicator.height - indicator.leftRadius
+                control2X: indicator.directionX(indicator.trailingStartX
+                    + indicator.liquidSpan * 0.24)
+                control2Y: indicator.tailBottomY
+                x: indicator.directionX(indicator.trailingStartX)
+                y: indicator.tailBottomY
             }
-            PathLine { x: indicator.leftX; y: indicator.leftRadius }
             PathCubic {
-                control1X: indicator.leftX
-                control1Y: indicator.leftRadius * 0.45
-                control2X: indicator.leftX + indicator.leftRadius * 0.45
-                control2Y: 0
-                x: indicator.leftX + indicator.leftRadius
-                y: 0
+                control1X: indicator.directionX(indicator.trailingStartX
+                    - indicator.tailRadius * 0.55)
+                control1Y: indicator.tailBottomY
+                control2X: indicator.directionX(indicator.leftX)
+                control2Y: indicator.tailCenterY
+                    + indicator.tailRadius * 0.55
+                x: indicator.directionX(indicator.leftX)
+                y: indicator.tailCenterY
+            }
+            PathCubic {
+                control1X: indicator.directionX(indicator.leftX)
+                control1Y: indicator.tailCenterY
+                    - indicator.tailRadius * 0.55
+                control2X: indicator.directionX(indicator.trailingStartX
+                    - indicator.tailRadius * 0.55)
+                control2Y: indicator.tailTopY
+                x: indicator.directionX(indicator.trailingStartX)
+                y: indicator.tailTopY
             }
         }
     }

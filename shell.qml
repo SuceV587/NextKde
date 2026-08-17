@@ -8,10 +8,14 @@ import qs.modules.quicksearch
 import qs.modules.notifications
 import qs.modules.applauncher
 import qs.modules.deskcenter
-import qs.modules.overview
+import qs.modules.common
 
 ShellRoot {
     id: shell
+
+    // Theme watching is non-visual and only loads a tiny FileView. The
+    // AppLauncher and its icon grid remain lazy.
+    Component.onCompleted: IconThemeReloadService.initialize()
 
     // ── Shared screen reference (readonly, for initial sizing) ──
     property var primaryScreen: Quickshell.screens[1] ?? Quickshell.screens[0] ?? null
@@ -25,5 +29,4 @@ ShellRoot {
     DeskCenter {}
     Bar {}
     Dock {}
-    Overview {}
 }

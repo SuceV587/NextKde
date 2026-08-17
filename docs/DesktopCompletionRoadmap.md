@@ -72,11 +72,11 @@ QML 仅负责呈现、格式化与局部交互。应移除 DeskCenter 内的独�
 需在使用中保持稳定，不要为追求新交互破坏现有手势（尤其 hold-to-drop
 文件夹投放与多选拖动的时序）。
 
-跨应用语义单独处理：Dolphin 与桌面之间的拖放移动、跨窗口 Ctrl+X/Ctrl+V
-移动受 Wayland 剪贴板和文件管理器私有语义限制。当前桌面内 cut 已用
-shell 自有的 authoritative path list 修正了 wl-paste 竞态，按复制处理；
-未来跨应用移动必须通过独立的 KDE/Wayland 文件操作桥接设计完成，不能再次
-接管或破坏桌面内部原生拖拽与排序。
+跨应用剪贴板由 Go `shell-data-service` 管理生命周期，并通过最小的无窗口
+Qt helper 同时发布 URI、KDE cut marker 和 GNOME 兼容格式。Dolphin 与桌面间
+的 Ctrl+C/Ctrl+X/Ctrl+V 因此能保留复制/移动语义；该桥接只负责剪贴板 MIME，
+不能接管或破坏桌面内部原生拖拽、排序和文件夹合并算法。跨窗口拖放移动仍需
+单独验证 Wayland DnD action 协商。
 
 ### 6. 通知历史中心
 

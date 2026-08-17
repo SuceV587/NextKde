@@ -18,6 +18,47 @@ PanelWindow {
     implicitHeight: 35
     exclusiveZone: implicitHeight
 
+    // The control center is nine independent blurred PanelWindows. Keeping
+    // them mapped while closed costs far more memory than the top bar itself.
+    // Load the complete card tree only while it is in use, then release it
+    // shortly after close so the compositor can process the hidden state.
+    property bool controlCenterLoaded: false
+    readonly property var controlCenter: controlCenterLoader.item
+    readonly property bool controlCenterOpen: controlCenter?.isOpen ?? false
+
+    function toggleControlCenter(anchorItem) {
+        controlCenterUnloadTimer.stop()
+        if (controlCenterOpen) {
+            closeControlCenter()
+            return
+        }
+        controlCenterLoaded = true
+        // Loader creation is synchronous today, but deferring lets all nine
+        // cards register with their coordinator before openAll cascades them.
+        Qt.callLater(function() {
+            if (controlCenterLoaded && controlCenter
+                    && !controlCenter.isOpen)
+                controlCenter.toggle(anchorItem)
+        })
+    }
+
+    function closeControlCenter() {
+        if (controlCenter)
+            controlCenter.close()
+        if (controlCenterLoaded)
+            controlCenterUnloadTimer.restart()
+    }
+
+    Timer {
+        id: controlCenterUnloadTimer
+        interval: 180
+        repeat: false
+        onTriggered: {
+            if (!root.controlCenterOpen)
+                root.controlCenterLoaded = false
+        }
+    }
+
     anchors {
         top: true
         left: true
@@ -135,14 +176,15 @@ PanelWindow {
                     NetworkStatus {
                         id: networkStatus
                         anchors.centerIn: parent
-                        sharedPanelOpen: networkPanel.visible || bluetoothPanel.visible || controlCenter.isOpen
+                        sharedPanelOpen: networkPanel.visible || bluetoothPanel.visible
+                            || root.controlCenterOpen
                         onPanelToggleRequested: {
                             // Top-bar popups are mutually exclusive. Closing
                             // first also releases the Control Center focus
                             // grab before the Wi-Fi list asks for its own.
                             bluetoothPanel.close()
                             if (!networkPanel.visible) {
-                                controlCenter.close()
+                                root.closeControlCenter()
                             }
                             networkPanel.toggle(networkStatus)
                         }
@@ -158,13 +200,13 @@ PanelWindow {
                 }
                 ControlCenterToggle {
                     id: controlCenterToggle
-                    panelOpen: controlCenter.isOpen
+                    panelOpen: root.controlCenterOpen
                     onPanelToggleRequested: {
                         bluetoothPanel.close()
-                        if (!controlCenter.isOpen) {
+                        if (!root.controlCenterOpen) {
                             networkPanel.close()
                         }
-                        controlCenter.toggle(controlCenterToggle)
+                        root.toggleControlCenter(controlCenterToggle)
                     }
                 }
             }
@@ -179,16 +221,21 @@ PanelWindow {
     BluetoothPanel {
         id: bluetoothPanel
     }
-    ControlCenterPanel {
-        id: controlCenter
-        onNetworkRequested: {
-            controlCenter.close()
-            bluetoothPanel.close()
-            networkPanel.open(networkStatus)
-        }
-        onBluetoothRequested: {
-            controlCenter.close()
-            bluetoothPanel.open(controlCenterToggle)
+    Loader {
+        id: controlCenterLoader
+        active: root.controlCenterLoaded
+        sourceComponent: Component {
+            ControlCenterPanel {
+                onNetworkRequested: {
+                    root.closeControlCenter()
+                    bluetoothPanel.close()
+                    networkPanel.open(networkStatus)
+                }
+                onBluetoothRequested: {
+                    root.closeControlCenter()
+                    bluetoothPanel.open(controlCenterToggle)
+                }
+            }
         }
     }
 
@@ -198,9 +245,9 @@ PanelWindow {
         target: ControlCenterService
         function onToggleRequested() {
             bluetoothPanel.close()
-            if (!controlCenter.isOpen)
+            if (!root.controlCenterOpen)
                 networkPanel.close()
-            controlCenter.toggle(controlCenterToggle)
+            root.toggleControlCenter(controlCenterToggle)
         }
     }
 }
