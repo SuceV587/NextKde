@@ -15,7 +15,7 @@
 - DeskCenter：时钟、天气、日历、系统信息、活动记录、播放器和桌面文件。桌面文件支持排序（名称/类型/修改时间）、框选、重命名、回收站、文件夹投放（hold-to-drop）、多选拖动、新建文件/文件夹、外部 URL 拖入、cut/copy 语义。
 - 通知：Wayland/DBus 通知横幅与勿扰策略。
 - 玻璃表面：两路并行--compositor blur 路线（`LiquidGlassSurface` + `RoundedBlurRegion`，用于 Dock/启动器/搜索/天气/通知/预览）与无 blur 路线（`EnhancedGlassSurface`，用于控制中心/蓝牙/网络 popup）。KWin glass effect（Dual Kawase + Snell 折射）已编译安装。
-- 数据服务：`tools/shell-data-service` 已提供持久快照、桌面目录 inotify
+- 数据服务：`services/shell-data-service` 已提供持久快照、桌面目录 inotify
   监听和本地 socket 通知；内存/温度/活动/在线时长已采样，CPU/磁盘/频率尚未实现。
 
 现阶段的主要缺口不是新的小组件，而是数据边界、系统级入口、窗口管理和

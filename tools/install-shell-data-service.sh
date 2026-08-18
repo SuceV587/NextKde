@@ -3,6 +3,8 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 project_dir=$(dirname -- "$script_dir")
+service_source_dir="$project_dir/services/shell-data-service"
+clipboard_source_dir="$project_dir/helpers/file-clipboard-helper"
 build_root=${QUICKSHELL_BUILD_DIR:-"$project_dir/.build/shell-data-service"}
 install_dir=${QUICKSHELL_SERVICE_DIR:-"$HOME/.local/lib/quickshell"}
 unit_dir=${XDG_CONFIG_HOME:-"$HOME/.config"}/systemd/user
@@ -17,12 +19,12 @@ done
 mkdir -p "$build_root/go" "$build_root/clipboard" "$install_dir" "$unit_dir"
 
 (
-    cd "$script_dir/shell-data-service"
+    cd "$service_source_dir"
     GOCACHE=${GOCACHE:-"$build_root/go-cache"} \
         go build -trimpath -o "$build_root/go/shell-data-service" .
 )
 
-cmake -S "$script_dir/file-clipboard-helper" \
+cmake -S "$clipboard_source_dir" \
     -B "$build_root/clipboard" -DCMAKE_BUILD_TYPE=Release
 cmake --build "$build_root/clipboard" --parallel
 
@@ -30,7 +32,7 @@ install -m 0755 "$build_root/go/shell-data-service" \
     "$install_dir/shell-data-service"
 install -m 0755 "$build_root/clipboard/quickshell-file-clipboard-helper" \
     "$install_dir/quickshell-file-clipboard-helper"
-install -m 0644 "$script_dir/shell-data-service/systemd/shell-data-service.service" \
+install -m 0644 "$service_source_dir/systemd/shell-data-service.service" \
     "$unit_dir/shell-data-service.service"
 
 if [ "$install_dir" != "$HOME/.local/lib/quickshell" ]; then

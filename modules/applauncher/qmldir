@@ -1,7 +1,0 @@
-module qs.modules.applauncher
-
-AppLauncher 1.0 AppLauncher.qml
-AppLauncherWindow 1.0 AppLauncherWindow.qml
-AppLauncherContextMenu 1.0 AppLauncherContextMenu.qml
-singleton AppLauncherService 1.0 AppLauncherService.qml
-singleton AppLauncherConfigService 1.0 AppLauncherConfigService.qml

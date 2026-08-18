@@ -68,8 +68,8 @@ NotificationHistoryPanel (新建,ControlCenter 内的通知历史)
 
 ### 新建:NotificationGroupService.qml
 
-位置:`modules/notifications/NotificationGroupService.qml`
-注册:`modules/notifications/qmldir` 加 `NotificationGroupService 1.0`
+位置:`desktop/modules/notifications/NotificationGroupService.qml`
+注册:`desktop/modules/notifications/qmldir` 加 `NotificationGroupService 1.0`
 
 **职责**:监听 `trackedNotifications`,按 `desktopEntry`(fallback `appName`)分组,输出一个 `ListModel` 供 UI 消费。
 
@@ -139,8 +139,8 @@ ListView {
 
 ### 新建:NotificationHistoryPanel.qml
 
-位置:`modules/notifications/NotificationHistoryPanel.qml`(或直接嵌入 ControlCenterPanel)
-注册:`modules/notifications/qmldir`
+位置:`desktop/modules/notifications/NotificationHistoryPanel.qml`(或直接嵌入 ControlCenterPanel)
+注册:`desktop/modules/notifications/qmldir`
 
 **职责**:在 ControlCenter 里显示通知历史列表。
 - 消费 `NotificationGroupService.historyModel`
