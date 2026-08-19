@@ -8,6 +8,7 @@ import qs.desktop.modules.bar
 import qs.desktop.modules.common
 import qs.desktop.modules.dock
 import qs.desktop.modules.notifications
+import qs.shared.qml.controls as LiquidControls
 
 // Compact desktop adaptation of the supplied Control Center reference.
 // Its geometry intentionally stays small enough for a top-bar popup while
@@ -41,46 +42,12 @@ Item {
 
     // Compact counterpart to the Dock player's transport controls. It keeps
     // the same circular glass treatment but is sized for this small panel.
-    // When `liquidSource` is set (the media card's artwork backdrop), the
-    // button becomes a frosted lens over that layer instead of a flat circle.
-    component MediaControlButton: Item {
-        id: button
-        property string symbol: ""
-        property bool primary: false
+    // Uses the shared LiquidGlassButton for a pure-QML liquid glass effect.
+    component MediaControlButton: LiquidControls.LiquidGlassButton {
         property bool controlEnabled: true
-        property Item liquidSource: null
-        signal triggered()
-        width: primary ? 28 : 24
+        enabled: controlEnabled
+        width: primary ? 40 : 32
         height: width
-        opacity: controlEnabled ? 1.0 : 0.58
-        scale: pointer.pressed ? 0.90 : (pointer.containsMouse ? 1.06 : 1.0)
-        Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
-
-        LiquidGlassControl {
-            anchors.fill: parent
-            sourceItem: button.liquidSource
-            blurRadius: button.primary ? 11 : 8
-            tintColor: Qt.rgba(1, 1, 1, button.primary ? 0.16 : 0.10)
-            highlightStrength: 0.32
-            borderColor: Qt.rgba(1, 1, 1, button.primary ? 0.40 : 0.28)
-        }
-        Text {
-            anchors.centerIn: parent
-            anchors.horizontalCenterOffset: button.symbol === "▶" ? 1 : 0
-            text: button.symbol
-            color: ThemeService.foregroundColor
-            style: Text.Outline
-            styleColor: Qt.rgba(0, 0, 0, 0.50)
-            font.pixelSize: button.primary ? 15 : 12
-        }
-        MouseArea {
-            id: pointer
-            anchors.fill: parent
-            enabled: button.controlEnabled
-            hoverEnabled: true
-            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onClicked: button.triggered()
-        }
     }
 
     ControlCenterCoordinator {
@@ -297,37 +264,28 @@ Item {
             Text { width: parent.width; text: panel.player?.trackArtist || "媒体控制"; elide: Text.ElideRight; color: "white"; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.70; font.pixelSize: 10 }
         }
         Row {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 26; rightMargin: 26; bottomMargin: 15 }
-            height: 28
-            spacing: (width - 76) / 2
-            Item {
-                width: 24
-                height: parent.height
-                MediaControlButton {
-                    anchors.centerIn: parent
-                    symbol: "⏮"
-                    liquidSource: mediaBackdrop
-                    controlEnabled: panel.player?.canGoPrevious ?? false
-                    onTriggered: DockMprisService.previous()
-                }
+            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 15 }
+            height: 40
+            spacing: 12
+            
+            MediaControlButton {
+                anchors.verticalCenter: parent.verticalCenter
+                symbol: "⏮"
+                controlEnabled: panel.player?.canGoPrevious ?? false
+                onTriggered: DockMprisService.previous()
             }
             MediaControlButton {
+                anchors.verticalCenter: parent.verticalCenter
                 primary: true
                 symbol: panel.player?.isPlaying ? "⏸" : "▶"
-                liquidSource: mediaBackdrop
                 controlEnabled: panel.player !== null
                 onTriggered: DockMprisService.togglePlayPause()
             }
-            Item {
-                width: 24
-                height: parent.height
-                MediaControlButton {
-                    anchors.centerIn: parent
-                    symbol: "⏭"
-                    liquidSource: mediaBackdrop
-                    controlEnabled: panel.player?.canGoNext ?? false
-                    onTriggered: DockMprisService.next()
-                }
+            MediaControlButton {
+                anchors.verticalCenter: parent.verticalCenter
+                symbol: "⏭"
+                controlEnabled: panel.player?.canGoNext ?? false
+                onTriggered: DockMprisService.next()
             }
         }
     }
@@ -437,32 +395,26 @@ Item {
 
         Text { anchors { left: parent.left; top: parent.top; leftMargin: 14; topMargin: 8 } text: "显示亮度"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.56; font { pixelSize: 11; weight: Font.DemiBold } }
         Text { anchors { right: parent.right; top: parent.top; rightMargin: 14; topMargin: 8 } text: ControlCenterService.brightnessAvailable ? Math.round(panel.brightnessPreview) + "%" : "无亮度设备"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.40; font.pixelSize: 9 }
-        Rectangle {
-            id: brightnessTrack
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 31; rightMargin: 31; bottomMargin: 12 }
-            height: 4; radius: 2; color: Qt.rgba(1, 1, 1, 0.17)
-            Rectangle {
-                width: parent.width * Math.max(0, Math.min(1, panel.brightnessPreview / 100))
-                height: parent.height; radius: parent.radius; color: Qt.rgba(1, 1, 1, 0.42)
+        LiquidControls.LiquidSlider {
+            id: brightnessSlider
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 31; rightMargin: 31; bottomMargin: 8 }
+            height: 30
+            value: panel.brightnessPreview / 100
+            enabled: ControlCenterService.brightnessAvailable
+            trackHeight: 4
+            trackColor: Qt.rgba(1, 1, 1, 0.17)
+            accentColor: Qt.rgba(1, 1, 1, 0.42)
+            thumbColor: "#ffffff"
+            onPreviewChanged: function(v) {
+                panel.draggingBrightness = true
+                panel.brightnessPreview = Math.round(v * 100)
             }
-            MouseArea {
-                enabled: ControlCenterService.brightnessAvailable
-                anchors { fill: parent; margins: -10 }
-                onPressed: function(mouse) {
-                    panel.draggingBrightness = true
-                    panel.brightnessPreview = Math.round(Math.max(0, Math.min(1, mouse.x / brightnessTrack.width)) * 100)
-                }
-                onPositionChanged: function(mouse) {
-                    if (pressed)
-                        panel.brightnessPreview = Math.round(Math.max(0, Math.min(1, mouse.x / brightnessTrack.width)) * 100)
-                }
-                onReleased: {
-                    panel.draggingBrightness = false
-                    ControlCenterService.setBrightness(panel.brightnessPreview)
-                }
+            onCommitRequested: function(v) {
+                panel.draggingBrightness = false
+                ControlCenterService.setBrightness(Math.round(v * 100))
             }
         }
-        Text { anchors { left: parent.left; leftMargin: 12; bottom: parent.bottom; bottomMargin: 5 } text: "☀"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.55; font.pixelSize: 13 }
+        Text { anchors { left: parent.left; leftMargin: 12; bottom: parent.bottom; bottomMargin: 12 } text: "☀"; color: ThemeService.foregroundColor; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.55; font.pixelSize: 13 }
     }
 
     // ── Card 8: Sound / volume ───────────────────────────────────────
@@ -480,7 +432,7 @@ Item {
         Text { anchors { right: parent.right; top: parent.top; rightMargin: 14; topMargin: 8 } text: Math.round(panel.volumePreview) + "%"; color: "white"; style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.50); opacity: 0.72; font.pixelSize: 10 }
         Canvas {
             id: volumeGlyph
-            anchors { left: parent.left; leftMargin: 12; bottom: parent.bottom; bottomMargin: 7 }
+            anchors { left: parent.left; leftMargin: 12; bottom: parent.bottom; bottomMargin: 12 }
             width: 15
             height: 15
             onPaint: {
@@ -501,16 +453,22 @@ Item {
             }
             Connections { target: ControlCenterService; function onAudioMutedChanged() { volumeGlyph.requestPaint() } }
         }
-        Rectangle {
-            id: volumeTrack
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 34; rightMargin: 17; bottomMargin: 13 }
-            height: 5; radius: 2.5; color: Qt.rgba(0, 0, 0, 0.20)
-            Rectangle { width: parent.width * Math.max(0, Math.min(1, panel.volumePreview / 100)); height: parent.height; radius: parent.radius; color: "white" }
-            MouseArea {
-                anchors { fill: parent; margins: -10 }
-                onPressed: function(mouse) { panel.draggingVolume = true; panel.volumePreview = Math.round(Math.max(0, Math.min(1, mouse.x / volumeTrack.width)) * 100) }
-                onPositionChanged: function(mouse) { if (pressed) panel.volumePreview = Math.round(Math.max(0, Math.min(1, mouse.x / volumeTrack.width)) * 100) }
-                onReleased: { panel.draggingVolume = false; ControlCenterService.setVolume(panel.volumePreview) }
+        LiquidControls.LiquidSlider {
+            id: volumeSlider
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 34; rightMargin: 17; bottomMargin: 8 }
+            height: 30
+            value: panel.volumePreview / 100
+            trackHeight: 5
+            trackColor: Qt.rgba(0, 0, 0, 0.20)
+            accentColor: "#ffffff"
+            thumbColor: "#ffffff"
+            onPreviewChanged: function(v) {
+                panel.draggingVolume = true
+                panel.volumePreview = Math.round(v * 100)
+            }
+            onCommitRequested: function(v) {
+                panel.draggingVolume = false
+                ControlCenterService.setVolume(Math.round(v * 100))
             }
         }
     }

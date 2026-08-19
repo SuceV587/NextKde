@@ -28,14 +28,28 @@ Item {
         function snapshot(): string {
             const theme = ConfigService.isValidTheme(ConfigService.theme)
                 ? ConfigService.theme : "dark"
+            const position = ConfigService.isValidPosition(ConfigService.position)
+                ? ConfigService.position : "bottom"
             return JSON.stringify({
                 baseHeight: ConfigService.baseHeight,
                 theme: theme,
+                position: position,
+                autoHide: ConfigService.autoHide,
             })
         }
 
         function updateLayout(height: real): string {
             ConfigService.updateLayout(height)
+            return snapshot()
+        }
+
+        function updatePosition(newPosition: string): string {
+            ConfigService.updatePosition(newPosition)
+            return snapshot()
+        }
+
+        function updateAutoHide(value: bool): string {
+            ConfigService.updateAutoHide(value)
             return snapshot()
         }
 

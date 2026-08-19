@@ -34,6 +34,8 @@ QtObject {
     // ═══════════════════════════════════════════════════════════
     property real   baseHeight:   60
     property string theme:        "dark"
+    property string position:     "bottom"
+    property bool   autoHide:     false
     // Legacy compatibility field. New app name/icon edits live in
     // AppLauncherConfigService and are published through AppPresentationService.
     // Keep existing values round-trippable so older config files are not lost.
@@ -92,6 +94,30 @@ QtObject {
 
     function isValidTheme(value) {
         return value === "light" || value === "dark" || value === "system"
+    }
+
+    function isValidPosition(value) {
+        return value === "bottom" || value === "left" || value === "right"
+    }
+
+    function updatePosition(rawPosition) {
+        const nextPosition = String(rawPosition)
+        if (!isValidPosition(nextPosition))
+            return false
+        if (position === nextPosition)
+            return false
+        position = nextPosition
+        scheduleSave()
+        return true
+    }
+
+    function updateAutoHide(rawValue) {
+        const value = Boolean(rawValue)
+        if (autoHide === value)
+            return false
+        autoHide = value
+        scheduleSave()
+        return true
     }
 
     function updateTheme(rawTheme) {
@@ -234,6 +260,8 @@ QtObject {
             version: 2,
             baseHeight:    svc.baseHeight,
             theme:         svc.theme,
+            position:      svc.position,
+            autoHide:      svc.autoHide,
             iconOverrides: svc.iconOverrides,
             dockItems:     svc.dockItems,
             // Kept for one compatibility release. New code reads dockItems.
@@ -323,6 +351,15 @@ QtObject {
 
     function _apply(obj) {
         if (obj.baseHeight   !== undefined) svc.baseHeight   = obj.baseHeight
+        if (obj.position !== undefined) {
+            if (isValidPosition(obj.position)) {
+                svc.position = obj.position
+            } else {
+                console.warn("[DockConfig] invalid position ignored")
+                scheduleSave()
+            }
+        }
+        if (obj.autoHide !== undefined) svc.autoHide = Boolean(obj.autoHide)
         if (obj.theme !== undefined) {
             if (isValidTheme(obj.theme)) {
                 svc.theme = obj.theme
