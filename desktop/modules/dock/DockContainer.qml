@@ -42,8 +42,17 @@ Item {
         ?? Quickshell.screens[0]?.width ?? 1920
     readonly property int screenHeight: targetScreen?.height
         ?? Quickshell.screens[0]?.height ?? 1080
+    // Side docks budget their column against the area below the top status
+    // bar (which is always visible for now), so a long stack of icons never
+    // reaches into the reserved strip.
+    readonly property int availableLength: vertical
+        ? screenHeight - ConfigService.barHeight
+        : screenWidth
     readonly property real baseHeight: ConfigService.baseHeight
     readonly property var proportions: ConfigService.proportions
+    // Side docks (left/right) stack icons vertically instead of horizontally.
+    readonly property bool vertical: ConfigService.position === "left"
+        || ConfigService.position === "right"
 
     // ═══════════════════════════════════════════════════════════
     // Computed layout (re-evaluates on any input change)
@@ -52,8 +61,13 @@ Item {
     // must affect the calculation through counts/units instead of changing
     // height or spacing locally, otherwise width fitting can be bypassed.
     readonly property var _layout: AdaptiveMath.computeLayout(
-        baseHeight, pinnedCount, windowCount, hasInfo, screenWidth,
-        proportions
+        baseHeight, pinnedCount, windowCount,
+        // The info carousel is hidden on side docks (vertical Phase 2); its
+        // invisible units must not shrink the icon column.
+        hasInfo && !vertical,
+        availableLength,
+        proportions,
+        vertical ? AdaptiveMath.MAX_HEIGHT_RATIO : AdaptiveMath.MAX_WIDTH_RATIO
     )
 
     readonly property int computedDockHeight: _layout.dockHeight
@@ -79,69 +93,6 @@ Item {
     readonly property bool isEditing: editMode || draggedPinnedLoader !== null
     readonly property real draggedPointerX: draggedPinnedLoader
         ? draggedPinnedLoader.dragPointerX : -1
-    function _findIcon(item, predicate) {
-        if (!item)
-            return null
-        if (predicate(item))
-            return item
-        const children = item.children ?? []
-        for (let i = 0; i < children.length; i++) {
-            const found = _findIcon(children[i], predicate)
-            if (found)
-                return found
-        }
-        return null
-    }
-
-    function _activeIcon() {
-        const activeId = WindowService.activeWindowId
-        if (!activeId)
-            return null
-
-        for (let i = 0; i < windowsRepeater.count; i++) {
-            const found = _findIcon(windowsRepeater.itemAt(i),
-                item => item.windowId === activeId)
-            if (found)
-                return found
-        }
-        for (let i = 0; i < pinnedRepeater.count; i++) {
-            const found = _findIcon(pinnedRepeater.itemAt(i),
-                item => item.windowId === activeId)
-            if (found)
-                return found
-        }
-
-        // A pinned app's main icon represents its active window when its
-        // exact per-window child is not exposed in the presentation.
-        for (let i = 0; i < pinnedRepeater.count; i++) {
-            const found = _findIcon(pinnedRepeater.itemAt(i),
-                item => item.isActivated === true && item.isWindowItem === false)
-            if (found)
-                return found
-        }
-        return null
-    }
-
-    function syncActiveIndicator() {
-        activeIndicator.setTarget(_activeIcon())
-    }
-
-    Timer {
-        id: activeIndicatorSync
-        // Window model changes and the Dock width resize are delivered in
-        // separate event-loop turns. Sample only after the adaptive layout
-        // has reached its final geometry; otherwise a new window can make
-        // the indicator animate to an intermediate left-shifted position.
-        interval: DockAnimation.dockResizeDuration + 20
-        repeat: false
-        onTriggered: container.syncActiveIndicator()
-    }
-
-    Connections {
-        target: WindowService
-        function onActiveWindowIdChanged() { activeIndicatorSync.restart() }
-        function onRevisionChanged() { activeIndicatorSync.restart() }
-    }
 
     function publishLauncherGeometry() {
         console.log("[DockContainer] publish launcher "
@@ -149,18 +100,22 @@ Item {
         AppLauncherService.setDockPresentation(
             computedDockWidth,
             computedDockHeight,
+            ConfigService.position,
             ThemeService.backgroundColor,
             WallpaperPaletteService.primary,
             WallpaperPaletteService.secondary,
-            ThemeService.foregroundColor)
+            ThemeService.foregroundColor,
+            ConfigService.barHeight)
     }
 
     Component.onCompleted: {
         publishLauncherGeometry()
-        activeIndicatorSync.restart()
     }
     onComputedDockWidthChanged: publishLauncherGeometry()
     onComputedDockHeightChanged: publishLauncherGeometry()
+    // Side flips change both dimensions anyway, but keep the anchor side
+    // explicit so the launcher never lags behind a dock edge change.
+    onVerticalChanged: publishLauncherGeometry()
 
     Connections {
         target: ThemeService
@@ -203,8 +158,8 @@ Item {
     // ═══════════════════════════════════════════════════════════
     // Size
     // ═══════════════════════════════════════════════════════════
-    implicitWidth: computedDockWidth
-    implicitHeight: computedDockHeight
+    implicitWidth: vertical ? computedDockHeight : computedDockWidth
+    implicitHeight: vertical ? computedDockWidth : computedDockHeight
     width: implicitWidth
     height: implicitHeight
 
@@ -290,6 +245,11 @@ Item {
 
     Row {
         id: contentRow
+        // Side docks rotate the whole row 90 degrees: the horizontal layout
+        // becomes a vertical stack without duplicating the content tree.
+        // DockIcon counter-rotates its image so the icons stay upright.
+        rotation: container.vertical ? 90 : 0
+        transformOrigin: Item.Center
         anchors.verticalCenter: parent.verticalCenter
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: container.itemSpacing
@@ -304,6 +264,7 @@ Item {
         // makes it immutable with respect to pinned-app ordering.
         DockIcon {
             id: appLauncherIcon
+            vertical: container.vertical
             iconSize: container.iconSize
             activeBackgroundGap: container.activeBackgroundGap
             iconSource: Qt.resolvedUrl("../../assets/appLancher.svg")
@@ -330,6 +291,7 @@ Item {
         // intentionally outside the pinned-app model and its drag ordering.
         DockIcon {
             id: trashIcon
+            vertical: container.vertical
             iconSize: container.iconSize
             activeBackgroundGap: container.activeBackgroundGap
             iconSource: AppPresentationService.iconSource("user-trash")
@@ -523,31 +485,35 @@ Item {
                             spacing: container.itemSpacing
 
                             DockIcon {
-                            iconSize: container.iconSize
-                            activeBackgroundGap: container.activeBackgroundGap
-                            iconSource: pinnedItemLoader.itemData.icon ?? ""
-                            displayName: pinnedItemLoader.itemData.name ?? ""
-                            isRunning: pinnedItemLoader.itemData.isRunning ?? false
-                            isActivated: pinnedItemLoader.itemData.isActivated ?? false
-                            appId: pinnedItemLoader.itemData.appId ?? ""
-                            isWindowItem: false
-                            isPinnedItem: true
-                            editMode: container.isEditing
-                            isDragging: reorderDrag.active || pinnedItemLoader.settling
-                            onRequestEdit: container.editMode = true
-                            onActivate: {
-                                // DockIcon also guards this, but keeping the
-                                // action boundary defensive ensures pinned
-                                // apps can never launch while sorting.
-                                if (!container.isEditing)
-                                    DockModelService.activateApp(appId)
-                            }
+                                vertical: container.vertical
+                                dockEdge: ConfigService.position
+                                iconSize: container.iconSize
+                                activeBackgroundGap: container.activeBackgroundGap
+                                iconSource: pinnedItemLoader.itemData.icon ?? ""
+                                displayName: pinnedItemLoader.itemData.name ?? ""
+                                isRunning: pinnedItemLoader.itemData.isRunning ?? false
+                                isActivated: pinnedItemLoader.itemData.isActivated ?? false
+                                appId: pinnedItemLoader.itemData.appId ?? ""
+                                isWindowItem: false
+                                isPinnedItem: true
+                                editMode: container.isEditing
+                                isDragging: reorderDrag.active || pinnedItemLoader.settling
+                                onRequestEdit: container.editMode = true
+                                onActivate: {
+                                    // DockIcon also guards this, but keeping the
+                                    // action boundary defensive ensures pinned
+                                    // apps can never launch while sorting.
+                                    if (!container.isEditing)
+                                        DockModelService.activateApp(appId)
+                                }
                             }
 
                             Repeater {
                                 model: pinnedItemLoader.itemData.extraWindows ?? []
                                 delegate: DockIcon {
                                     required property var modelData
+                                    vertical: container.vertical
+                                    dockEdge: ConfigService.position
                                     iconSize: container.iconSize
                                     activeBackgroundGap: container.activeBackgroundGap
                                     iconSource: modelData.iconSource
@@ -587,6 +553,8 @@ Item {
             id: windowsRepeater
             model: DockModelService.windowModel
             delegate: DockIcon {
+                vertical: container.vertical
+                dockEdge: ConfigService.position
                 iconSize: container.iconSize
                 activeBackgroundGap: container.activeBackgroundGap
                 iconSource: model.icon ?? ""
@@ -610,7 +578,8 @@ Item {
             dockHeight: container.computedDockHeight
             dividerWidth: 2
             sideMargin: container.dividerMargin
-            visible: container.hasInfo
+            // Hidden together with the information slot on side docks.
+            visible: container.hasInfo && !container.vertical
         }
 
         // ── Shared music / weather information slot ──
@@ -618,21 +587,9 @@ Item {
             iconSize: container.iconSize
             dockHeight: container.computedDockHeight
             widthUnits: container.musicUnits
-            visible: container.hasInfo
-        }
-    }
-
-    // The indicator lives in the same coordinate layer as the Row. When the
-    // centered Dock shifts during a width resize, the old icon and its
-    // background move together without any polling or per-frame coordinate
-    // calculation. It remains outside the Row so it cannot affect layout.
-    Item {
-        id: contentOverlay
-        anchors.fill: contentRow
-        z: -1
-
-        DockActiveIndicator {
-            id: activeIndicator
+            // The carousel's internal pages assume a horizontal slot; hide it
+            // on side docks until it gains a vertical layout (Phase 2).
+            visible: container.hasInfo && !container.vertical
         }
     }
 }

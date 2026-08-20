@@ -1,21 +1,37 @@
 import QtQuick
+import Qt5Compat.GraphicalEffects
 import Quickshell.Widgets
 
 // One renderer for application artwork across Dock, QuickSearch and Launcher.
 // Layout owns width/height; this component owns source loading consistency.
+// Supports grayscale + selective transparency + color tint via ShaderEffect.
 Item {
     id: root
     property string source: ""
 
+    // Icon appearance controls
+    property real   opacityMultiplier: 1.0
+    property real   saturation:        1.0
+    property color  tintColor:         "#0a84ff"
+    property real   tintStrength:      0.0
+
     IconImage {
+        id: iconImage
         anchors.fill: parent
         source: root.source
         smooth: true
         asynchronous: true
-        // AppIcon is used by the launcher grid as well as persistent Dock
-        // items. IconImage already decodes to `actualSize`; disabling the
-        // global pixmap cache prevents one launcher visit from retaining every
-        // application icon after its on-demand window is destroyed.
         backer.cache: false
+        visible: false
+    }
+
+    ShaderEffect {
+        anchors.fill: iconImage
+        property variant source: ShaderEffectSource { sourceItem: iconImage; hideSource: false }
+        property real opacityMult: root.opacityMultiplier
+        property real sat: root.saturation
+        property color iconTintColor: root.tintColor
+        property real iconTintStrength: root.tintStrength
+        fragmentShader: Qt.resolvedUrl("icon_effect.frag.qsb")
     }
 }

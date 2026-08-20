@@ -8,7 +8,6 @@ DockWindow 1.0 DockWindow.qml
 # ── Layout components ──
 DockContainer 1.0 DockContainer.qml
 DockIcon 1.0 DockIcon.qml
-DockActiveIndicator 1.0 DockActiveIndicator.qml
 DockDivider 1.0 DockDivider.qml
 DockMusicPlayer 1.0 DockMusicPlayer.qml
 DockInfoCarousel 1.0 DockInfoCarousel.qml

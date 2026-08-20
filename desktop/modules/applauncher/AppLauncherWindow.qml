@@ -31,6 +31,13 @@ PanelWindow {
     property bool gridEntranceActive: false
     readonly property bool panelVisible: open && AppLauncherService.dockWidth > 0
 
+    // The card follows the Dock edge: bottom dock floats centered above the
+    // dock, side docks float vertically centered beside it.
+    readonly property bool dockAtBottom: AppLauncherService.dockPosition !== "left"
+        && AppLauncherService.dockPosition !== "right"
+    readonly property bool dockAtLeft: AppLauncherService.dockPosition === "left"
+    readonly property bool dockAtRight: AppLauncherService.dockPosition === "right"
+
     Component.onCompleted: console.log("[AppLauncherWindow] created")
     onOpenChanged: {
         console.log("[AppLauncherWindow] received open=" + open);
@@ -52,13 +59,21 @@ PanelWindow {
         easing.type: Easing.OutCubic
     }
     onScreenChanged: console.log("[AppLauncherWindow] screen changed=" + !!screen)
-    readonly property real minimumLauncherWidth: screen ? Math.round(screen.width * 0.60) : 600
+    readonly property real minimumLauncherWidth: screen ? Math.round(screen.width * 0.50) : 600
     readonly property real minimumLauncherHeight: 500
     readonly property bool usesMinimumSize: AppLauncherService.dockWidth < minimumLauncherWidth
     // A fresh Dock can be narrow before windows/pinned apps appear. Do not let
     // that transient Dock state make the independent app launcher unusable.
     readonly property real launcherWidth: usesMinimumSize ? minimumLauncherWidth : AppLauncherService.dockWidth
-    readonly property real launcherHeight: usesMinimumSize ? minimumLauncherHeight : Math.round(screen.height * 0.50)
+    // Bottom dock mirrors the dock width; side docks mirror the dock's
+    // vertical length instead (dockWidth carries the length along the dock's
+    // main axis), always keeping a usable minimum and never overflowing the
+    // output's vertical room.
+    readonly property real launcherHeight: !dockAtBottom
+        ? Math.min(Math.max(minimumLauncherHeight, AppLauncherService.dockWidth),
+            Math.round(screen.height * 0.85))
+        : (usesMinimumSize ? minimumLauncherHeight
+            : Math.round(screen.height * 0.50))
     readonly property var applications: {
         // This window stays instantiated while hidden. Do not enumerate every
         // desktop entry or resolve its icon until the launcher is actually
@@ -1017,7 +1032,13 @@ PanelWindow {
     }
     // Dock is 5px above the output edge. Leave a 10px gap above its true
     // height without asking this module to reimplement Dock measurements.
-    margins.bottom: AppLauncherService.dockHeight + 15
+    // The same margin is applied at the top to clear the top bar; this also
+    // makes the launcher's vertical centre line up with the Dock's centre
+    // (the Dock lives in the bar-cleared area).
+    margins.top: AppLauncherService.barHeight
+    margins.bottom: root.dockAtBottom ? AppLauncherService.dockHeight + 15 : 0
+    margins.left: root.dockAtLeft ? AppLauncherService.dockHeight + 15 : 0
+    margins.right: root.dockAtRight ? AppLauncherService.dockHeight + 15 : 0
     implicitHeight: launcherHeight
 
     // The layer-shell surface spans the output so this catcher can dismiss
@@ -1041,10 +1062,13 @@ PanelWindow {
     // this clip every frame is precisely what used to exercise the artefact.
     Item {
         id: launcherRevealClip
-        anchors {
-            horizontalCenter: parent.horizontalCenter
-            bottom: parent.bottom
-        }
+        anchors.horizontalCenter: root.dockAtBottom
+            ? parent.horizontalCenter : undefined
+        anchors.bottom: root.dockAtBottom ? parent.bottom : undefined
+        anchors.verticalCenter: root.dockAtBottom
+            ? undefined : parent.verticalCenter
+        anchors.left: root.dockAtLeft ? parent.left : undefined
+        anchors.right: root.dockAtRight ? parent.right : undefined
         width: root.launcherWidth
         height: root.launcherHeight
         clip: true
@@ -1332,6 +1356,10 @@ PanelWindow {
                                         topMargin: 8
                                     }
                                     source: modelData.type === "app" ? modelData.app.icon : ""
+                                    opacityMultiplier: ConfigService.iconMode === "color" ? 1.0 : ConfigService.iconOpacity
+                                    saturation: ConfigService.iconSaturation
+                                    tintColor: ConfigService.iconTintColor
+                                    tintStrength: ConfigService.iconTintStrength
                                 }
 
                                 // Folder artwork is a compact 3×3 preview of its first
@@ -1381,6 +1409,10 @@ PanelWindow {
                                                 width: 12
                                                 height: 12
                                                 source: modelData.icon
+                                                opacityMultiplier: ConfigService.iconMode === "color" ? 1.0 : ConfigService.iconOpacity
+                                                saturation: ConfigService.iconSaturation
+                                                tintColor: ConfigService.iconTintColor
+                                                tintStrength: ConfigService.iconTintStrength
                                             }
                                         }
                                     }
@@ -1845,6 +1877,10 @@ PanelWindow {
                                                 topMargin: 8
                                             }
                                             source: modelData.icon
+                                            opacityMultiplier: ConfigService.iconMode === "color" ? 1.0 : ConfigService.iconOpacity
+                                            saturation: ConfigService.iconSaturation
+                                            tintColor: ConfigService.iconTintColor
+                                            tintStrength: ConfigService.iconTintStrength
                                         }
 
                                         Text {
@@ -2071,6 +2107,10 @@ PanelWindow {
                                         width: 52
                                         height: 52
                                         source: AppPresentationService.iconSource(root.editorIcon) || root.editorIcon || "application-x-executable"
+                                        opacityMultiplier: ConfigService.iconMode === "color" ? 1.0 : ConfigService.iconOpacity
+                                        saturation: ConfigService.iconSaturation
+                                        tintColor: ConfigService.iconTintColor
+                                        tintStrength: ConfigService.iconTintStrength
                                         MouseArea {
                                             anchors.fill: parent
                                             cursorShape: Qt.PointingHandCursor

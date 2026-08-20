@@ -30,11 +30,14 @@ Item {
                 ? ConfigService.theme : "dark"
             const position = ConfigService.isValidPosition(ConfigService.position)
                 ? ConfigService.position : "bottom"
+            const iconMode = ConfigService.isValidIconMode(ConfigService.iconMode)
+                ? ConfigService.iconMode : "color"
             return JSON.stringify({
                 baseHeight: ConfigService.baseHeight,
                 theme: theme,
                 position: position,
-                autoHide: ConfigService.autoHide,
+                iconMode: iconMode,
+                iconOpacity: ConfigService.iconOpacity,
             })
         }
 
@@ -48,13 +51,18 @@ Item {
             return snapshot()
         }
 
-        function updateAutoHide(value: bool): string {
-            ConfigService.updateAutoHide(value)
+        function updateTheme(theme: string): string {
+            ConfigService.updateTheme(theme)
             return snapshot()
         }
 
-        function updateTheme(theme: string): string {
-            ConfigService.updateTheme(theme)
+        function updateIconMode(mode: string): string {
+            ConfigService.updateIconMode(mode)
+            return snapshot()
+        }
+
+        function updateIconOpacity(opacity: real): string {
+            ConfigService.updateIconOpacity(opacity)
             return snapshot()
         }
     }

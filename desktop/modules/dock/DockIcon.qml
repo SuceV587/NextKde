@@ -64,14 +64,29 @@ Item {
     // also included in AdaptiveMath, so the active background never overlaps
     // a neighbour or makes the real Row wider than the calculated width.
     property real   activeBackgroundGap: 4.4
-    // Active task backgrounds are painted by DockContainer's shared indicator
-    // so they can travel and deform between windows.
-    property bool   useSharedActiveBackground: true
+    // Side-dock layout: the whole row is rotated 90 degrees; the icon image
+    // counter-rotates so the artwork stays upright.
+    property bool   vertical: false
+    // Which screen edge the dock is attached to: "bottom", "left" or
+    // "right". The running dot sits on the icon edge facing that edge —
+    // below the icon on a bottom dock, on the screen-edge side of side docks.
+    property string dockEdge: "bottom"
+    // Active task backgrounds are painted locally for reliability.
+    // The shared indicator approach caused coordinate bugs during layout changes.
+    property bool   useSharedActiveBackground: false
 
     // Active background radius is proportional to the icon height. This is
     // intentionally independent from the icon/background gap.
     readonly property real activeBackgroundRadius: iconSize * 0.3
     readonly property real iconSlotSize: iconSize + activeBackgroundGap * 2
+    // macOS running indicator geometry. The dot floats centred between the
+    // icon edge and the dock panel edge: 0.20 is the vertical panel padding
+    // ratio (vpad), so the dot occupies the midpoint of that gap.
+    readonly property real runningDotSize: Math.max(4,
+        Math.round(iconSize * 0.13))
+    readonly property real runningDotGap: Math.max(1,
+        (iconSize * 0.20 - runningDotSize) / 2)
+    readonly property real activeBackgroundAlpha: ConfigService.iconMode === "color" ? 0.5 : Math.max(0.1, ConfigService.iconOpacity)
     readonly property bool showActiveBackground: isRunning && isActivated
     readonly property bool showUrgentBackground: isRunning && isUrgent
         && !showActiveBackground
@@ -102,13 +117,10 @@ Item {
     property real _attentionLift: 0
     property real _attentionGlow: 0
     scale: _targetScale * _attentionScale
-    // Cache the icon subtree to an offscreen texture so scale animations
-    // (hover, attention pulse) only transform the cached layer.
-    // Without this, every animation frame re-rasterizes the image, glyph
-    // text and state backgrounds on the main thread (measured 100% CPU
-    // under the heaviest scale animation; 4.8% with the layer enabled).
-    layer.enabled: true
-    layer.smooth: true
+    // The icon artwork is cached in `iconImage`/`GlassText` below instead of
+    // on this whole item: an offscreen texture is sized to the item's bounds
+    // and clips overflow, which would hide the running/status indicators
+    // that deliberately extend past the icon edge.
     transform: Translate {
         y: icon._hoverLift + icon._attentionLift
         Behavior on y {
@@ -233,8 +245,8 @@ Item {
         // Both are local to the icon, so the highlight always tracks its task
         // without any shared indicator or geometry tracking.
         color: icon.showActiveBackground
-            ? Qt.rgba(1, 1, 1, 0.5)
-            : Qt.rgba(1.0, 0.30, 0.12, 0.50)
+            ? Qt.rgba(1, 1, 1, icon.activeBackgroundAlpha)
+            : Qt.rgba(1.0, 0.30, 0.12, icon.activeBackgroundAlpha)
         visible: (icon.showActiveBackground && !icon.useSharedActiveBackground)
             || icon.showUrgentBackground
         z: -1
@@ -320,6 +332,22 @@ Item {
         anchors.centerIn: parent
         source: icon.iconSource || ""
         visible: !icon.glyph
+        rotation: icon.vertical ? -90 : 0
+        transformOrigin: Item.Center
+        // Cache the icon bitmap so scale animations (hover, attention pulse)
+        // transform a cached texture instead of re-rasterizing the image on
+        // the main thread (measured 100% CPU under the heaviest scale
+        // animation; 4.8% with the layer enabled). Only the artwork itself
+        // is layered: the texture is sized to this item's bounds, so caching
+        // the whole DockIcon would clip the indicators past its edges.
+        layer.enabled: true
+        layer.smooth: true
+        
+        // Icon appearance style from ConfigService
+        opacityMultiplier: ConfigService.iconMode === "color" ? 1.0 : ConfigService.iconOpacity
+        saturation: ConfigService.iconSaturation
+        tintColor: ConfigService.iconTintColor
+        tintStrength: ConfigService.iconTintStrength
     }
 
     Rectangle {
@@ -337,10 +365,45 @@ Item {
         }
     }
 
+    // macOS-style running indicator: a small dot on the icon edge facing the
+    // docked screen edge (below on a bottom dock, on the screen-edge side of
+    // side docks). The content row rotates 90° clockwise on side docks, which
+    // maps the unrotated *bottom* edge to the screen-left side of the
+    // counter-rotated icon and the *top* edge to its screen-right side.
+    // The dot sits *outside* the icon edge with a breathing gap: anchor its
+    // far side to the icon edge so the margin pushes it away, never inside.
+    Rectangle {
+        id: runningIndicator
+        width: icon.runningDotSize
+        height: icon.runningDotSize
+        radius: width / 2
+        color: Qt.rgba(1, 1, 1, 0.95)
+        border { width: 1; color: Qt.rgba(0, 0, 0, 0.40) }
+        opacity: icon.isRunning ? 1 : 0
+        visible: opacity > 0.01
+        z: 2
+        anchors.horizontalCenter: iconImage.horizontalCenter
+        // Right dock: the dot's far (bottom) edge touches the icon's top
+        // edge, placing the dot above it — rendered on the screen-right
+        // side of the icon. All other docks: the dot's near (top) edge
+        // touches the icon's bottom edge, placing the dot below it.
+        anchors.top: icon.vertical && icon.dockEdge === "right"
+            ? undefined : iconImage.bottom
+        anchors.bottom: icon.vertical && icon.dockEdge === "right"
+            ? iconImage.top : undefined
+        anchors.topMargin: icon.runningDotGap
+        anchors.bottomMargin: icon.runningDotGap
+        Behavior on opacity {
+            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+        }
+    }
+
     GlassText {
         anchors.centerIn: parent
         text: icon.glyph
         visible: !!icon.glyph
+        rotation: icon.vertical ? -90 : 0
+        transformOrigin: Item.Center
         color: Qt.rgba(1, 1, 1, 0.92)
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
@@ -349,6 +412,10 @@ Item {
             pixelSize: Math.round(icon.iconSize * 0.58)
             weight: Font.Black
         }
+        // Same cached-texture rationale as iconImage: glyph text is expensive
+        // to re-rasterize under scale animation.
+        layer.enabled: true
+        layer.smooth: true
     }
     // The active/hover-style background already communicates the focused
     // running app, so no separate running marker is painted.

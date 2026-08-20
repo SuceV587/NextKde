@@ -36,6 +36,21 @@ QtObject {
     property string theme:        "dark"
     property string position:     "bottom"
     property bool   autoHide:     false
+    // Reserved strip of the top status bar. Side docks subtract it from the
+    // screen height so their column cap never overlaps the bar. The bar reads
+    // this value too, keeping one source of truth; a future bar-visibility
+    // setting will decide whether it is applied at all.
+    property real   barHeight:    35
+    // Icon appearance style: transparency/desaturation/tint
+    property string iconMode:        "grayscale"   // "color" | "grayscale"
+    property real   iconOpacity:     0.5    // 1.0 = solid, 0.0 = fully transparent (grayscale mode only)
+    property real   iconSaturation:  1.0    // 1.0 = full color, 0.0 = grayscale
+    property string iconTintColor:   "#ffffff"
+    property real   iconTintStrength: 0.0   // 0.0 = no tint, 1.0 = full tint
+
+    function isValidIconMode(value) {
+        return value === "color" || value === "grayscale"
+    }
     // Legacy compatibility field. New app name/icon edits live in
     // AppLauncherConfigService and are published through AppPresentationService.
     // Keep existing values round-trippable so older config files are not lost.
@@ -127,6 +142,35 @@ QtObject {
         if (theme === nextTheme)
             return false
         theme = nextTheme
+        scheduleSave()
+        return true
+    }
+
+    function updateIconMode(rawMode) {
+        const nextMode = String(rawMode)
+        if (!isValidIconMode(nextMode))
+            return false
+        if (iconMode === nextMode)
+            return false
+        iconMode = nextMode
+        if (iconMode === "color") {
+            iconSaturation = 1.0
+            iconTintStrength = 0.0
+        } else {
+            iconSaturation = 0.0
+            iconTintStrength = 0.0
+        }
+        scheduleSave()
+        return true
+    }
+
+    function updateIconOpacity(rawOpacity) {
+        const value = Math.max(0.0, Math.min(1.0, Number(rawOpacity)))
+        if (!Number.isFinite(value))
+            return false
+        if (Math.abs(iconOpacity - value) <= 0.001)
+            return false
+        iconOpacity = value
         scheduleSave()
         return true
     }
@@ -262,11 +306,18 @@ QtObject {
             theme:         svc.theme,
             position:      svc.position,
             autoHide:      svc.autoHide,
+            barHeight:     svc.barHeight,
             iconOverrides: svc.iconOverrides,
             dockItems:     svc.dockItems,
             // Kept for one compatibility release. New code reads dockItems.
             pinnedAppIds:  svc.pinnedAppIds,
             proportions:   svc.proportions,
+            // Icon appearance style
+            iconMode:        svc.iconMode,
+            iconOpacity:     svc.iconOpacity,
+            iconSaturation:  svc.iconSaturation,
+            iconTintColor:   svc.iconTintColor,
+            iconTintStrength: svc.iconTintStrength,
         }
         const json = JSON.stringify(obj, null, 2)
         console.log("[DockConfig] save requested path=" + svc.configPath
@@ -360,6 +411,11 @@ QtObject {
             }
         }
         if (obj.autoHide !== undefined) svc.autoHide = Boolean(obj.autoHide)
+        if (obj.barHeight !== undefined) {
+            const barHeight = Math.max(0, Math.min(100, Number(obj.barHeight)))
+            if (Number.isFinite(barHeight))
+                svc.barHeight = barHeight
+        }
         if (obj.theme !== undefined) {
             if (isValidTheme(obj.theme)) {
                 svc.theme = obj.theme
@@ -393,6 +449,39 @@ QtObject {
             scheduleSave()
         }
         if (obj.proportions  !== undefined) svc.proportions   = obj.proportions
+        if (obj.iconMode !== undefined) {
+            if (isValidIconMode(obj.iconMode)) {
+                svc.iconMode = obj.iconMode
+                // Re-derive dependent properties so the runtime state is consistent
+                if (svc.iconMode === "color") {
+                    svc.iconSaturation = 1.0
+                    svc.iconTintStrength = 0.0
+                } else {
+                    svc.iconSaturation = 0.0
+                    svc.iconTintStrength = 0.0
+                }
+            } else {
+                console.warn("[DockConfig] invalid iconMode ignored")
+                scheduleSave()
+            }
+        }
+        if (obj.iconOpacity !== undefined) svc.iconOpacity = obj.iconOpacity
+        if (obj.iconSaturation !== undefined) svc.iconSaturation = obj.iconSaturation
+        if (obj.iconTintColor !== undefined) svc.iconTintColor = obj.iconTintColor
+        if (obj.iconTintStrength !== undefined) svc.iconTintStrength = obj.iconTintStrength
+
+        // Ensure derived properties stay in sync when no iconMode was persisted
+        // (legacy or fresh install). This writes a clean config on next save.
+        if (obj.iconMode === undefined) {
+            if (svc.iconMode === "color") {
+                svc.iconSaturation = 1.0
+                svc.iconTintStrength = 0.0
+            } else {
+                svc.iconSaturation = 0.0
+                svc.iconTintStrength = 0.0
+            }
+            scheduleSave()
+        }
     }
 
     // ── Init: load on startup ──
