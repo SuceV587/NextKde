@@ -37,6 +37,24 @@ QtObject {
     // A QML binding can depend on this counter to observe a map entry update.
     property int thumbnailRevision: 0
     readonly property bool _kwinBridgeEnabled: true
+    // The controller waits for this before doing its first collision pass, so a
+    // smart dock does not hide against a still-empty initial window snapshot.
+    // KWin is authoritative on Plasma (it does not expose foreign-toplevel), so
+    // readiness there means "first KWin snapshot applied". On compositors that
+    // do expose foreign-toplevel, readiness is "first collection done", even
+    // when that collection is zero windows.
+    property bool _hasRebuiltOnce: false
+    // Readiness reached on the first foreign-toplevel collection (even zero
+    // windows). On KWin this stays false because KWin owns the list via the
+    // bridge instead.
+    property bool _foreignRebuiltOnce: false
+    // On the KWin build the bridge is authoritative, so readiness means "first
+    // KWin snapshot applied" — an empty foreign collection at startup is not
+    // proof the desktop is empty. On a future non-KWin build (bridge disabled)
+    // the foreign provider is authoritative after its first collection.
+    readonly property bool providerReady:
+        svc._kwinReceivedInitialSnapshot
+            || (!svc._kwinBridgeEnabled && svc._foreignRebuiltOnce)
     readonly property string _kwinBridgePath:
         "/usr/local/libexec/quickshell-kwin-window-bridge"
     readonly property string _kwinScriptPath:
@@ -183,7 +201,22 @@ QtObject {
             && !!left.toplevel.fullscreen === !!right.toplevel.fullscreen
             && !!left.onAllDesktops === !!right.onAllDesktops
             && left.desktopIds.length === right.desktopIds.length
-            && left.desktopIds.every((id, i) => id === right.desktopIds[i]);
+            && left.desktopIds.every((id, i) => id === right.desktopIds[i])
+            && !!left.isMaximized === !!right.isMaximized
+            && !!left.isVisible === !!right.isVisible
+            && (left.screenName || "") === (right.screenName || "")
+            && geometriesEqual(left.geometry, right.geometry);
+    }
+
+    // Null-safe geometry equality. A window that moves (or stops reporting
+    // geometry) must change the record or the Dock collision pass stays stale.
+    function geometriesEqual(left, right) {
+        if (!left || !right)
+            return !left && !right;
+        return left.x === right.x
+            && left.y === right.y
+            && left.width === right.width
+            && left.height === right.height;
     }
 
     function _setRow(row, record) {
@@ -227,7 +260,13 @@ QtObject {
                 appId: source.appId || "",
                 title: source.title || "",
                 desktopIds: Array.isArray(source.desktops) ? source.desktops : [],
-                onAllDesktops: !!source.onAllDesktops
+                onAllDesktops: !!source.onAllDesktops,
+                // Full-reveal geometry & placement for Dock collision.
+                geometry: source.geometry && source.geometry.width > 0
+                    ? source.geometry : null,
+                outputName: source.outputName || "",
+                maximized: !!source.maximized,
+                visible: source.visible === undefined ? true : !!source.visible
             } : source;
             const old = _findOldRecord(toplevel, provider, handleId);
             const identity = AppIdentityService.resolve(toplevel.appId);
@@ -256,6 +295,15 @@ QtObject {
                 isUrgent: useKwin ? !!source.urgent : foreignUrgent,
                 desktopIds: Array.isArray(toplevel.desktopIds) ? toplevel.desktopIds : [],
                 onAllDesktops: !!toplevel.onAllDesktops,
+                // Provision-normalised placement used by the Dock auto-hide
+                // controller. Foreign-toplevel has no compositor geometry, so
+                // those stay null/unknown and the controller degrades.
+                geometry: useKwin && toplevel.geometry ? toplevel.geometry : null,
+                screenName: useKwin ? (toplevel.outputName || "") : "",
+                isMaximized: useKwin ? !!toplevel.maximized : false,
+                isVisible: useKwin
+                    ? !!toplevel.visible
+                    : (toplevel.minimized ? false : true),
             };
             nextRecords.push(record);
             nextById[record.windowId] = record;
@@ -272,6 +320,10 @@ QtObject {
         }
         if (!changed)
             return;
+
+        svc._hasRebuiltOnce = true;
+        if (!useKwin)
+            svc._foreignRebuiltOnce = true;
 
         while (windowModel.count > tops.length)
             windowModel.remove(windowModel.count - 1);

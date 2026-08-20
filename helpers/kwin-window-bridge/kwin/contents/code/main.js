@@ -24,6 +24,55 @@ function propertyValue(window, name, fallback) {
     }
 }
 
+// KWin's frameGeometry is a QRect exposed with x/y/width/height. Read each part
+// defensively so an older scripting API cannot break the whole snapshot.
+function frameGeometry(window) {
+    try {
+        const g = window.frameGeometry;
+        if (!g)
+            return null;
+        return {
+            x: Number(propertyValue(g, "x", 0)),
+            y: Number(propertyValue(g, "y", 0)),
+            width: Number(propertyValue(g, "width", 0)),
+            height: Number(propertyValue(g, "height", 0))
+        };
+    } catch (error) {
+        return null;
+    }
+}
+
+// KWin versions expose maximization differently: older as a bool, newer as an
+// object of horizontal/vertical flags. Normalise to a single boolean meaning
+// "maximised in both axes". Always defensive.
+function isMaximized(window) {
+    const raw = propertyValue(window, "maximized", false);
+    if (raw === null || raw === false || raw === undefined)
+        return false;
+    if (raw === true)
+        return true;
+    try {
+        if (typeof raw === "object") {
+            return !!(raw.horizontal && raw.vertical);
+        }
+        return false;
+    } catch (error) {
+        return false;
+    }
+}
+
+// Preferred output for a window. Some KWin scripting versions do not expose
+// `window.output`; fall back to empty so foreign-side collisions can fall back
+// to geometry overlap.
+function outputName(window) {
+    try {
+        const output = window.output;
+        return output ? String(output.name || "") : "";
+    } catch (error) {
+        return "";
+    }
+}
+
 function windowDebug(window) {
     return {
         id: windowId(window),
@@ -111,7 +160,15 @@ function snapshot() {
             // Virtual desktops this window lives on (ids). Consumed by the
             // workspace overview to place each window on its desktop.
             desktops: desktopIds(window),
-            onAllDesktops: !!propertyValue(window, "onAllDesktops", false)
+            onAllDesktops: !!propertyValue(window, "onAllDesktops", false),
+            // Stable full-reveal geometry consumed by the Dock auto-hide
+            // collision judgement. frameGeometry is the compositor's resolved
+            // placement, so the user's actual drawn window is what occludes
+            // the dock, not an app's requested size.
+            geometry: frameGeometry(window),
+            outputName: outputName(window),
+            maximized: isMaximized(window),
+            visible: !!propertyValue(window, "visible", true)
         });
     }
     const json = JSON.stringify({ type: "snapshot", windows: windows });
@@ -271,6 +328,12 @@ function watchWindow(window) {
     // Kept defensive for an older KWin scripting API that lacks this signal.
     try { window.demandsAttentionChanged.connect(scheduleSnapshot); } catch (error) {}
     window.skipTaskbarChanged.connect(scheduleSnapshot);
+    // Geometry/placement changes drive the Dock auto-hide collision judgement.
+    // Each connect is defensive: one missing signal must not kill the bridge.
+    try { window.frameGeometryChanged.connect(scheduleSnapshot); } catch (error) {}
+    try { window.outputChanged.connect(scheduleSnapshot); } catch (error) {}
+    try { window.maximizedChanged.connect(scheduleSnapshot); } catch (error) {}
+    try { window.desktopsChanged.connect(scheduleSnapshot); } catch (error) {}
     window.closed.connect(scheduleSnapshot);
 }
 
