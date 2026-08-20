@@ -32,6 +32,8 @@ Item {
                 ? ConfigService.position : "bottom"
             const iconMode = ConfigService.isValidIconMode(ConfigService.iconMode)
                 ? ConfigService.iconMode : "color"
+            const visibilityMode = ConfigService.isValidVisibilityMode(ConfigService.visibilityMode)
+                ? ConfigService.visibilityMode : "always"
             return JSON.stringify({
                 baseHeight: ConfigService.baseHeight,
                 theme: theme,
@@ -39,6 +41,7 @@ Item {
                 iconMode: iconMode,
                 iconOpacity: ConfigService.iconOpacity,
                 iconTintColor: ConfigService.iconTintColor,
+                visibilityMode,
             })
         }
 
@@ -71,6 +74,12 @@ Item {
             ConfigService.updateIconTintColor(color)
             return snapshot()
         }
+
+        function updateVisibilityMode(mode: string): string {
+            ConfigService.updateVisibilityMode(mode)
+            return snapshot()
+        }
+
     }
 
     QuickSearch {
