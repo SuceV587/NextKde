@@ -15,12 +15,18 @@ const DEFAULT_PROPORTIONS = {
     radius:     0.45,   // pill radius / dockHeight
     dividerWidth: 1,    // the ONLY fixed pixel value — a 1px hairline
 }
-const MUSIC_UNITS = 4       // music player width ≡ 4 icon squares
+const INFO_UNITS = 4        // shared music/weather slot width ≡ 4 icon squares
 const MIN_ICON_SIZE = 24
 // This matches the Settings slider range. PanelWindow does not impose a
 // height cap; keeping the cap here makes the layout calculation authoritative.
 const MAX_DOCK_HEIGHT = 100
+// Horizontal cap: the bottom dock may fill most of the screen width.
 const MAX_WIDTH_RATIO = 0.98
+// Vertical cap: a side dock should stay compact — 95% of the *available*
+// height (the caller subtracts reserved strips such as the top bar), so a
+// long icon column keeps breathing room above and below instead of visually
+// touching both screen edges.
+const MAX_HEIGHT_RATIO = 0.95
 const ACTIVE_BG_GAP_RATIO = 0.1 // icon/background gap as a fraction of iconSize
 
 // ── Clamp utility ──
@@ -34,23 +40,25 @@ function clamp(value, min, max) {
 //   baseHeight  — user-configured ideal dock height (e.g. 60)
 //   pinnedCount — number of pinned launcher icons
 //   windowCount — number of open (non-pinned) window icons
-//   hasPlayer   — whether the right-side information slot is occupied
+//   hasInfoSlot — whether the right-side information slot is occupied
 //   screenWidth — current screen width in pixels
 //
 // Returns: {
 //   dockHeight, iconSize, dockWidth,
 //   itemSpacing, hPadding, vPadding, dividerMargin,
-//   iconUnits, musicUnits, dividerCount
+//   iconUnits, infoUnits, dividerCount
 // }
-// The Dock width remains content-driven, but it must never exceed 98% of the
-// current screen. Only spacing proportions remain configurable.
+// The Dock length remains content-driven, but it must never exceed a ratio
+// of the available screen length (width on a bottom dock, height on a side
+// dock). Only spacing proportions and the cap ratio remain configurable.
 export function computeLayout(
     baseHeight,
     pinnedCount,
     windowCount,
-    hasPlayer,
-    screenWidth,
-    proportions = {}
+    hasInfoSlot,
+    availableLength,
+    proportions = {},
+    maxLengthRatio = MAX_WIDTH_RATIO
 ) {
     const p = {
         vpad:    Number.isFinite(Number(proportions?.vpad))    ? Number(proportions.vpad)    : DEFAULT_PROPORTIONS.vpad,
@@ -59,23 +67,26 @@ export function computeLayout(
         divmargin: Number.isFinite(Number(proportions?.divmargin)) ? Number(proportions.divmargin) : DEFAULT_PROPORTIONS.divmargin,
     }
 
-    const maxWidth = screenWidth * MAX_WIDTH_RATIO
+    const maxWidth = availableLength * maxLengthRatio
 
     // ── Determine right-side information section ──
-    const musicUnits   = hasPlayer ? MUSIC_UNITS : 0
-    const dividerCount = hasPlayer ? 2 : 1
+    const infoUnits = hasInfoSlot ? INFO_UNITS : 0
+    // Count only dividers that are actually visible. Reserving space for a
+    // hidden boundary made sparse docks a few pixels wider than their content.
+    const dividerCount = (pinnedCount > 0 && windowCount > 0 ? 1 : 0)
+        + (hasInfoSlot ? 1 : 0)
 
     // ── Item counts ──
     const appIconCount = pinnedCount + windowCount
-    const iconUnits = appIconCount + musicUnits
-    const itemCount = pinnedCount + windowCount + dividerCount + (hasPlayer ? 1 : 0)
+    const iconUnits = appIconCount + infoUnits
+    const itemCount = pinnedCount + windowCount + dividerCount + (hasInfoSlot ? 1 : 0)
 
     // Guard: nothing to show
     if (iconUnits <= 0) {
         return {
             dockHeight: 0, iconSize: 0, dockWidth: 0,
             itemSpacing: 0, hPadding: 0, vPadding: 0, dividerMargin: 0,
-            pillRadius: 0, iconUnits: 0, musicUnits: 0, dividerCount: 0
+            pillRadius: 0, iconUnits: 0, infoUnits: 0, dividerCount: 0
         }
     }
 
@@ -90,7 +101,7 @@ export function computeLayout(
     //   2                : left + right edge padding
     const scaleFactor =
           iconUnits
-        + (appIconCount + (hasPlayer ? 1 : 0)) * 2 * ACTIVE_BG_GAP_RATIO
+        + (appIconCount + (hasInfoSlot ? 1 : 0)) * 2 * ACTIVE_BG_GAP_RATIO
         + (itemCount - 1) * p.spacing
         + 2 * dividerCount * p.divmargin
         + 2 * p.hpad
@@ -136,12 +147,9 @@ export function computeLayout(
         pillRadius,
         activeBackgroundGap,
         iconUnits,
-        musicUnits,
+        infoUnits,
         dividerCount,
     }
 }
 
-// ── Convenience: quick-fit without full layout ──
-export function quickIconSize(baseHeight, pinnedCount, windowCount, hasPlayer, screenWidth) {
-    return computeLayout(baseHeight, pinnedCount, windowCount, hasPlayer, screenWidth).iconSize
-}
+export { MAX_HEIGHT_RATIO, MAX_WIDTH_RATIO }

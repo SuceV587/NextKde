@@ -346,8 +346,8 @@ Item {
         // Icon appearance style from ConfigService
         opacityMultiplier: ConfigService.iconMode === "color" ? 1.0 : ConfigService.iconOpacity
         saturation: ConfigService.iconSaturation
+        tintEnabled: ConfigService.iconTintEnabled
         tintColor: ConfigService.iconTintColor
-        tintStrength: ConfigService.iconTintStrength
     }
 
     Rectangle {

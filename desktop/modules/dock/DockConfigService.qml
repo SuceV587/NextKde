@@ -35,21 +35,25 @@ QtObject {
     property real   baseHeight:   60
     property string theme:        "dark"
     property string position:     "bottom"
-    property bool   autoHide:     false
     // Reserved strip of the top status bar. Side docks subtract it from the
     // screen height so their column cap never overlaps the bar. The bar reads
     // this value too, keeping one source of truth; a future bar-visibility
     // setting will decide whether it is applied at all.
     property real   barHeight:    35
-    // Icon appearance style: transparency/desaturation/tint
-    property string iconMode:        "grayscale"   // "color" | "grayscale"
-    property real   iconOpacity:     0.5    // 1.0 = solid, 0.0 = fully transparent (grayscale mode only)
-    property real   iconSaturation:  1.0    // 1.0 = full color, 0.0 = grayscale
-    property string iconTintColor:   "#ffffff"
-    property real   iconTintStrength: 0.0   // 0.0 = no tint, 1.0 = full tint
+    // Icon appearance source of truth. Shader inputs are derived from iconMode
+    // instead of persisted separately, preventing impossible mixed states.
+    property string iconMode:        "grayscale"   // "color" | "grayscale" | "tint"
+    property real   iconOpacity:     0.5
+    property string iconTintColor:   "#a855f7"
+    readonly property real iconSaturation: iconMode === "color" ? 1.0 : 0.0
+    readonly property real iconTintEnabled: iconMode === "tint" ? 1.0 : 0.0
 
     function isValidIconMode(value) {
-        return value === "color" || value === "grayscale"
+        return value === "color" || value === "grayscale" || value === "tint"
+    }
+
+    function isValidRgbColor(value) {
+        return /^#[0-9a-f]{6}$/.test(String(value).toLowerCase())
     }
     // Legacy compatibility field. New app name/icon edits live in
     // AppLauncherConfigService and are published through AppPresentationService.
@@ -126,15 +130,6 @@ QtObject {
         return true
     }
 
-    function updateAutoHide(rawValue) {
-        const value = Boolean(rawValue)
-        if (autoHide === value)
-            return false
-        autoHide = value
-        scheduleSave()
-        return true
-    }
-
     function updateTheme(rawTheme) {
         const nextTheme = String(rawTheme)
         if (!isValidTheme(nextTheme))
@@ -147,19 +142,13 @@ QtObject {
     }
 
     function updateIconMode(rawMode) {
-        const nextMode = String(rawMode)
+        const requestedMode = String(rawMode)
+        const nextMode = requestedMode === "duotone" ? "tint" : requestedMode
         if (!isValidIconMode(nextMode))
             return false
         if (iconMode === nextMode)
             return false
         iconMode = nextMode
-        if (iconMode === "color") {
-            iconSaturation = 1.0
-            iconTintStrength = 0.0
-        } else {
-            iconSaturation = 0.0
-            iconTintStrength = 0.0
-        }
         scheduleSave()
         return true
     }
@@ -171,6 +160,15 @@ QtObject {
         if (Math.abs(iconOpacity - value) <= 0.001)
             return false
         iconOpacity = value
+        scheduleSave()
+        return true
+    }
+
+    function updateIconTintColor(rawColor) {
+        const color = String(rawColor).toLowerCase()
+        if (!isValidRgbColor(color) || iconTintColor === color)
+            return false
+        iconTintColor = color
         scheduleSave()
         return true
     }
@@ -305,7 +303,6 @@ QtObject {
             baseHeight:    svc.baseHeight,
             theme:         svc.theme,
             position:      svc.position,
-            autoHide:      svc.autoHide,
             barHeight:     svc.barHeight,
             iconOverrides: svc.iconOverrides,
             dockItems:     svc.dockItems,
@@ -315,9 +312,7 @@ QtObject {
             // Icon appearance style
             iconMode:        svc.iconMode,
             iconOpacity:     svc.iconOpacity,
-            iconSaturation:  svc.iconSaturation,
-            iconTintColor:   svc.iconTintColor,
-            iconTintStrength: svc.iconTintStrength,
+            iconTintColor:    svc.iconTintColor,
         }
         const json = JSON.stringify(obj, null, 2)
         console.log("[DockConfig] save requested path=" + svc.configPath
@@ -410,7 +405,6 @@ QtObject {
                 scheduleSave()
             }
         }
-        if (obj.autoHide !== undefined) svc.autoHide = Boolean(obj.autoHide)
         if (obj.barHeight !== undefined) {
             const barHeight = Math.max(0, Math.min(100, Number(obj.barHeight)))
             if (Number.isFinite(barHeight))
@@ -450,38 +444,25 @@ QtObject {
         }
         if (obj.proportions  !== undefined) svc.proportions   = obj.proportions
         if (obj.iconMode !== undefined) {
-            if (isValidIconMode(obj.iconMode)) {
-                svc.iconMode = obj.iconMode
-                // Re-derive dependent properties so the runtime state is consistent
-                if (svc.iconMode === "color") {
-                    svc.iconSaturation = 1.0
-                    svc.iconTintStrength = 0.0
-                } else {
-                    svc.iconSaturation = 0.0
-                    svc.iconTintStrength = 0.0
-                }
+            // Migrate the experimental hard-duotone mode back to tonal tint.
+            const loadedIconMode = obj.iconMode === "duotone" ? "tint" : obj.iconMode
+            if (isValidIconMode(loadedIconMode)) {
+                svc.iconMode = loadedIconMode
+                if (obj.iconMode === "duotone")
+                    scheduleSave()
             } else {
                 console.warn("[DockConfig] invalid iconMode ignored")
                 scheduleSave()
             }
         }
         if (obj.iconOpacity !== undefined) svc.iconOpacity = obj.iconOpacity
-        if (obj.iconSaturation !== undefined) svc.iconSaturation = obj.iconSaturation
-        if (obj.iconTintColor !== undefined) svc.iconTintColor = obj.iconTintColor
-        if (obj.iconTintStrength !== undefined) svc.iconTintStrength = obj.iconTintStrength
 
-        // Ensure derived properties stay in sync when no iconMode was persisted
-        // (legacy or fresh install). This writes a clean config on next save.
-        if (obj.iconMode === undefined) {
-            if (svc.iconMode === "color") {
-                svc.iconSaturation = 1.0
-                svc.iconTintStrength = 0.0
-            } else {
-                svc.iconSaturation = 0.0
-                svc.iconTintStrength = 0.0
-            }
+        const migratedTintColor = obj.iconTintColor ?? obj.iconDuotoneShadowColor
+        if (migratedTintColor !== undefined && isValidRgbColor(migratedTintColor))
+            svc.iconTintColor = String(migratedTintColor).toLowerCase()
+
+        if (obj.iconMode === undefined || obj.iconDuotoneShadowColor !== undefined)
             scheduleSave()
-        }
     }
 
     // ── Init: load on startup ──

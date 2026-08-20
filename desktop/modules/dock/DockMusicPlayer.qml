@@ -27,6 +27,7 @@ Item {
     readonly property bool isCompact: iconSize < 36
     readonly property real backgroundGap: iconSize * 0.1
     readonly property real contentWidth: iconSize * widthUnits
+    readonly property bool monochrome: ConfigService.iconMode !== "color"
 
     // ── Player reference ──
     readonly property var player: DockMprisService.activePlayer
@@ -38,6 +39,11 @@ Item {
     property bool musicPopupRequested: false
 
     function artworkTint(color, alpha) {
+        if (monochrome) {
+            const luminance = color.r * 0.2126 + color.g * 0.7152
+                + color.b * 0.0722
+            return Qt.rgba(luminance, luminance, luminance, alpha)
+        }
         return Qt.rgba(color.r, color.g, color.b, alpha)
     }
 
@@ -182,6 +188,9 @@ Item {
                 layer.effect: MultiEffect {
                     maskEnabled: true
                     maskSource: albumArtMask
+                    // In monochrome Dock mode the cover is part of the Dock's
+                    // icon language, not an isolated full-colour artwork tile.
+                    saturation: widget.monochrome ? -1.0 : 0.0
                 }
             }
 

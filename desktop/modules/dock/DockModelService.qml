@@ -16,8 +16,8 @@ QtObject {
     property var pinnedItems: []
     property int pinnedCount: 0
     // Presentation-only task list. WindowService keeps every live window;
-    // this layer optionally groups those windows for the Dock while Alt+Tab
-    // and future Stage Manager views retain their complete per-window model.
+    // this layer derives the Dock's ordered per-window presentation while
+    // other shell surfaces can consume the unmodified live model.
     property ListModel windowModel: ListModel {}
     readonly property int windowCount: windowModel.count
 
@@ -173,9 +173,6 @@ QtObject {
             svc._refreshPresentation();
         }
         function onPinnedAppIdsChanged() {
-            svc._refreshPresentation();
-        }
-        function onGroupWindowsChanged() {
             svc._refreshPresentation();
         }
     }

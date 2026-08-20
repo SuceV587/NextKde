@@ -38,9 +38,17 @@ PanelWindow {
     readonly property real sideMargin: 8
     readonly property real topInset: 56
     readonly property real bottomInset: Math.max(96, AppLauncherService.dockHeight + 24)
+    // A side dock reserves its own strip on the left/right edge; shift the
+    // grid and the desktop file field inward so the dock never covers them.
+    // AppLauncherService.dockHeight is the dock's short edge, which is
+    // exactly its width when the dock is docked to a side.
+    readonly property real leftInset: ConfigService.position === "left"
+        ? AppLauncherService.dockHeight + 24 : root.sideMargin
+    readonly property real rightInset: ConfigService.position === "right"
+        ? AppLauncherService.dockHeight + 24 : root.sideMargin
     readonly property real gap: 10
     readonly property real cellSize: Math.max(1,
-        (width - sideMargin * 2 - gap * (columns - 1)) / columns)
+        (width - leftInset - rightInset - gap * (columns - 1)) / columns)
     readonly property int usableRows: Math.max(0, Math.floor(
         (height - topInset - bottomInset + gap) / (cellSize + gap)))
     property int timerSeconds: 0
@@ -233,7 +241,7 @@ PanelWindow {
             startColor: modelData.id === "weather" ? root.weatherTheme.primary : modelData.startColor
             endColor: modelData.id === "weather" ? root.weatherTheme.secondary : modelData.endColor
             showSurface: modelData.surface
-            x: root.sideMargin + (placement?.column ?? 0) * (root.cellSize + root.gap)
+            x: root.leftInset + (placement?.column ?? 0) * (root.cellSize + root.gap)
             y: root.topInset + (placement?.row ?? 0) * (root.cellSize + root.gap)
             width: root.spanSize(placement?.columns ?? 1)
             height: root.spanSize(placement?.rows ?? 1)
@@ -1652,9 +1660,9 @@ PanelWindow {
     // columns from right to left and rows from top to bottom.
     Item {
         id: desktopFileGrid
-        x: root.sideMargin + 4 * (root.cellSize + root.gap)
+        x: root.leftInset + 4 * (root.cellSize + root.gap)
         y: root.topInset
-        width: root.width - x - root.sideMargin
+        width: root.width - x - root.rightInset
         height: root.height - y - root.bottomInset
         clip: false
         readonly property int iconSize: desktopLayout.iconSize

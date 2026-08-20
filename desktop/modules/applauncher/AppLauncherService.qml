@@ -15,6 +15,14 @@ QtObject {
     property bool open: false
     property real dockWidth: 0
     property real dockHeight: 0
+    // The top bar reserves space that the launcher must also clear so the
+    // launcher's vertical centre lines up with the Dock's vertical centre
+    // (the Dock is positioned inside the bar-cleared available area).
+    property real barHeight: 0
+    // Which screen edge the Dock is docked to; the launcher card anchors to
+    // the same side (bottom dock: centered above it; side docks: vertically
+    // centered beside it).
+    property string dockPosition: "bottom"
     // Dock publishes material values as data rather than making this module
     // import qs.desktop.modules.dock. That prevents a circular QML module dependency.
     property color dockBackgroundColor: Qt.rgba(0.08, 0.09, 0.12, 0.92)
@@ -22,9 +30,11 @@ QtObject {
     property color dockAmbientSecondary: "transparent"
     property color dockForegroundColor: "white"
 
-    function setDockPresentation(width, height, background, primary, secondary, foreground) {
+    function setDockPresentation(width, height, position, background, primary, secondary, foreground, barHeight) {
         service.dockWidth = width
         service.dockHeight = height
+        service.dockPosition = position
+        service.barHeight = barHeight
         service.dockBackgroundColor = background
         service.dockAmbientPrimary = primary
         service.dockAmbientSecondary = secondary

@@ -8,6 +8,15 @@ Item {
     property int widthUnits: 4
     readonly property real backgroundGap: iconSize * 0.1
     readonly property real contentWidth: iconSize * widthUnits
+    readonly property bool monochrome: ConfigService.iconMode !== "color"
+
+    function tone(color) {
+        if (!monochrome)
+            return color
+        const luminance = color.r * 0.2126 + color.g * 0.7152
+            + color.b * 0.0722
+        return Qt.rgba(luminance, luminance, luminance, color.a)
+    }
 
     function backgroundStart(code, day) {
         if (code === 0) return day ? Qt.rgba(0.18, 0.54, 0.94, 0.58) : Qt.rgba(0.10, 0.15, 0.38, 0.66)
@@ -45,13 +54,13 @@ Item {
             orientation: Gradient.Horizontal
             GradientStop {
                 position: 0.0
-                color: widget.backgroundStart(WeatherService.weatherCode,
-                                              WeatherService.isDay)
+                color: widget.tone(widget.backgroundStart(WeatherService.weatherCode,
+                                                          WeatherService.isDay))
             }
             GradientStop {
                 position: 1.0
-                color: widget.backgroundEnd(WeatherService.weatherCode,
-                                            WeatherService.isDay)
+                color: widget.tone(widget.backgroundEnd(WeatherService.weatherCode,
+                                                        WeatherService.isDay))
             }
         }
 
@@ -114,13 +123,13 @@ Item {
                         width: 2
                         height: 10
                         radius: 1
-                        color: "#fff7c2"
+                        color: widget.tone(Qt.rgba(1.0, 0.969, 0.761, 1.0))
                         x: sunRays.width / 2 - width / 2
                         y: 1
                         transform: Rotation { origin.x: 1; origin.y: 26; angle: index * 45 }
                     }
                 }
-                Rectangle { anchors.centerIn: parent; width: 22; height: 22; radius: 11; color: "#fff2a4" }
+                Rectangle { anchors.centerIn: parent; width: 22; height: 22; radius: 11; color: widget.tone(Qt.rgba(1.0, 0.949, 0.643, 1.0)) }
             }
         }
 
@@ -138,7 +147,7 @@ Item {
                     width: 1
                     height: 10
                     radius: 1
-                    color: "#d9f1ff"
+                    color: widget.tone(Qt.rgba(0.851, 0.945, 1.0, 1.0))
                     x: rainLayer.width * (index + 0.35) / 7
                     y: -height
                     rotation: -13

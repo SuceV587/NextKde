@@ -4,7 +4,7 @@ import Quickshell.Widgets
 
 // One renderer for application artwork across Dock, QuickSearch and Launcher.
 // Layout owns width/height; this component owns source loading consistency.
-// Supports grayscale + selective transparency + color tint via ShaderEffect.
+// Supports grayscale + selective transparency + tonal tint via ShaderEffect.
 Item {
     id: root
     property string source: ""
@@ -12,8 +12,8 @@ Item {
     // Icon appearance controls
     property real   opacityMultiplier: 1.0
     property real   saturation:        1.0
-    property color  tintColor:         "#0a84ff"
-    property real   tintStrength:      0.0
+    property real   tintEnabled:       0.0
+    property color  tintColor:         "#a855f7"
 
     IconImage {
         id: iconImage
@@ -30,8 +30,8 @@ Item {
         property variant source: ShaderEffectSource { sourceItem: iconImage; hideSource: false }
         property real opacityMult: root.opacityMultiplier
         property real sat: root.saturation
+        property real iconTintEnabled: root.tintEnabled
         property color iconTintColor: root.tintColor
-        property real iconTintStrength: root.tintStrength
         fragmentShader: Qt.resolvedUrl("icon_effect.frag.qsb")
     }
 }

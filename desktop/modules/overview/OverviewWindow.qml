@@ -188,6 +188,10 @@ PanelWindow {
                             height: 42
                             visible: !preview.visible
                             source: modelData.iconSource
+                            opacityMultiplier: ConfigService.iconMode === "color" ? 1.0 : ConfigService.iconOpacity
+                            saturation: ConfigService.iconSaturation
+                            tintEnabled: ConfigService.iconTintEnabled
+                            tintColor: ConfigService.iconTintColor
                         }
                         Text {
                             anchors {

@@ -34,7 +34,6 @@ Item {
     // drag-reordering or persistence.
     readonly property int pinnedCount: DockModelService.pinnedCount + 2
     readonly property int windowCount: DockModelService.windowCount
-    readonly property bool hasPlayer: DockMprisService.hasPlayer
     readonly property bool hasPlayingMusic: DockMprisService.hasPlayingPlayer
     readonly property bool hasWeather: WeatherService.available
     readonly property bool hasInfo: hasPlayingMusic || hasWeather
@@ -82,7 +81,7 @@ Item {
     // keeps the Row width stable while the active background appears/disappears.
     readonly property real activeBackgroundGap: _layout.activeBackgroundGap
     readonly property int iconUnits: _layout.iconUnits
-    readonly property int musicUnits: _layout.musicUnits
+    readonly property int infoUnits: _layout.infoUnits
     // Long press enters the persistent iPadOS-like edit state. Starting a
     // real drag also enters that same state, and only an explicit tap-away or
     // external window focus change ends it.
@@ -94,9 +93,7 @@ Item {
     readonly property real draggedPointerX: draggedPinnedLoader
         ? draggedPinnedLoader.dragPointerX : -1
 
-    function publishLauncherGeometry() {
-        console.log("[DockContainer] publish launcher "
-            + computedDockWidth + "x" + computedDockHeight)
+    function publishLauncherPresentation() {
         AppLauncherService.setDockPresentation(
             computedDockWidth,
             computedDockHeight,
@@ -108,24 +105,36 @@ Item {
             ConfigService.barHeight)
     }
 
-    Component.onCompleted: {
-        publishLauncherGeometry()
+    // Several layout and palette bindings can change in the same event-loop
+    // turn. Publish the final presentation once instead of briefly sending
+    // AppLauncher intermediate width/colour combinations.
+    Timer {
+        id: launcherPresentationTimer
+        interval: 0
+        repeat: false
+        onTriggered: container.publishLauncherPresentation()
     }
-    onComputedDockWidthChanged: publishLauncherGeometry()
-    onComputedDockHeightChanged: publishLauncherGeometry()
+
+    function scheduleLauncherPresentation() {
+        launcherPresentationTimer.restart()
+    }
+
+    Component.onCompleted: scheduleLauncherPresentation()
+    onComputedDockWidthChanged: scheduleLauncherPresentation()
+    onComputedDockHeightChanged: scheduleLauncherPresentation()
     // Side flips change both dimensions anyway, but keep the anchor side
     // explicit so the launcher never lags behind a dock edge change.
-    onVerticalChanged: publishLauncherGeometry()
+    onVerticalChanged: scheduleLauncherPresentation()
 
     Connections {
         target: ThemeService
-        function onBackgroundColorChanged() { container.publishLauncherGeometry() }
-        function onForegroundColorChanged() { container.publishLauncherGeometry() }
+        function onBackgroundColorChanged() { container.scheduleLauncherPresentation() }
+        function onForegroundColorChanged() { container.scheduleLauncherPresentation() }
     }
     Connections {
         target: WallpaperPaletteService
-        function onPrimaryChanged() { container.publishLauncherGeometry() }
-        function onSecondaryChanged() { container.publishLauncherGeometry() }
+        function onPrimaryChanged() { container.scheduleLauncherPresentation() }
+        function onSecondaryChanged() { container.scheduleLauncherPresentation() }
     }
     // Pin actions may come from Dock, AppLauncher, QuickSearch, or future
     // shell surfaces. Dock remains the sole owner of Dock persistence.
@@ -164,15 +173,6 @@ Item {
     height: implicitHeight
 
     // ── Smooth resize transitions ──
-    // Width animation disabled: the animated width interacts badly with the
-    // shared active indicator (two competing motion sources). The dock snaps
-    // to its target width; height keeps its animation (rarely changes).
-    // Behavior on width {
-    //     NumberAnimation {
-    //         duration: DockAnimation.dockResizeDuration
-    //         easing.type: DockAnimation.dockResizeEasing
-    //     }
-    // }
     Behavior on height {
         NumberAnimation {
             duration: DockAnimation.dockResizeDuration
@@ -282,7 +282,6 @@ Item {
                 if (DockModelService.activeDockPopup)
                     DockModelService.setDockPopupVisible(
                         DockModelService.activeDockPopup, false)
-                console.log("[DockContainer] app launcher requested")
                 AppLauncherService.toggle()
             }
         }
@@ -586,7 +585,7 @@ Item {
         DockInfoCarousel {
             iconSize: container.iconSize
             dockHeight: container.computedDockHeight
-            widthUnits: container.musicUnits
+            widthUnits: container.infoUnits
             // The carousel's internal pages assume a horizontal slot; hide it
             // on side docks until it gains a vertical layout (Phase 2).
             visible: container.hasInfo && !container.vertical

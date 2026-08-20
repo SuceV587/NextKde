@@ -30,13 +30,6 @@ QtObject {
     readonly property real  iconHoverScale:     1.20
     readonly property var   iconHoverEasing:    Easing.OutCubic
 
-    // Shared active-window background transition.
-    // Mid-speed liquid transition: deliberately slower than the original
-    // indicator motion so the water-drop deformation remains readable.
-    readonly property int   activeIndicatorMoveDuration: 300
-    readonly property int   activeIndicatorStretchInDuration: 120
-    readonly property int   activeIndicatorSettleDuration: 250
-
     // ═══════════════════════════════════════════════════════════
     // Music player expand / collapse
     // ═══════════════════════════════════════════════════════════

@@ -15,7 +15,9 @@ PanelWindow {
     exclusionMode: ExclusionMode.Normal
     // Keep persistent chrome on the normal layer-shell Top layer.
     WlrLayershell.layer: WlrLayer.Top
-    implicitHeight: 35
+    // Single source of truth: the dock layout budget (side-dock height cap)
+    // needs the same strip height, so it lives in the shared dock config.
+    implicitHeight: ConfigService.barHeight
     exclusiveZone: implicitHeight
 
     // The control center is nine independent blurred PanelWindows. Keeping

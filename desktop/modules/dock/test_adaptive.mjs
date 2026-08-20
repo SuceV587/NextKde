@@ -13,14 +13,14 @@ const cases = [
 ];
 
 let errors = 0;
-for (const [bh, pc, wc, hp, sw, desc] of cases) {
-    const r = computeLayout(bh, pc, wc, hp, sw);
+for (const [bh, pc, wc, hasInfoSlot, sw, desc] of cases) {
+    const r = computeLayout(bh, pc, wc, hasInfoSlot, sw);
     const issues = [];
     if (r.iconUnits > 0) {
         if (r.dockHeight > 100) issues.push('dockHeight exceeds max: ' + r.dockHeight);
         if (r.iconSize < 24 && r.iconSize !== 0) issues.push('iconSize below min');
         if (r.dockWidth > sw * 0.98 + 2) issues.push('dockWidth > 98%');
-        if (r.musicUnits !== (hp ? 4 : 0)) issues.push('wrong musicUnits');
+        if (r.infoUnits !== (hasInfoSlot ? 4 : 0)) issues.push('wrong infoUnits');
         if (r.activeBackgroundGap <= 0) issues.push('missing active background gap');
     } else {
         if (r.dockHeight !== 0 || r.iconSize !== 0) issues.push('empty dock non-zero');

@@ -216,6 +216,38 @@ PanelWindow {
         }
     }
 
+    // QuickSearch result icon with the same appearance settings as Dock.
+    // Unlike the shared AppIcon component, this samples IconImage's backing
+    // texture directly. It deliberately avoids ShaderEffectSource: QuickSearch
+    // repeatedly hides and re-shows its PanelWindow, and a source-item capture
+    // can retain the old QQuickWindow across that transition.
+    component ResultIcon: Item {
+        id: resultIcon
+        property string iconSource: ""
+
+        IconImage {
+            id: sourceImage
+            anchors.fill: parent
+            source: resultIcon.iconSource
+            smooth: true
+            asynchronous: true
+            backer.cache: false
+            visible: false
+        }
+
+        ShaderEffect {
+            anchors.fill: parent
+            property variant source: sourceImage.backer
+            property real opacityMult: ConfigService.iconMode === "color"
+                ? 1.0 : ConfigService.iconOpacity
+            property real sat: ConfigService.iconMode === "color"
+                ? 1.0 : ConfigService.iconSaturation
+            property real iconTintEnabled: ConfigService.iconTintEnabled
+            property color iconTintColor: ConfigService.iconTintColor
+            fragmentShader: Qt.resolvedUrl("../common/icon_effect.frag.qsb")
+        }
+    }
+
     function reset() {
         query = "";
         // Window mode opens with the most recently used window selected (the
@@ -588,7 +620,7 @@ PanelWindow {
                     border.color: Qt.rgba(0.66, 0.82, 1, 0.42)
                 }
 
-                AppIcon {
+                ResultIcon {
                     width: resultItem.modelData.isImage ? 20 : 30
                     height: width
                     anchors {
@@ -596,7 +628,7 @@ PanelWindow {
                         leftMargin: resultItem.modelData.isImage ? 17 : 12
                         verticalCenter: parent.verticalCenter
                     }
-                    source: resultItem.modelData.icon ?? ""
+                    iconSource: resultItem.modelData.icon ?? ""
                 }
 
                 Column {
@@ -747,7 +779,7 @@ PanelWindow {
                     border.color: Qt.rgba(0.66, 0.82, 1, 0.42)
                 }
 
-                AppIcon {
+                ResultIcon {
                     width: gridResultItem.modelData.isImage ? 34 : 42
                     height: width
                     anchors {
@@ -755,7 +787,7 @@ PanelWindow {
                         top: parent.top
                         topMargin: gridResultItem.modelData.isImage ? 13 : 9
                     }
-                    source: gridResultItem.modelData.icon ?? ""
+                    iconSource: gridResultItem.modelData.icon ?? ""
                 }
 
                 Text {

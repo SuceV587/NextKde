@@ -1358,8 +1358,8 @@ PanelWindow {
                                     source: modelData.type === "app" ? modelData.app.icon : ""
                                     opacityMultiplier: ConfigService.iconMode === "color" ? 1.0 : ConfigService.iconOpacity
                                     saturation: ConfigService.iconSaturation
+                                    tintEnabled: ConfigService.iconTintEnabled
                                     tintColor: ConfigService.iconTintColor
-                                    tintStrength: ConfigService.iconTintStrength
                                 }
 
                                 // Folder artwork is a compact 3×3 preview of its first
@@ -1411,8 +1411,8 @@ PanelWindow {
                                                 source: modelData.icon
                                                 opacityMultiplier: ConfigService.iconMode === "color" ? 1.0 : ConfigService.iconOpacity
                                                 saturation: ConfigService.iconSaturation
+                                                tintEnabled: ConfigService.iconTintEnabled
                                                 tintColor: ConfigService.iconTintColor
-                                                tintStrength: ConfigService.iconTintStrength
                                             }
                                         }
                                     }
@@ -1879,8 +1879,8 @@ PanelWindow {
                                             source: modelData.icon
                                             opacityMultiplier: ConfigService.iconMode === "color" ? 1.0 : ConfigService.iconOpacity
                                             saturation: ConfigService.iconSaturation
+                                            tintEnabled: ConfigService.iconTintEnabled
                                             tintColor: ConfigService.iconTintColor
-                                            tintStrength: ConfigService.iconTintStrength
                                         }
 
                                         Text {
@@ -2109,8 +2109,8 @@ PanelWindow {
                                         source: AppPresentationService.iconSource(root.editorIcon) || root.editorIcon || "application-x-executable"
                                         opacityMultiplier: ConfigService.iconMode === "color" ? 1.0 : ConfigService.iconOpacity
                                         saturation: ConfigService.iconSaturation
+                                        tintEnabled: ConfigService.iconTintEnabled
                                         tintColor: ConfigService.iconTintColor
-                                        tintStrength: ConfigService.iconTintStrength
                                         MouseArea {
                                             anchors.fill: parent
                                             cursorShape: Qt.PointingHandCursor

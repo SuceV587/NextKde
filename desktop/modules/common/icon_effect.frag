@@ -10,28 +10,34 @@ layout(std140, binding = 0) uniform buf {
     float qt_Opacity;
     float opacityMult;
     float sat;
-    float iconTintStrength;
+    float iconTintEnabled;
     vec4 iconTintColor;
 } ubuf;
 
 void main() {
-    vec4 color = texture(source, qt_TexCoord0);
+    vec4 sampleColor = texture(source, qt_TexCoord0);
+    float sourceAlpha = sampleColor.a;
+
+    // Qt Quick blends premultiplied-alpha colors. Convert to straight RGB while
+    // styling so transparent pixels do not become artificially dark/gray.
+    vec3 sourceColor = sourceAlpha > 0.001
+        ? clamp(sampleColor.rgb / sourceAlpha, 0.0, 1.0)
+        : vec3(0.0);
 
     // 1. Convert to grayscale first
-    float lum = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+    float lum = dot(sourceColor, vec3(0.299, 0.587, 0.114));
     vec3 gray = vec3(lum);
-    vec3 desat = mix(color.rgb, gray, 1.0 - ubuf.sat);
+    vec3 desat = mix(sourceColor, gray, 1.0 - ubuf.sat);
 
-    // 2. Apply color tint: dark -> tint color, bright -> lighter tint/white
-    // Softer mapping: dark uses tint color, bright blends toward white
-    vec3 tintBase = mix(ubuf.iconTintColor.rgb, vec3(1.0), lum) * lum;
-    vec3 glassColor = mix(desat, tintBase, ubuf.iconTintStrength) * color.a;
+    // 2. Tonal tint preserves the source luminance: true shadows remain dark,
+    // midtones receive the selected hue, and highlights stay near white.
+    vec3 tintColor = mix(ubuf.iconTintColor.rgb, vec3(1.0), lum) * lum;
+    vec3 styledColor = mix(desat, tintColor, ubuf.iconTintEnabled);
 
-    // 3. Keep icon shape: solid parts visible, transparent edges more transparent
-    // opacityMult controls the final solidity (1.0 = solid, lower = more transparent)
-    float shapeAlpha = mix(color.a * 0.25, color.a, color.a);
+    // 3. Apply opacity uniformly, then premultiply RGB again for Qt Quick.
+    // This preserves antialiased edges without adding a gray veil.
+    float finalAlpha = sourceAlpha * ubuf.opacityMult;
+    vec3 premultipliedColor = styledColor * finalAlpha;
 
-    float finalAlpha = shapeAlpha * ubuf.opacityMult;
-
-    fragColor = vec4(glassColor, finalAlpha) * ubuf.qt_Opacity;
+    fragColor = vec4(premultipliedColor, finalAlpha) * ubuf.qt_Opacity;
 }

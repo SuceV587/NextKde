@@ -38,6 +38,7 @@ Item {
                 position: position,
                 iconMode: iconMode,
                 iconOpacity: ConfigService.iconOpacity,
+                iconTintColor: ConfigService.iconTintColor,
             })
         }
 
@@ -63,6 +64,11 @@ Item {
 
         function updateIconOpacity(opacity: real): string {
             ConfigService.updateIconOpacity(opacity)
+            return snapshot()
+        }
+
+        function updateIconTintColor(color: string): string {
+            ConfigService.updateIconTintColor(color)
             return snapshot()
         }
     }

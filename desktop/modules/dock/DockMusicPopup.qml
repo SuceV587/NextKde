@@ -17,6 +17,7 @@ PopupWindow {
         return player?.trackArtUrl ? player.trackArtUrl : Qt.resolvedUrl("../../assets/defaultCover.png")
     }
     property bool pointerInside: popupMouse.containsMouse
+    readonly property bool monochrome: ConfigService.iconMode !== "color"
 
     readonly property real safeLength: player?.lengthSupported
         && player.length > 0 ? player.length : 0
@@ -28,6 +29,15 @@ PopupWindow {
         const minutes = Math.floor(value / 60)
         const remainder = String(value % 60).padStart(2, "0")
         return minutes + ":" + remainder
+    }
+
+    function artworkTint(color, alpha) {
+        if (monochrome) {
+            const luminance = color.r * 0.2126 + color.g * 0.7152
+                + color.b * 0.0722
+            return Qt.rgba(luminance, luminance, luminance, alpha)
+        }
+        return Qt.rgba(color.r, color.g, color.b, alpha)
     }
 
     function seekAt(x) {
@@ -75,8 +85,8 @@ PopupWindow {
         // explicit translucent gradient below, just like DockMusicPlayer.
         baseColor: ThemeService.backgroundColor
         surfaceOpacity: 1.0
-        ambientPrimary: artworkPalette.primary
-        ambientSecondary: artworkPalette.secondary
+        ambientPrimary: popup.artworkTint(artworkPalette.primary, 1.0)
+        ambientSecondary: popup.artworkTint(artworkPalette.secondary, 1.0)
         ambientStrength: 0.42
         materialDepth: 1.3
 
@@ -92,18 +102,15 @@ PopupWindow {
                 orientation: Gradient.Horizontal
                 GradientStop {
                     position: 0.0
-                    color: Qt.rgba(artworkPalette.primary.r,
-                        artworkPalette.primary.g, artworkPalette.primary.b, 0.38)
+                    color: popup.artworkTint(artworkPalette.primary, 0.38)
                 }
                 GradientStop {
                     position: 0.52
-                    color: Qt.rgba(artworkPalette.secondary.r,
-                        artworkPalette.secondary.g, artworkPalette.secondary.b, 0.28)
+                    color: popup.artworkTint(artworkPalette.secondary, 0.28)
                 }
                 GradientStop {
                     position: 1.0
-                    color: Qt.rgba(artworkPalette.primary.r,
-                        artworkPalette.primary.g, artworkPalette.primary.b, 0.16)
+                    color: popup.artworkTint(artworkPalette.primary, 0.16)
                 }
             }
         }
@@ -141,6 +148,7 @@ PopupWindow {
                     layer.effect: MultiEffect {
                         maskEnabled: true
                         maskSource: coverMask
+                        saturation: popup.monochrome ? -1.0 : 0.0
                     }
                 }
                 Rectangle {
