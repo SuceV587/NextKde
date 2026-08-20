@@ -13,6 +13,14 @@ import qs.desktop.modules.common
 QtObject {
     id: svc
 
+    // Fired when a non-fullscreen window becomes urgent (§5.8) so the dock
+    // controller can do its 2200ms temporary reveal. Detected in the window
+    // rebuild by comparing the urgent set against the previous rebuild.
+    signal urgentWindowAppeared()
+
+    property variant _lastUrgentIds: []
+    property bool _urgentInitDone: false
+
     property var pinnedItems: []
     property int pinnedCount: 0
     // Presentation-only task list. WindowService keeps every live window;
@@ -113,8 +121,14 @@ QtObject {
     function _refreshWindowItems() {
         const records = WindowService.records || [];
         const nextItems = [];
+        // §5.8: only non-fullscreen urgents trigger the temporary dock reveal;
+        // a fullscreen video/game must not have the full dock forced over it.
+        const nowUrgent = [];
+
         for (let i = 0; i < records.length; i++) {
             const record = records[i];
+            if (!!record.isUrgent && !record.toplevel.fullscreen)
+                nowUrgent.push(record.windowId);
             nextItems.push({
                 windowId: record.windowId,
                 desktopId: record.identity.desktopId,
@@ -130,6 +144,20 @@ QtObject {
                 isWindowItem: true,
             });
         }
+
+        // Detect false->true urgent transitions since the last rebuild. The
+        // first rebuild seeds the baseline so a window that was already urgent
+        // before the dock appeared does not cause a spurious reveal.
+        if (svc._urgentInitDone) {
+            const wasUrgent = svc._lastUrgentIds;
+            for (let i = 0; i < nowUrgent.length; i++) {
+                if (wasUrgent.indexOf(nowUrgent[i]) === -1)
+                    svc.urgentWindowAppeared();
+            }
+        }
+        svc._lastUrgentIds = nowUrgent;
+        svc._urgentInitDone = true;
+
         nextItems.sort((left, right) => left.pid - right.pid
                        || left.windowId.localeCompare(right.windowId));
         svc._setWindowItems(nextItems);

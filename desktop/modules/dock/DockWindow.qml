@@ -148,6 +148,15 @@ PanelWindow {
         onClicked: hide.handleClicked()
     }
 
+    // §5.8: a window becoming urgent (non-fullscreen) temporarily reveals the
+    // dock for 2200ms; the temp-clear handler then re-evaluates per show mode.
+    Connections {
+        target: DockModelService
+        function onUrgentWindowAppeared() {
+            hide.requestReveal("urgent", DockAnimation.smartHideUrgentRevealMs)
+        }
+    }
+
     // Shape the input region to the moving dock glass + the reveal handle hit
     // target (union). Everything else in this transparent surface passes clicks
     // through. In "always" mode the handle target collapses to zero.

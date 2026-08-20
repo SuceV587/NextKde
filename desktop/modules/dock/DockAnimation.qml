@@ -68,6 +68,7 @@ QtObject {
     readonly property var   smartHideRevealEasing:    Easing.OutCubic
     readonly property int   smartHideBootWaitLimit:    450   // max wait for config+KWin snapshot
     readonly property int   smartHideMinRemaining:      70   // floor for reversible animation
+    readonly property int   smartHideUrgentRevealMs:   2200  // §5.8 temporary reveal for an urgent window
     // A transparent 1px layer-shell margins reparenting of the dock content to
     // the true screen edge: the white reveal handle sits this far (dp) from the
     // physical edge whereas the dock glass keeps edgeMargin-1 breathing room.
