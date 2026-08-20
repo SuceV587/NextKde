@@ -93,6 +93,17 @@ Item {
     readonly property real draggedPointerX: draggedPinnedLoader
         ? draggedPinnedLoader.dragPointerX : -1
 
+    // ── Auto-hide inhibitor state (consumed by DockAutoHideController) ──
+    // A passive pointer probe so the controller can keep the dock shown while
+    // the cursor is over the glass. passive because DockIcon, music controls,
+    // drag gestures and MouseAreas still win their own events.
+    readonly property bool pointerInside: _dockPointerHover.hovered
+    HoverHandler {
+        id: _dockPointerHover
+        enabled: true
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+    }
+
     function publishLauncherPresentation() {
         AppLauncherService.setDockPresentation(
             computedDockWidth,

@@ -47,6 +47,13 @@ QtObject {
     property string iconTintColor:   "#a855f7"
     readonly property real iconSaturation: iconMode === "color" ? 1.0 : 0.0
     readonly property real iconTintEnabled: iconMode === "tint" ? 1.0 : 0.0
+    // Dock show mode. Single mutually-exclusive enum: "always" | "smart" |
+    // "persistent". Never store two booleans — that allows impossible states.
+    property string visibilityMode: "always"
+    // Becomes true once config load finishes (success, missing file, or parse
+    // error). The auto-hide controller waits on this before its first reveal
+    // decision so a saved smart/persistent dock never flashes fully shown.
+    property bool ready: false
 
     function isValidIconMode(value) {
         return value === "color" || value === "grayscale" || value === "tint"
@@ -169,6 +176,19 @@ QtObject {
         if (!isValidRgbColor(color) || iconTintColor === color)
             return false
         iconTintColor = color
+        scheduleSave()
+        return true
+    }
+
+    function isValidVisibilityMode(value) {
+        return value === "always" || value === "smart" || value === "persistent"
+    }
+
+    function updateVisibilityMode(rawMode) {
+        const nextMode = String(rawMode)
+        if (!isValidVisibilityMode(nextMode) || visibilityMode === nextMode)
+            return false
+        visibilityMode = nextMode
         scheduleSave()
         return true
     }
@@ -299,7 +319,7 @@ QtObject {
     // ═══════════════════════════════════════════════════════════
     function _doSave() {
         const obj = {
-            version: 2,
+            version: 3,
             baseHeight:    svc.baseHeight,
             theme:         svc.theme,
             position:      svc.position,
@@ -313,6 +333,8 @@ QtObject {
             iconMode:        svc.iconMode,
             iconOpacity:     svc.iconOpacity,
             iconTintColor:    svc.iconTintColor,
+            // Show mode (v3)
+            visibilityMode: svc.visibilityMode,
         }
         const json = JSON.stringify(obj, null, 2)
         console.log("[DockConfig] save requested path=" + svc.configPath
@@ -362,12 +384,15 @@ QtObject {
                 try {
                     const obj = JSON.parse(output)
                     _apply(obj)
+                    svc.ready = true
                     console.log("[DockConfig] load complete pinned="
                                 + JSON.stringify(svc.pinnedAppIds))
                 } catch (e) {
+                    svc.ready = true
                     console.warn("[DockConfig] parse error, using defaults: " + e)
                 }
             } else if (code !== 0) {
+                svc.ready = true
                 console.log("[DockConfig] no saved config yet code=" + code
                             + " stderr=" + stderr)
             }
@@ -463,6 +488,33 @@ QtObject {
 
         if (obj.iconMode === undefined || obj.iconDuotoneShadowColor !== undefined)
             scheduleSave()
+        applyVisibilityMode(obj)
+    }
+
+    // v3: read / migrate the single show-mode enum. Legacy experimental fields
+    // (smartHideEnabled, autoHide) migrate onto the one enum so the old wrong
+    // "both enabled" state cannot survive.
+    function applyVisibilityMode(obj) {
+        if (obj.visibilityMode !== undefined) {
+            if (isValidVisibilityMode(obj.visibilityMode)) {
+                svc.visibilityMode = obj.visibilityMode
+            } else {
+                console.warn("[DockConfig] invalid visibilityMode ignored -> always")
+                scheduleSave()
+            }
+            return
+        }
+        const hadSmart = obj.smartHideEnabled === true
+        const hadAuto = obj.autoHide === true
+        if (hadSmart || hadAuto) {
+            if (hadSmart && hadAuto)
+                console.log("[DockConfig] migrated smartHideEnabled+autoHide -> smart")
+            else
+                console.log("[DockConfig] migrated legacy show-mode -> "
+                            + (hadSmart ? "smart" : "persistent"))
+            svc.visibilityMode = hadSmart ? "smart" : "persistent"
+            scheduleSave()
+        }
     }
 
     // ── Init: load on startup ──
