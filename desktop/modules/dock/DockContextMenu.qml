@@ -13,17 +13,8 @@ Platform.Menu {
 
     signal action(string name)
 
-    function setDockPopupVisible(shouldOpen, globalPos) {
-        // Position explicitly at the owning dock item's visible screen spot.
-        // On Wayland a bare Platform.Menu.open() can fall back to the window
-        // position of a retracted dock, popping the menu below the revealed
-        // glass instead of at the cursor.
-        if (shouldOpen && globalPos && (globalPos.x !== undefined))
-            menu.popup(globalPos.x, globalPos.y)
-        else if (shouldOpen)
-            menu.open()
-        else
-            menu.close()
+    function setDockPopupVisible(shouldOpen) {
+        menu.open()   // native menu; opens at the platform cursor position
     }
 
     function dismissDockPopupImmediately() {

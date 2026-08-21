@@ -475,14 +475,8 @@ Item {
                     else
                         DockModelService.activeContextMenu = null
                 }
-                // Platform menus are opened imperatively; the shared coordinator
-                // still ensures one Dock menu or preview surface owns the
-                // interaction at once. Open at the icon's current visible global
-                // point so the menu lands on the revealed glass, not the
-                // retracted offset the window edges toward while hidden.
                 DockModelService.activeContextMenu = contextMenu
-                DockModelService.openDockPopup(contextMenu,
-                    icon.mapToGlobal(icon.width / 2, icon.height / 2))
+                DockModelService.openDockPopup(contextMenu)
             } else if (!icon._heldForEdit)
                 icon.activate()
         }
@@ -499,9 +493,11 @@ Item {
         }
     }
 
-    DockContextMenu {
+    DockContextPopup {
         id: contextMenu
         property bool hasBeenVisible: false
+        anchorItem: icon
+        position: ConfigService.position
         isWindow: icon.isWindowItem
         // Window tasks need the persisted top-level pin state too.
         isPinned: icon.isPinnedItem || DockModelService.isAppPinned(icon.appId)
