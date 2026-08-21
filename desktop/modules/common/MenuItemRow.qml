@@ -47,9 +47,11 @@ Item {
     }
 
     Row {
-        anchors.fill: parent
+        anchors.left: parent.left
         anchors.leftMargin: 12
+        anchors.right: parent.right
         anchors.rightMargin: 10
+        anchors.verticalCenter: parent.verticalCenter
         spacing: 9
         visible: !row.separator
 
@@ -60,15 +62,16 @@ Item {
             font.pixelSize: 13
             color: row.foregroundColor
             opacity: 0.85
+            anchors.verticalCenter: parent.verticalCenter
         }
         Text {
             text: row.label
-            width: parent.width - 30   // reserve right room for check/chevron
             elide: Text.ElideRight
             font.pixelSize: 13
             font.weight: Font.DemiBold
             color: row.foregroundColor
             opacity: row.itemEnabled ? 1.0 : 0.6
+            anchors.verticalCenter: parent.verticalCenter
         }
     }
 
