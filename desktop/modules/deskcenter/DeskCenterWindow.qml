@@ -2235,27 +2235,33 @@ PanelWindow {
             return handler ? "使用 " + applicationName(handler) + " 打开" : "打开"
         }
 
-        function showMenu(entry) {
-            // Platform menus are positioned by the window system at the
-            // current pointer position and own their outside-click behavior.
-            // Do not make displaying the context menu depend on an external
-            // gio query.  Apart from feeling laggy, a failed/slow query used
-            // to make a right click appear to do nothing at all.
-            desktopContextMenu.open()
+        function showMenu(entry, windowPoint) {
+            // Build and show immediately - never block the right click on the
+            // async gio open-with query (a slow/failed query must not make a
+            // right click appear to do nothing).
+            desktopFileGrid.setContextMenuItems()
+            const pt = windowPoint && windowPoint.x !== undefined
+                ? windowPoint : Qt.point(desktopFileGrid.width - 12, 12)
+            desktopContextAnchor.x = pt.x
+            desktopContextAnchor.y = pt.y
+            desktopContextMenu.show()
             if (canChooseOpenWith(entry))
                 root.desktopFiles.queryOpenWith(entry)
+            // Refresh a few times once the (async) open-with list settles.
+            contextMenuRebuild._tries = 0
+            contextMenuRebuild.restart()
         }
 
         function clearDesktopSelection() {
             selectedPaths = []
             freeSlotDesktop.selectedIds = []
-            desktopContextMenu.close()
+            desktopContextMenu.hide()
             contextEntry = null
         }
 
         function triggerContextAction(kind) {
             const entry = contextEntry
-            desktopContextMenu.close()
+            desktopContextMenu.hide()
             contextEntry = null
             if (kind === "folder")
                 createNewFolder()
@@ -2289,6 +2295,143 @@ PanelWindow {
                 resetLayout()
             else if (kind === "refresh")
                 root.desktopFiles.reload()
+        }
+
+        // ── Liquid context-menu data + builder ──
+
+        function _ctxSub(label, children) { return { label: label, children: children } }
+        function _ctxAct(label, cmd, icon) { return { icon: icon || "", label: label, cmd: cmd, enabled: true } }
+        function _ctxCheck(label, cmd, value, checked) {
+            return { label: label, cmd: cmd, checkable: true, checked: checked, value: value, enabled: true }
+        }
+
+        function buildContextItems() {
+        const FOLDER_COLORS = [
+            ["默认", ""], ["🔴 红", "#FF6B6B"], ["🟠 橙", "#FFA94D"], ["🟡 黄", "#FFD43B"],
+            ["🟢 绿", "#69DB7C"], ["🔵 蓝", "#4DABF7"], ["🟣 紫", "#9775FA"],
+            ["🩷 粉", "#F783AC"], ["⚫ 灰", "#868E96"]
+            ]
+            const EMOJI_CATS = [
+            ["常用", [["📁 文件夹","📁"],["📂 打开的文件夹","📂"],["🗂️ 分类文件夹","🗂️"],["📦 包裹","📦"],["⭐ 星标","⭐"],["🔥 热门","🔥"],["💡 灵感","💡"],["❤️ 收藏","❤️"],["✨ 精选","✨"],["📌 置顶","📌"],["🎯 目标","🎯"],["💎 珍藏","💎"]]],
+            ["学习", [["📚 书籍","📚"],["📖 阅读","📖"],["✏️ 笔记","✏️"],["📝 备忘录","📝"],["🎓 学业","🎓"],["🔬 研究","🔬"],["🧪 实验","🧪"],["💻 编程","💻"],["🖥️ 工作站","🖥️"],["📐 设计","📐"],["🎨 创意","🎨"],["🎵 音乐","🎵"]]],
+            ["生活", [["🏠 主页","🏠"],["🏡 居家","🏡"],["🛒 购物","🛒"],["🍳 烹饪","🍳"],["☕ 咖啡","☕"],["🌿 植物","🌿"],["🎮 游戏","🎮"],["🎬 影视","🎬"],["📷 照片","📷"],["✈️ 旅行","✈️"],["🚗 出行","🚗"],["💰 财务","💰"]]],
+            ["符号", [["🔵 蓝点","🔵"],["🟢 绿点","🟢"],["🟡 黄点","🟡"],["🟠 橙点","🟠"],["🔴 红点","🔴"],["🟣 紫点","🟣"],["⚫ 黑点","⚫"],["⚪ 白点","⚪"],["⬛ 方块","⬛"],["🔶 菱形","🔶"],["⚡ 闪电","⚡"],["🌈 彩虹","🌈"]]]
+            ]
+            const e = contextEntry
+            const path = e?.path ?? ""
+            const custom = folderCustomFor(path)
+            const curColor = custom?.color ?? ""
+            const curEmoji = custom?.emoji ?? ""
+            const root = []
+
+            if (e) {
+                root.push(_ctxAct(defaultOpenText(), "openEntry", ""))
+                if (selectedEntries().length === 1)
+                    root.push(_ctxAct("重命名", "rename", ""))
+
+                // 自定义外观 → 文件夹颜色 + emoji 分类 + 移除
+                const colorKids = FOLDER_COLORS.map(([label, val]) => _ctxCheck(label, "setColor", val, curColor === val))
+                const appearKids = [ _ctxSub("文件夹颜色", colorKids) ]
+                if (canChooseOpenWith(e)) {
+                    for (const [catTitle, list] of EMOJI_CATS) {
+                        const rows = [_ctxCheck("无", "setEmoji", "", curEmoji === "")]
+                            .concat(list.map(([label, em]) => _ctxCheck(label, "setEmoji", em, curEmoji === em)))
+                        appearKids.push(_ctxSub(catTitle, rows))
+                    }
+                }
+                appearKids.push(_ctxAct("移除自定义", "removeCustom", ""))
+                root.push(_ctxSub("自定义外观", appearKids))
+
+                // 打开方式（动态）
+                if (canChooseOpenWith(e)) {
+                    const owKids = []
+                    for (let i = 0; i < 6; i++) {
+                        const id = openWithIdAt(i)
+                        if (id)
+                            owKids.push({ icon: "", label: applicationName(id), cmd: "openWith", value: id, enabled: true })
+                    }
+                    owKids.push(_ctxAct("其他应用程序…", "openWithMore", ""))
+                    root.push(_ctxSub("打开方式", owKids))
+                }
+
+                root.push(_ctxAct("复制", "copy", ""))
+                root.push(_ctxAct("剪切", "cut", ""))
+                root.push(_ctxAct("移到废纸篓", "trash", ""))
+                root.push(_ctxAct("在文件管理器中打开", "open", ""))
+            } else {
+                // desktop background
+                root.push(_ctxAct("新建文件", "newFile", ""))
+                root.push(_ctxAct("新建文件夹", "newFolder", ""))
+                root.push(_ctxAct("粘贴", "paste", ""))
+                const arrange = [
+                    _ctxAct("按名称", "arrangeByName"), _ctxAct("按类型", "arrangeByType"),
+                    _ctxAct("按修改时间（最新）", "arrangeModifiedNew"),
+                    _ctxAct("按修改时间（最早）", "arrangeModifiedOld")
+                ]
+                root.push(_ctxSub("整理方式", arrange))
+                root.push(_ctxAct("重置图标排序", "resetLayout", ""))
+                root.push(_ctxCheck("显示文件扩展名", "toggleExtensions", null, desktopLayout.showExtensions))
+                const sizeKids = [[40, "小"], [56, "中"], [72, "大"]]
+                    .map(([px, l]) => _ctxCheck(l, "setIconSize", px, iconSize === px))
+                root.push(_ctxSub("图标大小", sizeKids))
+                root.push(_ctxAct("刷新", "refresh", ""))
+            }
+            return root
+        }
+
+        function setContextMenuItems() {
+            desktopContextMenu.setItems(buildContextItems())
+        }
+
+        function runContextCmd(cmd, item) {
+            const e = contextEntry
+            const path = e?.path ?? ""
+            const v = item?.value
+            switch (cmd) {
+            case "openEntry": triggerContextAction("openEntry"); break
+            case "rename": triggerContextAction("rename"); break
+            case "setColor": setFolderColor(path, v); break
+            case "setEmoji": setFolderEmoji(path, v); break
+            case "removeCustom": removeFolderCustom(path); break
+            case "openWith": root.desktopFiles.launchWith(e, v); break
+            case "openWithMore": root.desktopFiles.showKdeOpenWith(e); break
+            case "copy": triggerContextAction("copy"); break
+            case "cut": triggerContextAction("cut"); break
+            case "trash": triggerContextAction("trash"); break
+            case "open": triggerContextAction("open"); break
+            case "newFile": triggerContextAction("file"); break
+            case "newFolder": triggerContextAction("folder"); break
+            case "paste": triggerContextAction("paste"); break
+            case "arrangeByName": arrangeByName(); break
+            case "arrangeByType": arrangeByType(); break
+            case "arrangeModifiedNew": arrangeByModified(true); break
+            case "arrangeModifiedOld": arrangeByModified(false); break
+            case "resetLayout": triggerContextAction("resetLayout"); break
+            case "toggleExtensions":
+                desktopLayout.showExtensions = !desktopLayout.showExtensions
+                desktopLayout.sync()
+                break
+            case "setIconSize": setIconSize(v); break
+            case "refresh": triggerContextAction("refresh"); break
+            }
+        }
+
+        Timer {
+            id: contextMenuRebuild
+            interval: 320
+            repeat: true
+            property int _tries: 0
+            onTriggered: {
+                // Poll only a few times right after opening so the async
+                // open-with list settles, then stop - a continous rebuild would
+                // reset submenu navigation while the user is browsing.
+                if (desktopContextMenu.visible && contextMenuRebuild._tries < 3) {
+                    contextMenuRebuild._tries++
+                    desktopFileGrid.setContextMenuItems()
+                } else {
+                    contextMenuRebuild.stop()
+                }
+            }
         }
 
         function indexAt(pointX, pointY) {
@@ -2399,10 +2542,11 @@ PanelWindow {
                     // interfere with the platform menu's dismissal path.
                     desktopFileGrid.setSelectedPaths([])
                     desktopFileGrid.contextEntry = null
-                    desktopFileGrid.showMenu(null)
+                    desktopFileGrid.showMenu(null,
+                        desktopBackgroundPointer.mapToItem(root, mouse.x, mouse.y))
                     return
                 }
-                desktopContextMenu.close()
+                desktopContextMenu.hide()
                 desktopFileGrid.contextEntry = null
                 const point = desktopFileGrid.gridPoint(desktopBackgroundPointer, mouse)
                 desktopFileGrid.selectionStartX = point.x
@@ -2839,7 +2983,8 @@ PanelWindow {
                             if (!desktopFileGrid.isSelected(modelData.path))
                                 desktopFileGrid.selectOnly(modelData.path)
                             desktopFileGrid.contextEntry = modelData
-                            desktopFileGrid.showMenu(modelData)
+                            desktopFileGrid.showMenu(modelData,
+                                fileDelegate.mapToItem(root, mouse.x, mouse.y))
                         } else {
                             fileDelegate.dragEnabled = !(mouse.modifiers & Qt.ControlModifier)
                             if (mouse.modifiers & Qt.ControlModifier)
@@ -3054,150 +3199,20 @@ PanelWindow {
             }
         }
 
-        Platform.Menu {
+        ContextMenu {
             id: desktopContextMenu
-            Platform.MenuItem { icon.name: "document-open"; text: desktopFileGrid.defaultOpenText(); visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("openEntry") }
-            Platform.MenuItem { icon.name: "edit-rename"; text: "重命名"; visible: desktopFileGrid.selectedEntries().length === 1; onTriggered: desktopFileGrid.triggerContextAction("rename") }
-            Platform.Menu {
-                icon.name: "preferences-desktop-color"
-                title: "自定义外观"
-                visible: desktopFileGrid.contextEntry !== null
-                // Color submenu: static items, check-marked when active.
-                Platform.Menu {
-                    icon.name: "color-fill"
-                    title: desktopFileGrid.contextEntry
-                            && desktopFileGrid.contextEntry.kind === "folder"
-                        ? "文件夹颜色" : "标题颜色"
-                    Platform.MenuItem { text: "默认"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === ""; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "") }
-                    Platform.MenuItem { text: "🔴 红"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#FF6B6B"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#FF6B6B") }
-                    Platform.MenuItem { text: "🟠 橙"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#FFA94D"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#FFA94D") }
-                    Platform.MenuItem { text: "🟡 黄"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#FFD43B"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#FFD43B") }
-                    Platform.MenuItem { text: "🟢 绿"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#69DB7C"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#69DB7C") }
-                    Platform.MenuItem { text: "🔵 蓝"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#4DABF7"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#4DABF7") }
-                    Platform.MenuItem { text: "🟣 紫"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#9775FA"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#9775FA") }
-                    Platform.MenuItem { text: "🩷 粉"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#F783AC"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#F783AC") }
-                    Platform.MenuItem { text: "⚫ 灰"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.color ?? "") === "#868E96"; onTriggered: desktopFileGrid.setFolderColor(desktopFileGrid.contextEntry.path, "#868E96") }
-                }
-                // Emoji submenus: one per category, static items.
-                Platform.Menu {
-                    title: "常用"
-                    Platform.MenuItem { text: "无"; checkable: true; checked: !(desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji); onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "") }
-                    Platform.MenuItem { text: "📁  文件夹"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📁"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📁") }
-                    Platform.MenuItem { text: "📂  打开的文件夹"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📂"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📂") }
-                    Platform.MenuItem { text: "🗂️  分类文件夹"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🗂️"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🗂️") }
-                    Platform.MenuItem { text: "📦  包裹"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📦"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📦") }
-                    Platform.MenuItem { text: "⭐  星标"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "⭐"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "⭐") }
-                    Platform.MenuItem { text: "🔥  热门"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🔥"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🔥") }
-                    Platform.MenuItem { text: "💡  灵感"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "💡"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "💡") }
-                    Platform.MenuItem { text: "❤️  收藏"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "❤️"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "❤️") }
-                    Platform.MenuItem { text: "✨  精选"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "✨"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "✨") }
-                    Platform.MenuItem { text: "📌  置顶"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📌"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📌") }
-                    Platform.MenuItem { text: "🎯  目标"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🎯"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🎯") }
-                    Platform.MenuItem { text: "💎  珍藏"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "💎"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "💎") }
-                }
-                Platform.Menu {
-                    title: "学习"
-                    Platform.MenuItem { text: "无"; checkable: true; checked: !(desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji); onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "") }
-                    Platform.MenuItem { text: "📚  书籍"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📚"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📚") }
-                    Platform.MenuItem { text: "📖  阅读"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📖"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📖") }
-                    Platform.MenuItem { text: "✏️  笔记"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "✏️"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "✏️") }
-                    Platform.MenuItem { text: "📝  备忘录"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📝"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📝") }
-                    Platform.MenuItem { text: "🎓  学业"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🎓"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🎓") }
-                    Platform.MenuItem { text: "🔬  研究"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🔬"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🔬") }
-                    Platform.MenuItem { text: "🧪  实验"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🧪"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🧪") }
-                    Platform.MenuItem { text: "💻  编程"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "💻"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "💻") }
-                    Platform.MenuItem { text: "🖥️  工作站"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🖥️"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🖥️") }
-                    Platform.MenuItem { text: "📐  设计"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📐"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📐") }
-                    Platform.MenuItem { text: "🎨  创意"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🎨"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🎨") }
-                    Platform.MenuItem { text: "🎵  音乐"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🎵"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🎵") }
-                }
-                Platform.Menu {
-                    title: "生活"
-                    Platform.MenuItem { text: "无"; checkable: true; checked: !(desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji); onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "") }
-                    Platform.MenuItem { text: "🏠  主页"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🏠"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🏠") }
-                    Platform.MenuItem { text: "🏡  居家"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🏡"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🏡") }
-                    Platform.MenuItem { text: "🛒  购物"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🛒"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🛒") }
-                    Platform.MenuItem { text: "🍳  烹饪"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🍳"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🍳") }
-                    Platform.MenuItem { text: "☕  咖啡"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "☕"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "☕") }
-                    Platform.MenuItem { text: "🌿  植物"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🌿"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🌿") }
-                    Platform.MenuItem { text: "🎮  游戏"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🎮"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🎮") }
-                    Platform.MenuItem { text: "🎬  影视"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🎬"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🎬") }
-                    Platform.MenuItem { text: "📷  照片"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "📷"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "📷") }
-                    Platform.MenuItem { text: "✈️  旅行"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "✈️"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "✈️") }
-                    Platform.MenuItem { text: "🚗  出行"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🚗"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🚗") }
-                    Platform.MenuItem { text: "💰  财务"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "💰"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "💰") }
-                }
-                Platform.Menu {
-                    title: "符号"
-                    Platform.MenuItem { text: "无"; checkable: true; checked: !(desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji); onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "") }
-                    Platform.MenuItem { text: "🔵  蓝点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🔵"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🔵") }
-                    Platform.MenuItem { text: "🟢  绿点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🟢"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🟢") }
-                    Platform.MenuItem { text: "🟡  黄点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🟡"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🟡") }
-                    Platform.MenuItem { text: "🟠  橙点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🟠"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🟠") }
-                    Platform.MenuItem { text: "🔴  红点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🔴"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🔴") }
-                    Platform.MenuItem { text: "🟣  紫点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🟣"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🟣") }
-                    Platform.MenuItem { text: "⚫  黑点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "⚫"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "⚫") }
-                    Platform.MenuItem { text: "⚪  白点"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "⚪"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "⚪") }
-                    Platform.MenuItem { text: "⬛  方块"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "⬛"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "⬛") }
-                    Platform.MenuItem { text: "🔶  菱形"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🔶"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🔶") }
-                    Platform.MenuItem { text: "⚡  闪电"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "⚡"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "⚡") }
-                    Platform.MenuItem { text: "🌈  彩虹"; checkable: true; checked: (desktopFileGrid.folderCustomFor(desktopFileGrid.contextEntry?.path ?? "")?.emoji ?? "") === "🌈"; onTriggered: desktopFileGrid.setFolderEmoji(desktopFileGrid.contextEntry.path, "🌈") }
-                }
-                Platform.MenuItem { icon.name: "edit-clear"; text: "移除自定义"; onTriggered: desktopFileGrid.removeFolderCustom(desktopFileGrid.contextEntry.path) }
+            anchorItem: desktopContextAnchor
+            position: "bottom"
+            baseColor: ThemeService.backgroundColor
+            foregroundColor: ThemeService.foregroundColor
+            onAction: function(cmd, item) {
+                desktopFileGrid.runContextCmd(cmd, item)
             }
-            Platform.Menu {
-                icon.name: "application-x-executable"
-                title: "打开方式"
-                visible: desktopFileGrid.contextEntry !== null
-                    && desktopFileGrid.canChooseOpenWith(desktopFileGrid.contextEntry)
-                Platform.MenuItem { icon.name: "application-x-executable"; text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(0)); visible: desktopFileGrid.openWithIdAt(0) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(0)) }
-                Platform.MenuItem { icon.name: "application-x-executable"; text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(1)); visible: desktopFileGrid.openWithIdAt(1) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(1)) }
-                Platform.MenuItem { icon.name: "application-x-executable"; text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(2)); visible: desktopFileGrid.openWithIdAt(2) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(2)) }
-                Platform.MenuItem { icon.name: "application-x-executable"; text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(3)); visible: desktopFileGrid.openWithIdAt(3) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(3)) }
-                Platform.MenuItem { icon.name: "application-x-executable"; text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(4)); visible: desktopFileGrid.openWithIdAt(4) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(4)) }
-                Platform.MenuItem { icon.name: "application-x-executable"; text: desktopFileGrid.applicationName(desktopFileGrid.openWithIdAt(5)); visible: desktopFileGrid.openWithIdAt(5) !== ""; onTriggered: root.desktopFiles.launchWith(desktopFileGrid.contextEntry, desktopFileGrid.openWithIdAt(5)) }
-                // Keep this entry available even when gio has not returned
-                // association results yet (or when the MIME type has none).
-                Platform.MenuItem { icon.name: "application-x-executable"; text: "其他应用程序…"; onTriggered: root.desktopFiles.showKdeOpenWith(desktopFileGrid.contextEntry) }
-            }
-            Platform.MenuItem { icon.name: "edit-copy"; text: "复制"; visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("copy") }
-            Platform.MenuItem { icon.name: "edit-cut"; text: "剪切"; visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("cut") }
-            Platform.MenuItem { icon.name: "user-trash"; text: "移到废纸篓"; visible: desktopFileGrid.contextEntry !== null; onTriggered: desktopFileGrid.triggerContextAction("trash") }
-            Platform.MenuItem { icon.name: "folder-open"; text: "在文件管理器中打开"; onTriggered: desktopFileGrid.triggerContextAction("open") }
-            Platform.MenuItem { icon.name: "document-new"; text: "新建文件"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("file") }
-            Platform.MenuItem { icon.name: "folder-new"; text: "新建文件夹"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("folder") }
-            Platform.MenuItem { icon.name: "edit-paste"; text: "粘贴"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("paste") }
-            Platform.Menu {
-                icon.name: "view-sort-ascending"
-                title: "整理方式"
-                visible: desktopFileGrid.contextEntry === null
-                Platform.MenuItem { text: "按名称"; onTriggered: desktopFileGrid.arrangeByName() }
-                Platform.MenuItem { text: "按类型"; onTriggered: desktopFileGrid.arrangeByType() }
-                Platform.MenuItem { text: "按修改时间（最新）"; onTriggered: desktopFileGrid.arrangeByModified(true) }
-                Platform.MenuItem { text: "按修改时间（最早）"; onTriggered: desktopFileGrid.arrangeByModified(false) }
-            }
-            Platform.MenuItem { icon.name: "view-refresh"; text: "重置图标排序"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("resetLayout") }
-            Platform.MenuItem {
-                icon.name: "view-file-columns"
-                text: "显示文件扩展名"
-                visible: desktopFileGrid.contextEntry === null
-                checkable: true
-                checked: desktopLayout.showExtensions
-                onTriggered: {
-                    desktopLayout.showExtensions = !desktopLayout.showExtensions
-                    desktopLayout.sync()
-                }
-            }
-            Platform.Menu {
-                icon.name: "view-list-icons"
-                title: "图标大小"
-                visible: desktopFileGrid.contextEntry === null
-                Platform.MenuItem { text: "小"; checkable: true; checked: desktopFileGrid.iconSize === 40; onTriggered: desktopFileGrid.setIconSize(40) }
-                Platform.MenuItem { text: "中"; checkable: true; checked: desktopFileGrid.iconSize === 56; onTriggered: desktopFileGrid.setIconSize(56) }
-                Platform.MenuItem { text: "大"; checkable: true; checked: desktopFileGrid.iconSize === 72; onTriggered: desktopFileGrid.setIconSize(72) }
-            }
-            Platform.MenuItem { icon.name: "view-refresh"; text: "刷新"; visible: desktopFileGrid.contextEntry === null; onTriggered: desktopFileGrid.triggerContextAction("refresh") }
         }
+
+        // Invisible 1x1 anchor that follows the right-click point, so the menu
+        // opens beside the cursor anywhere on the desktop.
+        Item { id: desktopContextAnchor; visible: false; width: 1; height: 1 }
 
         Rectangle {
             id: desktopDialogScrim
