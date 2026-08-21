@@ -146,26 +146,18 @@ PopupWindow {
                 model: root._view
                 delegate: MenuItemRow {
                     required property var modelData
-                    // Normal (non-readonly) property so we can recalculate
-                    // on every modelData change.
-                    property bool _isSub: false
-                    onModelDataChanged: {
-                        const c = modelData.children
-                        // Calculate _isSub on the delegate itself
-                        _isSub = Array.isArray(c) ? c.length > 0
-                            : !!(c && c.length > 0)
-                    }
-                    Component.onCompleted: {
-                        const c = modelData.children
-                        _isSub = Array.isArray(c) ? c.length > 0
-                            : !!(c && c.length > 0)
-                    }
+                    // Inline submenu detection: every binding re-evaluation
+                    // (including Repeater rebuild on submenu navigation)
+                    // computes fresh. Avoids the QML gotcha where `readonly
+                    // property` computes only once at delegate instantiation.
                     width: parent.width
                     foregroundColor: root.foregroundColor
                     icon: modelData.icon || ""
                     label: modelData.label || ""
                     separator: !!modelData.separator
-                    hasSubmenu: _isSub
+                    hasSubmenu: Array.isArray(modelData.children)
+                        ? modelData.children.length > 0
+                        : !!modelData.children
                     checkable: !!modelData.checkable
                     checked: !!modelData.checked
                     itemEnabled: modelData.enabled !== false
@@ -174,7 +166,7 @@ PopupWindow {
                         // Array.isArray fails even though it is array-like:
                         // detect via length and normalise with slice.call.
                         const c = modelData.children
-                        if (Array.isArray(c) ? c.length > 0 : !!(c && c.length > 0)) {
+                        if (Array.isArray(c) ? c.length > 0 : !!c) {
                             root._push(Array.isArray(c) ? c : Array.prototype.slice.call(c))
                         } else {
                             root.action(modelData.cmd, modelData)
