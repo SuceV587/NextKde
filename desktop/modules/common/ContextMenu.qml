@@ -69,6 +69,12 @@ PopupWindow {
     function setDockPopupVisible(shouldOpen) { root.visible = shouldOpen }
     function dismissDockPopupImmediately() { root.visible = false }
 
+    // Opens above the anchor point by default (bottom-dock icon → menu above);
+    // placeBelow flips it to open below (desktop right-click → menu under the
+    // cursor). Adjustment Flip|Slide then auto-turns it inside-out at the screen
+    // edges like a native menu (below→above or right→left when out of room).
+    property bool placeBelow: false
+
     implicitWidth: 240
     implicitHeight: list.implicitHeight + 12 + (root._path.length > 0 ? 40 : 0)
     color: "transparent"
@@ -77,7 +83,10 @@ PopupWindow {
     anchor {
         item: root.anchorItem
         edges: root.position === "bottom" ? Edges.Top : Edges.Right
-        gravity: root.position === "bottom" ? Edges.Top : Edges.Right
+        gravity: root.position === "bottom"
+            ? (root.placeBelow ? Edges.Bottom : Edges.Top)
+            : Edges.Right
+        adjustment: PopupAdjustment.Flip | PopupAdjustment.Slide
         margins.top: root.position === "bottom" ? -8 : 0
         margins.right: root.position === "right" ? -8 : 8
         margins.left: root.position === "left" ? 8 : 0
