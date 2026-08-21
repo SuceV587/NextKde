@@ -14,6 +14,7 @@ SysTray 1.0 SysTray.qml
 UsageRing 1.0 UsageRing.qml
 UsageSparkline 1.0 UsageSparkline.qml
 SettingsButton 1.0 SettingsButton.qml
+TrayNotificationBridge 1.0 TrayNotificationBridge.qml
 
 singleton NetworkService 1.0 NetworkService.qml
 singleton ControlCenterService 1.0 ControlCenterService.qml
