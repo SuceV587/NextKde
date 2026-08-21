@@ -39,8 +39,18 @@ PopupWindow {
     // ── Item tree + navigation ──
     property var _root: []
     property var _path: []
-    readonly property var _view: root._path.length > 0
-        ? root._path[root._path.length - 1] : root._root
+    // _view is computed reactively on every _path change via onPathChanged.
+    // Avoids the QML gotcha where `readonly property` computes only once.
+    property var _view: root._root
+    onPathChanged: {
+        root._view = root._path.length > 0
+            ? root._path[root._path.length - 1]
+            : root._root
+    }
+    // Initial value.
+    Component.onCompleted: {
+        root._view = root._root
+    }
 
     function setItems(arr) {
         root._root = arr || []
