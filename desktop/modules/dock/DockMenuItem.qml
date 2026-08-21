@@ -17,7 +17,10 @@ Item {
         id: bg
         anchors.fill: parent
         radius: 10
-        color: hoverMouse.hovered ? Qt.rgba(1, 1, 1, 0.10) : "transparent"
+        color: hoverMouse.hovered
+            ? Qt.rgba(ThemeService.foregroundColor.r, ThemeService.foregroundColor.g,
+                ThemeService.foregroundColor.b, 0.16)
+            : "transparent"
         Behavior on color { ColorAnimation { duration: 90 } }
     }
 
