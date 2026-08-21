@@ -46,16 +46,19 @@ PopupWindow {
         root._root = arr || []
         root._path = []
     }
-    function clear() { root.setItems([]) }
+    // NOTE: arrays are never mutated in place. The Repeater's `model` binding
+    // only re-renders when the bound value (root._view) is *re-assigned*, so
+    // every mutation reassigns a fresh array via concat/slice.
+    function clear() { root._root = [] }
     function addItem(icon, label, cmd, enabled) {
-        root._root.push({ icon: icon || "", label: label, cmd: cmd, enabled: enabled !== false })
+        root._root = root._root.concat([{
+            icon: icon || "", label: label, cmd: cmd, enabled: enabled !== false
+        }])
     }
-    function _push(arr) {
-        root._path.push(arr)
-    }
+    function _push(arr) { root._path = root._path.concat([arr]) }
     function _back() {
         if (root._path.length > 0)
-            root._path.pop()
+            root._path = root._path.slice(0, -1)
     }
     function show() { root.visible = true }
     function hide() { root.visible = false }
