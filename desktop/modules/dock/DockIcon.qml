@@ -496,9 +496,11 @@ Item {
         }
     }
 
-    DockContextMenu {
+    DockContextPopup {
         id: contextMenu
         property bool hasBeenVisible: false
+        anchorItem: icon
+        position: ConfigService.position
         isWindow: icon.isWindowItem
         // Window tasks need the persisted top-level pin state too.
         isPinned: icon.isPinnedItem || DockModelService.isAppPinned(icon.appId)
