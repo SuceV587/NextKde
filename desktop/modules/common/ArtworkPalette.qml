@@ -72,15 +72,20 @@ Item {
 
     function _refreshQuantizerSource() {
         ready = false
-        const remote = source.toString().match(/^https?:\/\//i)
-        if (!source) {
+        const sourceText = source.toString()
+        const remote = sourceText.match(/^https?:\/\//i)
+        if (!sourceText) {
             quantizerSource = ""
             primary = fallbackPrimary
             secondary = fallbackSecondary
             return
         }
         if (!remote) {
-            quantizerSource = source
+            // ColorQuantizer accepts URL sources. Plasma stores local
+            // wallpapers as bare absolute paths, so normalize only paths that
+            // do not already carry a URL scheme (file:, image:, qrc:, ...).
+            const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(sourceText)
+            quantizerSource = hasScheme ? source : "file://" + sourceText
             return
         }
         const requestedSource = source.toString()
