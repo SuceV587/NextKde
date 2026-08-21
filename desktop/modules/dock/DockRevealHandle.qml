@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Effects
+import qs.desktop.modules.common
 
 // ────────────────────────────────────────────────────────────────
 // DockRevealHandle — pure visual + pointer-input Home Indicator.
@@ -30,6 +31,15 @@ Item {
     // whatever is actually behind the bar.
     property color glassColor: "#b8ffffff"
     property color glassBorderColor: "#66ffffff"
+    // Ambient pigment from the owning window's wallpaper palette, so the bar
+    // reads as the same liquid material as the dock's popups/panels rather
+    // than a flat white pill. The handle stays Service-free; the window wires
+    // WallpaperPaletteService into these.
+    property color ambientPrimary: "transparent"
+    property color ambientSecondary: "transparent"
+    property real ambientStrength: 0.0
+    property real materialDepth: 0.5
+    property color barBaseColor: Qt.rgba(1, 1, 1, 0.55)
 
     // ── Events ──
     signal entered()
@@ -122,17 +132,22 @@ Item {
         scale: targetHover.hovered ? 1.08 : 1.0
         Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
-        // Translucent glass, the dock's own adaptive material: over a dark
-        // window underneath it reads light, over a light window it reads dark.
-        // The owning window's backdrop blur (barRegion in DockWindow) frosts
-        // whatever sits behind the bar. Note Wayland blur regions are unions of
-        // rects/ellipses, so a thin bar's corners rasterize softly rather than
-        // perfectly — the same tradeoff as the dock's own thin edges.
-        Rectangle {
+        // The liquid-glass Home Indicator. LiquidGlassSurface gives the same
+        // base + specular + wallpaper-ambient material as the dock's panels
+        // (DockMusicPopup/DockWindowPreview) instead of a flat white pill; the
+        // owning window's backdrop blur (barRegion) still frosts what is behind.
+        LiquidGlassSurface {
             id: pill
             anchors.fill: parent
             radius: Math.min(handle.visualThickness, handle.barLength) / 2
-            color: handle.glassColor
+            baseColor: handle.barBaseColor
+            surfaceOpacity: 1.0
+            ambientPrimary: handle.ambientPrimary
+            ambientSecondary: handle.ambientSecondary
+            ambientStrength: handle.ambientStrength
+            materialDepth: handle.materialDepth
+            ambientTransitionDuration: 600
+            bottomEdgeVisible: true
         }
     }
 }

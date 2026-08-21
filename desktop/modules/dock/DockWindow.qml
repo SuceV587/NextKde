@@ -160,6 +160,10 @@ PanelWindow {
         screenWidth: root.screen?.width ?? 0
         screenHeight: root.screen?.height ?? 0
         fadeOpacity: hide.handleOpacity
+        // Wallpaper ambient, same liquid material as the dock's popups.
+        ambientPrimary: WallpaperPaletteService.primary
+        ambientSecondary: WallpaperPaletteService.secondary
+        ambientStrength: 0.35
         active: hide.handleActive
         onEntered: hide.handleEntered()
         onExited: hide.handleExited()
