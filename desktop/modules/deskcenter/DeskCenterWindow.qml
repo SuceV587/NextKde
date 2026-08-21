@@ -42,9 +42,14 @@ PanelWindow {
     // grid and the desktop file field inward so the dock never covers them.
     // AppLauncherService.dockHeight is the dock's short edge, which is
     // exactly its width when the dock is docked to a side.
+    // Only "always" mode actually reserves that strip (the dock also sets a
+    // non-zero exclusiveZone only then); hidden/auto modes float over content,
+    // so reserving would leave an empty gap next to the collapsed bar.
     readonly property real leftInset: ConfigService.position === "left"
+        && ConfigService.visibilityMode === "always"
         ? AppLauncherService.dockHeight + 24 : root.sideMargin
     readonly property real rightInset: ConfigService.position === "right"
+        && ConfigService.visibilityMode === "always"
         ? AppLauncherService.dockHeight + 24 : root.sideMargin
     readonly property real gap: 10
     readonly property real cellSize: Math.max(1,

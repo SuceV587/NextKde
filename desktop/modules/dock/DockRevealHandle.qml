@@ -24,6 +24,12 @@ Item {
     // When false the whole handle is inert (zero-size hit target); used by the
     // "always" mode which must never swallow clicks near the edge.
     property bool active: true
+    // Glass tint + outline matching the dock's own backdrop, so the hidden bar
+    // reads as the same adaptive material. The owning window supplies the
+    // theme colours; the backdrop blur (also owned by the window) adapts to
+    // whatever is actually behind the bar.
+    property color glassColor: "#b8ffffff"
+    property color glassBorderColor: "#66ffffff"
 
     // ── Events ──
     signal entered()
@@ -34,27 +40,37 @@ Item {
     // hit area in window coordinates. The internal id is not visible outside
     // this component, so it is surfaced as a read-only alias.
     readonly property alias hitTarget: targetArea
+    // The visible bar. It is a *direct* child of this handle (which sits at the
+    // window origin), so its x/y already are surface coordinates — a blur region
+    // can consume it without coordinate-space mapping.
+    readonly property alias visualBar: bar
+    // The pill filler, exposed only for diagnostics.
+    readonly property alias visualPill: pill
 
     readonly property bool vertical: handle.position !== "bottom"
-    readonly property real visualThickness: 4
+    readonly property real visualThickness: 6
     readonly property real hitThickness: 14
     readonly property real edgeInset: 6
-    // Long edge is always 80% of the matching screen dimension.
+    // Long edge is 50% of the matching screen dimension.
     readonly property real barLength: vertical
-        ? Math.round(handle.screenHeight * 0.80)
-        : Math.round(handle.screenWidth * 0.80)
+        ? Math.round(handle.screenHeight * 0.50)
+        : Math.round(handle.screenWidth * 0.50)
 
     // ── Hit target geometry (in window/parent coordinates) ──
+    // The hit area spans the FULL edge (side: full height, bottom: full width),
+    // so moving the pointer anywhere along the screen edge reveals the hidden
+    // dock — not just over the (hint-only) visual pill. The pill stays a 50%
+    // centred indicator; only the input region is widened.
     readonly property real hitX: vertical
         ? (handle.position === "right" ? handle.windowWidth - handle.hitThickness : 0)
-        : ((handle.windowWidth - handle.barLength) / 2)
+        : 0
     readonly property real hitY: vertical
-        ? ((handle.windowHeight - handle.barLength) / 2)
+        ? 0
         : (handle.windowHeight - handle.hitThickness)
     readonly property real hitW: handle.active
-        ? (handle.vertical ? handle.hitThickness : handle.barLength) : 0
+        ? (handle.vertical ? handle.hitThickness : handle.windowWidth) : 0
     readonly property real hitH: handle.active
-        ? (handle.vertical ? handle.barLength : handle.hitThickness) : 0
+        ? (handle.vertical ? handle.windowHeight : handle.hitThickness) : 0
 
     // ── Visual bar geometry ──
     readonly property real barX: vertical
@@ -95,18 +111,13 @@ Item {
         id: bar
         x: handle.barX
         y: handle.barY
-        width: handle.visualThickness
-        height: handle.visualThickness
+        // Long axis runs along the screen edge: full barLength wide on a bottom
+        // dock, barLength tall on a side dock (visualThickness is the cross-edge
+        // thickness in both cases).
+        width: handle.vertical ? handle.visualThickness : handle.barLength
+        height: handle.vertical ? handle.barLength : handle.visualThickness
         visible: handle.active && handle.visualThickness > 0
         opacity: handle.fadeOpacity
-        // Pill is drawn as a rectangle whose *long* axis maps to the edge; for
-        // a side handle the hardware rectangle is vertical, so rotate the
-        // filler by 90° to keep one reusable rounded rect.
-        transform: Rotation {
-            angle: handle.vertical ? 90 : 0
-            origin.x: handle.visualThickness / 2
-            origin.y: handle.visualThickness / 2
-        }
 
         scale: targetHover.hovered ? 1.08 : 1.0
         Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
@@ -114,24 +125,11 @@ Item {
         Rectangle {
             id: pill
             anchors.fill: parent
-            radius: 2
-            color: targetHover.hovered
-                ? "rgba(255, 255, 255, 0.94)"
-                : "rgba(255, 255, 255, 0.72)"
-            Behavior on color { ColorAnimation { duration: 120 } }
-
-            // Thin dark shadow keeps the white bar legible on light wallpapers.
-            layer.enabled: true
-            layer.effect: MultiEffect {
-                visible: true
-                shadowEnabled: true
-                shadowBlur: 0.5
-                shadowVerticalOffset: 1
-                shadowHorizontalOffset: 0
-                shadowColor: Qt.rgba(0, 0, 0, 0.18)
-                shadowScale: 1.0
-                anchors.fill: parent
-            }
+            // A huge radius clamps to the smallest dimension, so both a wide
+            // bottom bar and a tall side bar come out as a clean pill.
+            radius: 999999
+            color: handle.glassColor
+            border { width: 1; color: handle.glassBorderColor }
         }
     }
 }

@@ -60,7 +60,7 @@ QtObject {
     // ═══════════════════════════════════════════════════════════
     readonly property int   smartHideConflictDelay:   320   // first window-overlap debounce
     readonly property int   smartHideModeSwitchGrace: 700   // persistent switch confirmation period
-    readonly property int   smartHideLeaveDelay:      520   // pointer/inhibitor-all-cleared leave
+    readonly property int   smartHideLeaveDelay:      900   // pointer/inhibitor-all-cleared leave
     readonly property int   smartHideHoverShowDelay:   90   // handle hover reveal threshold
     readonly property int   smartHideHideDuration:    220
     readonly property int   smartHideRevealDuration:  260

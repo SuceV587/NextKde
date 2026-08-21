@@ -36,16 +36,21 @@ PanelWindow {
     // position is a per-edge literal baked into the matching Component in
     // Dock.qml; switching edges recreates this window instead of patching a
     // live one, so the anchors below are final from the first commit.
+    //
+    // A bottom dock spans the full screen width (left+right) and hangs from the
+    // bottom edge; a side dock spans the full screen height (top+bottom) on its
+    // edge. Anchoring only top (without bottom) would let a side surface
+    // collapse to the implicit thickness and become 0-height.
     property string position: "bottom"
     readonly property bool vertical: root.position === "left"
         || root.position === "right"
     readonly property int edgeMargin: 5
 
     anchors: ({
-        left: !root.vertical || root.position === "left",
         top: root.vertical,
-        bottom: !root.vertical,
-        right: !root.vertical || root.position === "right"
+        bottom: true,
+        left: root.position === "bottom" || root.position === "left",
+        right: root.position === "bottom" || root.position === "right"
     })
     margins { left: 0; top: 0; right: 0; bottom: 0 }
 
@@ -83,9 +88,20 @@ PanelWindow {
             : dockContainer.height + root.edgeMargin)
         : 0
 
-    BackgroundEffect.blurRegion: RoundedBlurRegion {
-        item: dockWrapper
-        radius: dockContainer.pillRadius
+    BackgroundEffect.blurRegion: Region {
+        RoundedBlurRegion {
+            id: glassRegion
+            item: dockWrapper
+            radius: dockContainer.pillRadius
+        }
+        RoundedBlurRegion {
+            id: barRegion
+            // visualBar is a direct child of the handle at the window origin, so
+            // its x/y are already surface coords (no mapToItem, which evaluates
+            // stale before layout and parked the region at the corner).
+            item: revealHandle.visualBar
+            radius: 999999
+        }
     }
 
     // Stable, full-reveal position of the glass inside the surface. Always
@@ -142,6 +158,11 @@ PanelWindow {
         screenWidth: root.screen?.width ?? 0
         screenHeight: root.screen?.height ?? 0
         fadeOpacity: hide.handleOpacity
+        // Same adaptive material as the dock glass: the theme-driven tint plus
+        // the backdrop blur (below) frost whatever is actually behind the bar,
+        // so it stays visible on both light and dark backgrounds.
+        glassColor: ThemeService.backgroundColor
+        glassBorderColor: ThemeService.borderColor
         active: hide.handleActive
         onEntered: hide.handleEntered()
         onExited: hide.handleExited()
