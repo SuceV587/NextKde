@@ -48,7 +48,7 @@ Item {
     readonly property alias visualPill: pill
 
     readonly property bool vertical: handle.position !== "bottom"
-    readonly property real visualThickness: 8
+    readonly property real visualThickness: 6
     readonly property real hitThickness: 14
     readonly property real edgeInset: 6
     // Long edge is 50% of the matching screen dimension.
@@ -122,16 +122,17 @@ Item {
         scale: targetHover.hovered ? 1.08 : 1.0
         Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
+        // Translucent glass, the dock's own adaptive material: over a dark
+        // window underneath it reads light, over a light window it reads dark.
+        // The owning window's backdrop blur (barRegion in DockWindow) frosts
+        // whatever sits behind the bar. Note Wayland blur regions are unions of
+        // rects/ellipses, so a thin bar's corners rasterize softly rather than
+        // perfectly — the same tradeoff as the dock's own thin edges.
         Rectangle {
             id: pill
             anchors.fill: parent
-            // Explicit half-of-min-dimension so a WIDE bottom bar and a TALL
-            // side bar both render a clean capsule. A magic huge radius
-            // (999999) clamps to a pill for the wide case but the tall case
-            // rounds in the wrong direction and gets clipped back to square.
             radius: Math.min(handle.visualThickness, handle.barLength) / 2
             color: handle.glassColor
-            border { width: 1; color: handle.glassBorderColor }
         }
     }
 }

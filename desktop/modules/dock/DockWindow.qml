@@ -94,15 +94,13 @@ PanelWindow {
             item: dockWrapper
             radius: dockContainer.pillRadius
         }
+        // The reveal bar's backdrop blur. visualBar is a direct child of the
+        // handle at the window origin, so its x/y are already surface coords.
+        // Radius matches the pill's own capsule so the frosted halo sits
+        // exactly under the visible bar (§6.4).
         RoundedBlurRegion {
             id: barRegion
-            // visualBar is a direct child of the handle at the window origin, so
-            // its x/y are already surface coords (no mapToItem, which evaluates
-            // stale before layout and parked the region at the corner).
             item: revealHandle.visualBar
-            // Explicit half-minimum so the frosted halo matches the pill's own
-            // capsule (a magic 999999 rounds wide bars but squars tall side
-            // bars before clipping).
             radius: Math.min(revealHandle.visualThickness,
                 revealHandle.barLength) / 2
         }
@@ -162,11 +160,6 @@ PanelWindow {
         screenWidth: root.screen?.width ?? 0
         screenHeight: root.screen?.height ?? 0
         fadeOpacity: hide.handleOpacity
-        // Same adaptive material as the dock glass: the theme-driven tint plus
-        // the backdrop blur (below) frost whatever is actually behind the bar,
-        // so it stays visible on both light and dark backgrounds.
-        glassColor: ThemeService.backgroundColor
-        glassBorderColor: ThemeService.borderColor
         active: hide.handleActive
         onEntered: hide.handleEntered()
         onExited: hide.handleExited()
