@@ -14,7 +14,10 @@ Platform.Menu {
     signal action(string name)
 
     function setDockPopupVisible(shouldOpen) {
-        menu.open()   // native menu; opens at the platform cursor position
+        if (shouldOpen)
+            menu.open()
+        else
+            menu.close()
     }
 
     function dismissDockPopupImmediately() {

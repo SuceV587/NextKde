@@ -475,6 +475,9 @@ Item {
                     else
                         DockModelService.activeContextMenu = null
                 }
+                // Platform menus are opened imperatively at the current
+                // pointer position; the shared coordinator still ensures one
+                // Dock menu or preview surface owns the interaction at once.
                 DockModelService.activeContextMenu = contextMenu
                 DockModelService.openDockPopup(contextMenu)
             } else if (!icon._heldForEdit)
@@ -493,11 +496,9 @@ Item {
         }
     }
 
-    DockContextPopup {
+    DockContextMenu {
         id: contextMenu
         property bool hasBeenVisible: false
-        anchorItem: icon
-        position: ConfigService.position
         isWindow: icon.isWindowItem
         // Window tasks need the persisted top-level pin state too.
         isPinned: icon.isPinnedItem || DockModelService.isAppPinned(icon.appId)
