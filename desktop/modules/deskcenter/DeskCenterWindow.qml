@@ -3210,9 +3210,26 @@ PanelWindow {
             }
         }
 
-        // Invisible 1x1 anchor that follows the right-click point, so the menu
-        // opens beside the cursor anywhere on the desktop.
-        Item { id: desktopContextAnchor; visible: false; width: 1; height: 1 }
+        // Kept mapped but invisible (opacity 0 - NOT visible:false, which the
+        // compositor window-anchor ignores and falls back to the window corner).
+        // It follows the right-click point so the menu opens beside the cursor.
+        Item {
+            id: desktopContextAnchor
+            opacity: 0
+            width: 4
+            height: 4
+        }
+
+        // Desktop-wide dismissal scrim: active only while the context menu is
+        // open, so any click on the empty desktop closes it. It does not steal
+        // selection/drag events when the menu is closed.
+        MouseArea {
+            anchors.fill: parent
+            z: 999
+            enabled: desktopContextMenu.visible
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onPressed: desktopContextMenu.hide()
+        }
 
         Rectangle {
             id: desktopDialogScrim
