@@ -82,9 +82,11 @@ PopupWindow {
 
     anchor {
         item: root.anchorItem
-        edges: root.position === "bottom" ? Edges.Top : Edges.Right
+        edges: root.position === "bottom"
+            ? (root.placeBelow ? (Edges.Top | Edges.Left) : Edges.Top)
+            : Edges.Right
         gravity: root.position === "bottom"
-            ? (root.placeBelow ? Edges.Bottom : Edges.Top)
+            ? (root.placeBelow ? (Edges.Bottom | Edges.Right) : Edges.Top)
             : Edges.Right
         adjustment: PopupAdjustment.Flip | PopupAdjustment.Slide
         margins.top: root.position === "bottom" ? -8 : 0
