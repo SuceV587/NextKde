@@ -18,8 +18,11 @@ Item {
     property string position: "bottom"   // bottom | left | right
     property real windowWidth: 0         // owning surface size (logical px)
     property real windowHeight: 0
-    property real screenWidth: 0
-    property real screenHeight: 0
+    // The dock glass's layout size. The pill length follows the dock's along
+    // its own long edge (dockWidth on bottom, dockHeight on side) so the two
+    // always stay proportional; the pill is a fixed fraction shorter.
+    property real dockWidth: 0
+    property real dockHeight: 0
     // Cross-fade opacity driven by the controller's reveal progress.
     property real fadeOpacity: 0.0       // 0..1
     // When false the whole handle is inert (zero-size hit target); used by the
@@ -61,16 +64,19 @@ Item {
     readonly property real visualThickness: 6
     readonly property real hitThickness: 14
     readonly property real edgeInset: 6
-    // Long edge is 50% of the matching screen dimension.
-    readonly property real barLength: vertical
-        ? Math.round(handle.screenHeight * 0.50)
-        : Math.round(handle.screenWidth * 0.50)
+    // The visual pill tracks the dock's own long edge (dockWidth on a bottom
+    // dock, dockHeight on a side dock) at a fraction that keeps it always
+    // slightly shorter than the dock, so a small dock shows a small pill and no
+    // wide fixed 50%-of-screen bar leaves big blank edges around it.
+    readonly property real barLength: Math.max(28, Math.round(
+        (handle.vertical ? handle.dockHeight : handle.dockWidth) * (1.0 - handle.barInsetRatio)))
+    readonly property real barInsetRatio: 0.20   // pill is 20% shorter than the dock
 
     // ── Hit target geometry (in window/parent coordinates) ──
     // The hit area spans the FULL edge (side: full height, bottom: full width),
     // so moving the pointer anywhere along the screen edge reveals the hidden
-    // dock — not just over the (hint-only) visual pill. The pill stays a 50%
-    // centred indicator; only the input region is widened.
+    // dock — not just over the (hint-only) visual pill. The pill stays a
+    // dock-length-centred indicator; only the input region is widened.
     readonly property real hitX: vertical
         ? (handle.position === "right" ? handle.windowWidth - handle.hitThickness : 0)
         : 0
