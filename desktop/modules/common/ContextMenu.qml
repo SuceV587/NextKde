@@ -147,18 +147,27 @@ PopupWindow {
                 delegate: MenuItemRow {
                     required property var modelData
                     readonly property var it: modelData
+                    readonly property bool _isSub: Array.isArray(it.children)
+                        ? it.children.length > 0
+                        : !!(it.children && it.children.length > 0)
                     width: parent.width
                     foregroundColor: root.foregroundColor
                     icon: it.icon || ""
                     label: it.label || ""
                     separator: !!it.separator
-                    hasSubmenu: Array.isArray(it.children) && it.children.length > 0
+                    hasSubmenu: it._isSub
                     checkable: !!it.checkable
                     checked: !!it.checked
                     itemEnabled: it.enabled !== false
                     onClicked: {
-                        if (Array.isArray(it.children) && it.children.length > 0) {
-                            root._push(it.children)
+                        // modelData wraps a submenu array as a QJSValue, so
+                        // Array.isArray fails even though it is array-like:
+                        // detect via length and normalise with slice.call.
+                        if (Array.isArray(it.children) ? it.children.length > 0
+                                : !!(it.children && it.children.length > 0)) {
+                            root._push(Array.isArray(it.children)
+                                ? it.children
+                                : Array.prototype.slice.call(it.children))
                         } else {
                             root.action(it.cmd, it)
                             root.hide()
