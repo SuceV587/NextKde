@@ -43,20 +43,19 @@ PopupWindow {
     // Avoids the QML gotcha where `readonly property` computes only once.
     property var _view: root._root
 
+    // NOTE: arrays are never mutated in place. The Repeater's `model` binding
+    // only re-renders when the bound value (root._view) is *re-assigned*, so
+    // every mutation reassigns a fresh array via concat/slice.
     function setItems(arr) {
         root._root = arr || []
         root._path = []
         root._view = root._root
     }
-
-    function setItems(arr) {
-        root._root = arr || []
+    function clear() {
+        root._root = []
         root._path = []
+        root._view = root._root
     }
-    // NOTE: arrays are never mutated in place. The Repeater's `model` binding
-    // only re-renders when the bound value (root._view) is *re-assigned*, so
-    // every mutation reassigns a fresh array via concat/slice.
-    function clear() { root._root = [] }
     function addItem(icon, label, cmd, enabled) {
         root._root = root._root.concat([{
             icon: icon || "", label: label, cmd: cmd, enabled: enabled !== false
@@ -176,17 +175,13 @@ PopupWindow {
                     checked: !!modelData.checked
                     itemEnabled: modelData.enabled !== false
                     onClicked: {
-                        // TEMP: log click event
-                        console.log('[ctx click] label="' + (modelData.label || '') + '" cmd="' + (modelData.cmd || '') + '" hasChildren=' + !!modelData.children)
                         // modelData wraps a submenu array as a QJSValue, so
                         // Array.isArray fails even though it is array-like:
                         // detect via length and normalise with slice.call.
                         const c = modelData.children
                         if (Array.isArray(c) ? c.length > 0 : !!c) {
-                            console.log('[ctx push] len=' + (Array.isArray(c) ? c.length : (c ? c.length : 0)))
                             root._push(Array.isArray(c) ? c : Array.prototype.slice.call(c))
                         } else {
-                            console.log('[ctx action] cmd=' + modelData.cmd)
                             root.action(modelData.cmd, modelData)
                             root.hide()
                         }
