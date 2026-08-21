@@ -3160,10 +3160,13 @@ PanelWindow {
             onSelectedIdsChanged: {
                 desktopFileGrid.setSelectedPaths(selectedIds)
             }
-            onContextMenuRequested: function(entry) {
+            onContextMenuRequested: function(entry, pos) {
                 desktopFileGrid.setSelectedPaths(freeSlotDesktop.selectedIds)
                 desktopFileGrid.contextEntry = entry
-                desktopFileGrid.showMenu(entry)
+                // freeSlotDesktop is offset by (-gridX,-gridY); translate its
+                // local click point back into window coords for the anchor.
+                desktopFileGrid.showMenu(entry,
+                    Qt.point(pos.x + freeSlotDesktop.x, pos.y + freeSlotDesktop.y))
             }
             onOpenRequested: function(entry) {
                 root.desktopFiles.openEntry(entry)

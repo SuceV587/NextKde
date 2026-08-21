@@ -82,7 +82,7 @@ Item {
     // Delegates render the preview during a drag, otherwise the committed map.
     readonly property var visibleSlots: dragActive ? previewSlots : slots
     signal moveIntoFolderRequested(var sourceEntries, var targetFolder)
-    signal contextMenuRequested(var entry)
+    signal contextMenuRequested(var entry, point pos)
     signal openRequested(var entry)
     signal activityRequested()
     signal externalUrlsDropped(var urls, int action)
@@ -686,7 +686,7 @@ Item {
         onPressed: function(mouse) {
             if (mouse.button === Qt.RightButton) {
                 root.selectedIds = []
-                root.contextMenuRequested(null)
+                root.contextMenuRequested(null, rootPoint(mouse))
                 return
             }
             // A plain desktop press must end inline editing. MouseArea does
@@ -1254,7 +1254,8 @@ Item {
                             if (!root.isSelected(delegateRoot.itemId))
                                 root.selectOnly(delegateRoot.itemId)
                             root.activityRequested()
-                            root.contextMenuRequested(delegateRoot.entry)
+                            root.contextMenuRequested(delegateRoot.entry,
+                                mapToItem(root, mouse.x, mouse.y))
                             mouse.accepted = true
                         }
                     }
