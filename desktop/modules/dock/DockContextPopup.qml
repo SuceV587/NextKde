@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Wayland
 import qs.desktop.modules.dock
 import qs.desktop.modules.common
 
@@ -33,6 +34,8 @@ PopupWindow {
     signal aboutToHide()
 
     implicitWidth: 230
+    // Height follows the visible items so nothing is clipped off the surface.
+    implicitHeight: list.implicitHeight + 12
     color: "transparent"
     grabFocus: true
 
@@ -72,7 +75,14 @@ PopupWindow {
         }
     }
 
+    // Frost what is behind so LiquidGlassSurface reads as real glass.
+    BackgroundEffect.blurRegion: RoundedBlurRegion {
+        item: surface
+        radius: 16
+    }
+
     LiquidGlassSurface {
+        id: surface
         anchors.fill: parent
         radius: 16
         baseColor: ThemeService.backgroundColor
@@ -82,6 +92,7 @@ PopupWindow {
         materialDepth: 0.6
 
         Column {
+            id: list
             anchors.fill: parent
             anchors.margins: 6
             spacing: 2
