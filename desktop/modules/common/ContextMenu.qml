@@ -39,16 +39,13 @@ PopupWindow {
     // ── Item tree + navigation ──
     property var _root: []
     property var _path: []
-    // _view is computed reactively on every _path change via onPathChanged.
+    // _view is updated reactively via _push/_back/setItems methods.
     // Avoids the QML gotcha where `readonly property` computes only once.
     property var _view: root._root
-    onPathChanged: {
-        root._view = root._path.length > 0
-            ? root._path[root._path.length - 1]
-            : root._root
-    }
-    // Initial value.
-    Component.onCompleted: {
+
+    function setItems(arr) {
+        root._root = arr || []
+        root._path = []
         root._view = root._root
     }
 
@@ -65,10 +62,17 @@ PopupWindow {
             icon: icon || "", label: label, cmd: cmd, enabled: enabled !== false
         }])
     }
-    function _push(arr) { root._path = root._path.concat([arr]) }
+    function _push(arr) {
+        root._path = root._path.concat([arr])
+        root._view = root._path[root._path.length - 1]
+    }
     function _back() {
-        if (root._path.length > 0)
+        if (root._path.length > 0) {
             root._path = root._path.slice(0, -1)
+            root._view = root._path.length > 0
+                ? root._path[root._path.length - 1]
+                : root._root
+        }
     }
     function show() { root.visible = true }
     function hide() { root.visible = false }
