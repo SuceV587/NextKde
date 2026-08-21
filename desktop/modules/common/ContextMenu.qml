@@ -146,18 +146,18 @@ PopupWindow {
                 model: root._view
                 delegate: MenuItemRow {
                     required property var modelData
-                    readonly property var it: modelData
                     // Normal (non-readonly) property so we can recalculate
                     // on every modelData change.
                     property bool _isSub: false
                     onItChanged: {
                         const c = modelData.children
-                        it._isSub = Array.isArray(c) ? c.length > 0
+                        // Calculate _isSub on the delegate itself, not on modelData
+                        _isSub = Array.isArray(c) ? c.length > 0
                             : !!(c && c.length > 0)
                     }
                     Component.onCompleted: {
                         const c = modelData.children
-                        it._isSub = Array.isArray(c) ? c.length > 0
+                        _isSub = Array.isArray(c) ? c.length > 0
                             : !!(c && c.length > 0)
                     }
                     width: parent.width
@@ -165,7 +165,7 @@ PopupWindow {
                     icon: it.icon || ""
                     label: it.label || ""
                     separator: !!it.separator
-                    hasSubmenu: it._isSub
+                    hasSubmenu: _isSub
                     checkable: !!it.checkable
                     checked: !!it.checked
                     itemEnabled: it.enabled !== false
