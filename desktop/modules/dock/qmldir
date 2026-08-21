@@ -15,8 +15,6 @@ DockDivider 1.0 DockDivider.qml
 DockMusicPlayer 1.0 DockMusicPlayer.qml
 DockInfoCarousel 1.0 DockInfoCarousel.qml
 DockContextMenu 1.0 DockContextMenu.qml
-DockContextPopup 1.0 DockContextPopup.qml
-DockMenuItem 1.0 DockMenuItem.qml
 DockWindowPreview 1.0 DockWindowPreview.qml
 
 # ── Singletons (QML type name matches code usage) ──

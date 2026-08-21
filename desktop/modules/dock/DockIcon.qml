@@ -475,9 +475,21 @@ Item {
                     else
                         DockModelService.activeContextMenu = null
                 }
-                // Platform menus are opened imperatively at the current
-                // pointer position; the shared coordinator still ensures one
-                // Dock menu or preview surface owns the interaction at once.
+                // Rebuild items from the icon's current state (window task vs
+                // pinned launcher, persisted pin state), then open.
+                const pinned = icon.isPinnedItem || DockModelService.isAppPinned(icon.appId)
+                contextMenu.clear()
+                if (icon.isWindowItem) {
+                    contextMenu.addItem("", "激活窗口", "activate")
+                    contextMenu.addItem("", "最小化", "minimize")
+                    contextMenu.addItem("", "关闭窗口", "close")
+                    contextMenu.addItem(pinned ? "" : "",
+                        pinned ? "取消固定" : "固定此应用", pinned ? "unpin" : "pin")
+                } else {
+                    contextMenu.addItem("", "打开", "open")
+                    contextMenu.addItem(pinned ? "" : "",
+                        pinned ? "取消固定" : "固定此应用", pinned ? "unpin" : "pin")
+                }
                 DockModelService.activeContextMenu = contextMenu
                 DockModelService.openDockPopup(contextMenu)
             } else if (!icon._heldForEdit)
@@ -496,16 +508,13 @@ Item {
         }
     }
 
-    DockContextPopup {
+    ContextMenu {
         id: contextMenu
         property bool hasBeenVisible: false
         anchorItem: icon
         position: ConfigService.position
-        isWindow: icon.isWindowItem
-        // Window tasks need the persisted top-level pin state too.
-        isPinned: icon.isPinnedItem || DockModelService.isAppPinned(icon.appId)
-        appId: icon.appId
-        windowId: icon.windowId
+        baseColor: ThemeService.backgroundColor
+        foregroundColor: ThemeService.foregroundColor
         onAboutToShow: hasBeenVisible = true
         onAboutToHide: {
             if (hasBeenVisible) {

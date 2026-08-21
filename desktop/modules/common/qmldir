@@ -8,6 +8,8 @@ LiquidGlassControl 1.0 LiquidGlassControl.qml
 EnhancedGlassSurface 1.0 EnhancedGlassSurface.qml
 ArtworkPalette 1.0 ArtworkPalette.qml
 AppIcon 1.0 AppIcon.qml
+ContextMenu 1.0 ContextMenu.qml
+MenuItemRow 1.0 MenuItemRow.qml
 singleton AppPresentationService 1.0 AppPresentationService.qml
 singleton AppActionService 1.0 AppActionService.qml
 singleton MetricsService 1.0 MetricsService.qml
