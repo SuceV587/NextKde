@@ -76,9 +76,56 @@ QtObject {
         }
         stderr: SplitParser { splitMarker: "\n" }
         onExited: function(code) {
-            if (code !== 0)
-                console.log("[WindowService] KWin bridge unavailable code=" + code)
+            if (code !== 0) {
+                console.log("[WindowService] KWin bridge unavailable code="
+                            + code + ", running self-heal");
+                svc._retryBridge();
+            }
         }
+    }
+
+    // A bridge orphaned by a prior shell that died abruptly keeps holding the
+    // org.quickshell.KWinWindowBridge D-Bus name, so a freshly spawned bridge
+    // cannot register and exits immediately — leaving window snapshots (and
+    // thus smart-hide geometry) dead for every later launch. Heal by reaping a
+    // genuinely orphaned owner and retrying our bridge a few times (concurrent
+    // live shells are never touched; see _retryBridge).
+    property int _bridgeRetryRemaining: 0
+    property Timer _bridgeRetryTimer: Timer {
+        interval: 350
+        repeat: false
+        onTriggered: svc._startBridge()
+    }
+
+    function _startBridge() {
+        // Quickshell Process does not restart a finished child by re-setting
+        // running while it is already true, so toggle it.
+        svc._kwinBridge.running = false;
+        svc._kwinBridge.running = true;
+    }
+
+    function _retryBridge() {
+        if (svc._bridgeRetryRemaining <= 0)
+            return;
+        svc._bridgeRetryRemaining--;
+        // Only reaps a *genuinely orphaned* owner (parent already reaped to pid
+        // 1) — the residue of a shell that died abruptly. If the name is held by
+        // a still-alive shell, that is a separate desktop instance running in
+        // parallel, which must never be killed from here; we just give up on our
+        // own bridge instead of fighting it in a kill war.
+        const killProc = _commandProcessFactory.createObject(svc, {
+            command: ["/bin/sh", "-c",
+                "owner=$(busctl --user --no-pager list 2>/dev/null | awk "
+                + "'$1==\"org.quickshell.KWinWindowBridge\"{print $2}'); "
+                + "if [ -z \"$owner\" ]; then exit 0; fi; "
+                + "ppid=$(awk '{print $4}' /proc/$owner/stat 2>/dev/null); "
+                + "[ \"$ppid\" = \"1\" ] && kill \"$owner\""]
+        });
+        killProc.exited.connect(function() {
+            killProc.destroy();
+            svc._bridgeRetryTimer.restart();
+        });
+        killProc.running = true;
     }
 
     property Component _commandProcessFactory: Component {
@@ -579,6 +626,7 @@ QtObject {
     }
 
     Component.onCompleted: {
+        svc._bridgeRetryRemaining = 3
         if (svc._kwinBridgeEnabled)
             _scheduleUpdate()
     }
