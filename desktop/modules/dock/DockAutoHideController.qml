@@ -103,7 +103,8 @@ Item {
         const target = ctl._targetRect()
         const base = DockMath.visibleDockRect(target, ctl.position,
             ctl.dockWidth, ctl.dockHeight, ctl.edgeMargin)
-        const next = DockMath.hasConflict(ctl._windowCandidates(), target,
+        const cands = ctl._windowCandidates()
+        const next = DockMath.hasConflict(cands, target,
             DockMath.avoidanceRect(base), DockMath.releaseRect(base),
             ctl.hasWindowConflict, WindowService.currentDesktopId)
         if (next !== ctl.hasWindowConflict)
@@ -398,8 +399,11 @@ Item {
     Connections {
         target: WindowService
         // Geographic/desktop changes to windows, or a just-completed first
-        // snapshot, all wake the conflict pass.
-        function onRevisionChanged() { ctl._scheduleEvaluate() }
+        // snapshot, all wake the conflict pass. A revision bump means a window
+        // moved/resized/appeared — the cached conflict must be recomputed, not
+        // just re-evaluated against the stale value (otherwise a window that
+        // arrives after boot never hides a smart dock).
+        function onRevisionChanged() { ctl._recomputeConflict(); ctl._scheduleEvaluate() }
         function onCurrentDesktopIdChanged() {
             ctl._recomputeConflict()
             ctl._scheduleEvaluate()
