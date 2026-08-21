@@ -149,9 +149,9 @@ PopupWindow {
                     // Normal (non-readonly) property so we can recalculate
                     // on every modelData change.
                     property bool _isSub: false
-                    onItChanged: {
+                    onModelDataChanged: {
                         const c = modelData.children
-                        // Calculate _isSub on the delegate itself, not on modelData
+                        // Calculate _isSub on the delegate itself
                         _isSub = Array.isArray(c) ? c.length > 0
                             : !!(c && c.length > 0)
                     }
@@ -162,24 +162,22 @@ PopupWindow {
                     }
                     width: parent.width
                     foregroundColor: root.foregroundColor
-                    icon: it.icon || ""
-                    label: it.label || ""
-                    separator: !!it.separator
+                    icon: modelData.icon || ""
+                    label: modelData.label || ""
+                    separator: !!modelData.separator
                     hasSubmenu: _isSub
-                    checkable: !!it.checkable
-                    checked: !!it.checked
-                    itemEnabled: it.enabled !== false
+                    checkable: !!modelData.checkable
+                    checked: !!modelData.checked
+                    itemEnabled: modelData.enabled !== false
                     onClicked: {
                         // modelData wraps a submenu array as a QJSValue, so
                         // Array.isArray fails even though it is array-like:
                         // detect via length and normalise with slice.call.
-                        if (Array.isArray(it.children) ? it.children.length > 0
-                                : !!(it.children && it.children.length > 0)) {
-                            root._push(Array.isArray(it.children)
-                                ? it.children
-                                : Array.prototype.slice.call(it.children))
+                        const c = modelData.children
+                        if (Array.isArray(c) ? c.length > 0 : !!(c && c.length > 0)) {
+                            root._push(Array.isArray(c) ? c : Array.prototype.slice.call(c))
                         } else {
-                            root.action(it.cmd, it)
+                            root.action(modelData.cmd, modelData)
                             root.hide()
                         }
                     }
