@@ -227,19 +227,25 @@ PanelWindow {
         }
     }
 
-    function showApplicationMenu(app, _anchorItem) {
+    function showApplicationMenu(app, anchorItem) {
         if (!app)
             return;
-        if (appContextMenu.menuOpen && appContextMenu.application && appContextMenu.application.id === app.id) {
-            dismissApplicationMenu();
-            return;
+        if (appContextMenu.visible && appContextMenu.application
+                && appContextMenu.application.id === app.id) {
+            dismissApplicationMenu()
+            return
         }
-        appContextMenu.application = app;
-        appContextMenu.open();
+        appContextMenu.application = app
+        appContextMenu.anchorItem = anchorItem
+        appContextMenu.clear()
+        appContextMenu.addItem("", "打开应用", "open")
+        appContextMenu.addItem("", "编辑应用", "edit")
+        appContextMenu.addItem("", "固定到 Dock", "pin")
+        appContextMenu.show()
     }
 
     function dismissApplicationMenu() {
-        appContextMenu.close();
+        appContextMenu.hide()
     }
 
     function showApplicationEditor(app) {
@@ -958,8 +964,11 @@ PanelWindow {
         }
     }
 
-    AppLauncherContextMenu {
+    ContextMenu {
         id: appContextMenu
+        property var application: null
+        baseColor: ThemeService.backgroundColor
+        foregroundColor: ThemeService.foregroundColor
         onAction: function (name) {
             const app = application;
             if (!app)
