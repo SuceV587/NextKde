@@ -53,6 +53,12 @@ Item {
     readonly property bool hasInhibitor:
         ctl.pointerInsideDock || ctl.editing || ctl.dragging
         || ctl.popupOpen || ctl.launcherOpen || ctl._temporaryRevealHold
+        // Hovering the reveal handle (the off-screen pill) counts as an
+        // inhibitor too: a dock revealed by parking the cursor at the edge must
+        // stay up while the cursor is still there, otherwise it re-hides the
+        // instant the reveal animation ends and the user is forced to chase it
+        // onto the glass before it disappears.
+        || ctl._handleHovered
 
     readonly property real offsetX: ctl.position === "bottom" ? 0
         : (ctl.position === "left"
@@ -389,6 +395,7 @@ Item {
     onDockWidthChanged: ctl._scheduleEvaluate()
     onDockHeightChanged: ctl._scheduleEvaluate()
     onPointerInsideDockChanged: ctl._scheduleEvaluate()
+    on_HandleHoveredChanged: ctl._scheduleEvaluate()
     onEditingChanged: ctl._scheduleEvaluate()
     onDraggingChanged: ctl._scheduleEvaluate()
     onPopupOpenChanged: ctl._scheduleEvaluate()
