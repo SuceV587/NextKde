@@ -6,17 +6,22 @@ import qs.desktop.modules.common
 // Shared liquid-glass context menu, used by the Dock, the app launcher and the
 // desktop file grid so every right-click menu looks and behaves uniformly.
 //
-// A PopupWindow anchored to an Item (compositor window-anchor geometry), so it
+// A PopupWindow anchored to an Item (compositor window-anchor geometry) so it
 // tracks the icon/entry it opened from even inside sliding layer surfaces where
-// Item.mapToGlobal is unreliable. grabFocus -> Qt::Popup (popupwindow.cpp)
-// grabs pointer+keyboard and auto-dismisses on any outside click, exactly like
-// a native menu.
+// mapToGlobal is unreliable. grabFocus -> Qt::Popup (popupwindow.cpp) grabs
+// pointer+keyboard and auto-dismisses on any outside click, like a native menu.
 //
-// Theme colours are inputs (baseColor / foregroundColor) so this stays
-// Service-free: callers pass their own theme colours. Ambient pigment defaults
-// off; callers may wire a wallpaper palette. The API is model-driven so menus
-// built dynamically (e.g. desktop "open with" lists) rebuild from clear()+
-// addItem().
+// Supports nested submenus with back navigation and checkable (radio) rows, so
+// it can host the desktop file-grid's "customise appearance" colour/emoji pickers.
+// Item shape (a JS object):
+//   { icon, label, cmd, enabled, checkable, checked, separator, children: [Item] }
+// setItems(arr) builds the root; clicking a row with `children` pushes it and
+// shows a back row; checkable rows toggle `checked` (radio within the same
+// `group`) and emit action(cmd); plain rows emit action(cmd) and close.
+//
+// Theme colours are inputs (baseColor / foregroundColor). The Dock's popup
+// coordinator contract (setDockPopupVisible/aboutToShow/aboutToHide) is kept so
+// it drops into existing open/close coordination.
 PopupWindow {
     id: root
 
@@ -25,19 +30,44 @@ PopupWindow {
     property string position: "bottom"   // bottom | left | right
     property color baseColor: Qt.rgba(0, 0, 0, 0.55)
     property color foregroundColor: "#ffffff"
-    // Declarative items: { icon, label, id, enabled }
-    property ListModel items: ListModel {}
+    property color ambientPrimary: "transparent"
+    property color ambientSecondary: "transparent"
+    property real ambientStrength: 0.0
 
-    signal action(string id)
-    // Popup coordinator contract (DockModelService / generic popup host) so a
-    // ContextMenu can drop into any existing open/close coordination.
+    signal action(string cmd, var item)
+
+    // ── Item tree + navigation ──
+    property var _root: []
+    property var _path: []
+    readonly property var _view: root._path.length > 0
+        ? root._path[root._path.length - 1] : root._root
+
+    function setItems(arr) {
+        root._root = arr || []
+        root._path = []
+    }
+    function clear() { root.setItems([]) }
+    function addItem(icon, label, cmd, enabled) {
+        root._root.push({ icon: icon || "", label: label, cmd: cmd, enabled: enabled !== false })
+    }
+    function _push(arr) {
+        root._path.push(arr)
+    }
+    function _back() {
+        if (root._path.length > 0)
+            root._path.pop()
+    }
+    function show() { root.visible = true }
+    function hide() { root.visible = false }
+
+    // Popup coordinator contract.
     signal aboutToShow()
     signal aboutToHide()
     function setDockPopupVisible(shouldOpen) { root.visible = shouldOpen }
     function dismissDockPopupImmediately() { root.visible = false }
 
     implicitWidth: 240
-    implicitHeight: list.implicitHeight + 12
+    implicitHeight: list.implicitHeight + 12 + (root._path.length > 0 ? 40 : 0)
     color: "transparent"
     grabFocus: true
 
@@ -50,16 +80,7 @@ PopupWindow {
         margins.left: root.position === "left" ? 8 : 0
     }
 
-    // ── Item model helpers ──
-    function clear() { root.items.clear() }
-    function addItem(icon, label, cmd, enabled) {
-        root.items.append({ icon: icon || "", label: label, cmd: cmd, enabled: enabled !== false })
-    }
-    function show() { root.visible = true }
-    function hide() { root.visible = false }
-
-    // Quick entrance: a short fade of the glass, not a long slide. Also drives
-    // the popup-coordinator show/hide signals.
+    // Quick entrance fade of the glass, plus reset submenu nav on open.
     NumberAnimation {
         id: enterOpacity
         target: glass; property: "opacity"; from: 0; to: 1
@@ -67,6 +88,7 @@ PopupWindow {
     }
     onVisibleChanged: {
         if (root.visible) {
+            root._path = []
             glass.opacity = 0
             enterOpacity.restart()
             root.aboutToShow()
@@ -75,7 +97,6 @@ PopupWindow {
         }
     }
 
-    // Frost what is behind so the liquid glass reads real.
     BackgroundEffect.blurRegion: RoundedBlurRegion {
         item: glass
         radius: 16
@@ -88,7 +109,7 @@ PopupWindow {
         baseColor: root.baseColor
         ambientPrimary: root.ambientPrimary
         ambientSecondary: root.ambientSecondary
-        ambientStrength: root.ambientStrength // 0 = off
+        ambientStrength: root.ambientStrength
         materialDepth: 0.6
 
         Column {
@@ -97,25 +118,40 @@ PopupWindow {
             anchors.margins: 6
             spacing: 2
 
+            // Back row when inside a submenu.
+            MenuItemRow {
+                width: parent.width
+                foregroundColor: root.foregroundColor
+                visible: root._path.length > 0
+                icon: ""
+                label: "返回"
+                onClicked: root._back()
+            }
+
             Repeater {
-                model: root.items
+                model: root._view
                 delegate: MenuItemRow {
-                    required property string icon
-                    required property string label
-                    required property string cmd
-                    required property bool enabled
+                    required property var modelData
+                    readonly property var it: modelData
                     width: parent.width
                     foregroundColor: root.foregroundColor
-                    visible: label.length > 0 && enabled
-                    itemEnabled: enabled
-                    onClicked: root.action(model.cmd)
+                    icon: it.icon || ""
+                    label: it.label || ""
+                    separator: !!it.separator
+                    hasSubmenu: Array.isArray(it.children) && it.children.length > 0
+                    checkable: !!it.checkable
+                    checked: !!it.checked
+                    itemEnabled: it.enabled !== false
+                    onClicked: {
+                        if (Array.isArray(it.children) && it.children.length > 0) {
+                            root._push(it.children)
+                        } else {
+                            root.action(it.cmd, it)
+                            root.hide()
+                        }
+                    }
                 }
             }
         }
     }
-
-    // ── Optional ambient pigment (defaults off; callers may wire a palette) ──
-    property color ambientPrimary: "transparent"
-    property color ambientSecondary: "transparent"
-    property real ambientStrength: 0.0
 }
