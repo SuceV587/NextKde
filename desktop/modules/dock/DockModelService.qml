@@ -40,11 +40,11 @@ QtObject {
     // Some Dock popups (the context menu) need to keep their Wayland surface
     // alive briefly for an exit animation. Other popup types can still use the
     // native `visible` property directly through this shared gateway.
-    function setDockPopupVisible(popup, shouldOpen) {
+    function setDockPopupVisible(popup, shouldOpen, globalPos) {
         if (!popup)
             return
         if (typeof popup.setDockPopupVisible === "function")
-            popup.setDockPopupVisible(shouldOpen)
+            popup.setDockPopupVisible(shouldOpen, globalPos)
         else
             popup.visible = shouldOpen
     }
@@ -62,13 +62,13 @@ QtObject {
             popup.visible = false
     }
 
-    function openDockPopup(popup) {
+    function openDockPopup(popup, globalPos) {
         if (!popup)
             return;
         if (svc.activeDockPopup && svc.activeDockPopup !== popup)
             svc.dismissDockPopupImmediately(svc.activeDockPopup);
         svc.activeDockPopup = popup;
-        svc.setDockPopupVisible(popup, true);
+        svc.setDockPopupVisible(popup, true, globalPos);
     }
 
     function releaseDockPopup(popup) {

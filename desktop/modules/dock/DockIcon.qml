@@ -475,11 +475,14 @@ Item {
                     else
                         DockModelService.activeContextMenu = null
                 }
-                // Platform menus are opened imperatively at the current
-                // pointer position; the shared coordinator still ensures one
-                // Dock menu or preview surface owns the interaction at once.
+                // Platform menus are opened imperatively; the shared coordinator
+                // still ensures one Dock menu or preview surface owns the
+                // interaction at once. Open at the icon's current visible global
+                // point so the menu lands on the revealed glass, not the
+                // retracted offset the window edges toward while hidden.
                 DockModelService.activeContextMenu = contextMenu
-                DockModelService.openDockPopup(contextMenu)
+                DockModelService.openDockPopup(contextMenu,
+                    icon.mapToGlobal(icon.width / 2, icon.height / 2))
             } else if (!icon._heldForEdit)
                 icon.activate()
         }
