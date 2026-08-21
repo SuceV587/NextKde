@@ -147,9 +147,19 @@ PopupWindow {
                 delegate: MenuItemRow {
                     required property var modelData
                     readonly property var it: modelData
-                    readonly property bool _isSub: Array.isArray(it.children)
-                        ? it.children.length > 0
-                        : !!(it.children && it.children.length > 0)
+                    // Normal (non-readonly) property so we can recalculate
+                    // on every modelData change.
+                    property bool _isSub: false
+                    onItChanged: {
+                        const c = modelData.children
+                        it._isSub = Array.isArray(c) ? c.length > 0
+                            : !!(c && c.length > 0)
+                    }
+                    Component.onCompleted: {
+                        const c = modelData.children
+                        it._isSub = Array.isArray(c) ? c.length > 0
+                            : !!(c && c.length > 0)
+                    }
                     width: parent.width
                     foregroundColor: root.foregroundColor
                     icon: it.icon || ""
