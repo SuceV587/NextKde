@@ -162,13 +162,17 @@ PopupWindow {
                     checked: !!modelData.checked
                     itemEnabled: modelData.enabled !== false
                     onClicked: {
+                        // TEMP: log click event
+                        console.log('[ctx click] label="' + (modelData.label || '') + '" cmd="' + (modelData.cmd || '') + '" hasChildren=' + !!modelData.children)
                         // modelData wraps a submenu array as a QJSValue, so
                         // Array.isArray fails even though it is array-like:
                         // detect via length and normalise with slice.call.
                         const c = modelData.children
                         if (Array.isArray(c) ? c.length > 0 : !!c) {
+                            console.log('[ctx push] len=' + (Array.isArray(c) ? c.length : (c ? c.length : 0)))
                             root._push(Array.isArray(c) ? c : Array.prototype.slice.call(c))
                         } else {
+                            console.log('[ctx action] cmd=' + modelData.cmd)
                             root.action(modelData.cmd, modelData)
                             root.hide()
                         }
