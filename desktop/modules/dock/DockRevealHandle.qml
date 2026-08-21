@@ -48,7 +48,7 @@ Item {
     readonly property alias visualPill: pill
 
     readonly property bool vertical: handle.position !== "bottom"
-    readonly property real visualThickness: 6
+    readonly property real visualThickness: 8
     readonly property real hitThickness: 14
     readonly property real edgeInset: 6
     // Long edge is 50% of the matching screen dimension.
