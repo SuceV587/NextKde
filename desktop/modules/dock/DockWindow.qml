@@ -100,7 +100,11 @@ PanelWindow {
             // its x/y are already surface coords (no mapToItem, which evaluates
             // stale before layout and parked the region at the corner).
             item: revealHandle.visualBar
-            radius: 999999
+            // Explicit half-minimum so the frosted halo matches the pill's own
+            // capsule (a magic 999999 rounds wide bars but squars tall side
+            // bars before clipping).
+            radius: Math.min(revealHandle.visualThickness,
+                revealHandle.barLength) / 2
         }
     }
 

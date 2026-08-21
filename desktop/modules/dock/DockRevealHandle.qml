@@ -125,9 +125,11 @@ Item {
         Rectangle {
             id: pill
             anchors.fill: parent
-            // A huge radius clamps to the smallest dimension, so both a wide
-            // bottom bar and a tall side bar come out as a clean pill.
-            radius: 999999
+            // Explicit half-of-min-dimension so a WIDE bottom bar and a TALL
+            // side bar both render a clean capsule. A magic huge radius
+            // (999999) clamps to a pill for the wide case but the tall case
+            // rounds in the wrong direction and gets clipped back to square.
+            radius: Math.min(handle.visualThickness, handle.barLength) / 2
             color: handle.glassColor
             border { width: 1; color: handle.glassBorderColor }
         }
