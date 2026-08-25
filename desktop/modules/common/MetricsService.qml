@@ -3,17 +3,21 @@ pragma Singleton
 import QtQuick
 import Quickshell.Io
 
-// The Bar's thermal indicator and the DeskCenter system card both consume the
-// shell-data-service metrics snapshot through this singleton, so neither QML
-// surface polls /proc or /sys and their values can never drift apart. The Go
-// service owns sampling, history, and sensor enumeration; this file only
-// reads the atomic snapshot and reformats it for the two views.
+// The Bar thermal indicator, Dock temperature page and DeskCenter system card
+// all consume the shell-data-service metrics snapshot through this singleton,
+// so no QML surface polls /proc or /sys and their values cannot drift apart.
+// The Go service owns sampling, history and sensor enumeration; this file only
+// reads the atomic snapshot and reformats it for the three views.
 QtObject {
     id: service
 
     property bool ready: false
-    property real averageMilliC: -1
-    property real maximumMilliC: -1
+    property real currentMilliC: -1
+    property real maximum5MinuteMilliC: -1
+    // Compatibility aliases for out-of-tree/older consumers. New UI should
+    // use the explicit package-current and five-minute-maximum names.
+    readonly property real averageMilliC: currentMilliC
+    readonly property real maximumMilliC: maximum5MinuteMilliC
     property real cpuUsage: 0
     property real cpuFrequencyMhz: 0
     property real memoryUsedBytes: 0
@@ -56,8 +60,10 @@ QtObject {
             try {
                 const snapshot = JSON.parse((process.stdout?.text ?? "").trim())
                 const metrics = snapshot.metrics ?? {}
-                averageMilliC = Number(metrics.averageMilliC ?? -1)
-                maximumMilliC = Number(metrics.maximumMilliC ?? -1)
+                currentMilliC = Number(metrics.currentMilliC
+                    ?? metrics.averageMilliC ?? -1)
+                maximum5MinuteMilliC = Number(metrics.maximum5MinuteMilliC
+                    ?? metrics.maximumMilliC ?? -1)
                 cpuUsage = Number(metrics.cpu ?? 0)
                 cpuFrequencyMhz = Number(metrics.frequencyMhz ?? 0)
                 memoryUsedBytes = Number(metrics.memoryUsedBytes ?? 0)

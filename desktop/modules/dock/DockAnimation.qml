@@ -1,5 +1,6 @@
 pragma Singleton
 import QtQuick
+import qs.desktop.modules.common
 
 // ────────────────────────────────────────────────────────────────
 // DockAnimation — Central animation configuration.
@@ -18,17 +19,17 @@ QtObject {
     // OutCubic: fast start, soft stop. InCubic's slow start was rejected by
     // A/B test — it reads as "creeping" even at 100ms.
     // ═══════════════════════════════════════════════════════════
-    readonly property int   dockResizeDuration: 100
-    readonly property var   dockResizeEasing:   Easing.OutCubic
+    readonly property int   dockResizeDuration: AppearanceTokens.motion.fastDuration
+    readonly property var   dockResizeEasing:   AppearanceTokens.motion.standardEasing
 
     // ═══════════════════════════════════════════════════════════
     // Icon hover magnification
     // ═══════════════════════════════════════════════════════════
     // Hover is an explicit pointer affordance: the icon lifts and grows while
     // its layout slot remains unchanged, so adaptive Dock geometry is stable.
-    readonly property int   iconHoverDuration:  135
-    readonly property real  iconHoverScale:     1.20
-    readonly property var   iconHoverEasing:    Easing.OutCubic
+    readonly property int   iconHoverDuration:  AppearanceTokens.motion.fastDuration
+    readonly property real  iconHoverScale:     AppearanceTokens.dock.hoverScale
+    readonly property var   iconHoverEasing:    AppearanceTokens.motion.standardEasing
 
     // ═══════════════════════════════════════════════════════════
     // Music player expand / collapse
@@ -39,8 +40,8 @@ QtObject {
     // ═══════════════════════════════════════════════════════════
     // Dock appearance / disappearance
     // ═══════════════════════════════════════════════════════════
-    readonly property int   dockFadeDuration:   200
-    readonly property var   dockFadeEasing:     Easing.InOutCubic
+    readonly property int   dockFadeDuration:   AppearanceTokens.motion.normalDuration
+    readonly property var   dockFadeEasing:     AppearanceTokens.motion.standardEasing
 
     // ═══════════════════════════════════════════════════════════
     // Directional motion semantics (Material-inspired, same idea as
@@ -49,7 +50,7 @@ QtObject {
     // (slow start, quick departure). Use these in explicit animations
     // that have a direction — not on two-way Behaviors.
     // ═══════════════════════════════════════════════════════════
-    readonly property var elementEnterEasing: Easing.OutCubic
+    readonly property var elementEnterEasing: AppearanceTokens.motion.standardEasing
     readonly property var elementExitEasing:  Easing.InCubic
 
     // ═══════════════════════════════════════════════════════════
@@ -58,12 +59,12 @@ QtObject {
     // controller; nothing is scattered into UI components. See
     // docs/DockSmartHideDesign.md §6.2.
     // ═══════════════════════════════════════════════════════════
-    readonly property int   smartHideConflictDelay:   320   // first window-overlap debounce
+    readonly property int   smartHideConflictDelay:   120   // first window-overlap debounce
     readonly property int   smartHideModeSwitchGrace: 700   // persistent switch confirmation period
     readonly property int   smartHideLeaveDelay:      900   // pointer/inhibitor-all-cleared leave
     readonly property int   smartHideHoverShowDelay:   90   // handle hover reveal threshold
-    readonly property int   smartHideHideDuration:    220
-    readonly property int   smartHideRevealDuration:  260
+    readonly property int   smartHideHideDuration:    180
+    readonly property int   smartHideRevealDuration:  180
     readonly property var   smartHideHideEasing:      Easing.InCubic
     readonly property var   smartHideRevealEasing:    Easing.OutCubic
     readonly property int   smartHideBootWaitLimit:    450   // max wait for config+KWin snapshot

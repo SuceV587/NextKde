@@ -7,6 +7,8 @@ import qs.desktop.modules.bar
 Scope {
     id: root
 
+    property bool enabled: true
+
     // Bridge system tray attention signals into desktop notifications.
     TrayNotificationBridge {}
 
@@ -23,11 +25,14 @@ Scope {
     }
 
     Variants {
+        // Keep the surface object alive so it can explicitly commit an
+        // exclusiveZone of zero before it is unmapped in integrated mode.
         model: root.targetScreen ? [root.targetScreen] : []
 
         BarWindow {
             required property var modelData
             screen: modelData
+            barEnabled: root.enabled
         }
     }
 }

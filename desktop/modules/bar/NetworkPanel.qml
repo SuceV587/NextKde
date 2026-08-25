@@ -13,6 +13,8 @@ PopupWindow {
     id: panel
 
     property Item anchorItem: null
+    property bool dockHosted: false
+    property string dockEdge: "bottom"
     property var selectedNetwork: null
     property string requestedUsername: ""
     property string requestedPassword: ""
@@ -39,9 +41,19 @@ PopupWindow {
     grabFocus: true
     anchor {
         item: panel.anchorItem
-        edges: Edges.Bottom
-        gravity: Edges.Bottom
-        margins.bottom: -8
+        edges: !panel.dockHosted ? Edges.Bottom
+            : panel.dockEdge === "left" ? Edges.Right
+            : panel.dockEdge === "right" ? Edges.Left : Edges.Top
+        gravity: !panel.dockHosted ? Edges.Bottom
+            : panel.dockEdge === "left" ? Edges.Right
+            : panel.dockEdge === "right" ? Edges.Left : Edges.Top
+        margins.top: panel.dockHosted
+            && panel.dockEdge === "bottom" ? -8 : 0
+        margins.bottom: panel.dockHosted ? 0 : -8
+        margins.left: panel.dockHosted
+            && panel.dockEdge === "right" ? -8 : 0
+        margins.right: panel.dockHosted
+            && panel.dockEdge === "left" ? -8 : 0
     }
 
     // Real liquid glass: a compositor blur region on the panel surface, so

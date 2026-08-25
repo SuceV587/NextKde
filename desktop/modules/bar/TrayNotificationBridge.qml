@@ -1,4 +1,5 @@
 import QtQuick
+import QtQml.Models
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.SystemTray
@@ -59,7 +60,12 @@ QtObject {
         root._sender.running = true
     }
 
-    property Repeater _trayRepeater: Repeater {
+    // This bridge only needs one listener object per tray entry. A visual
+    // Repeater tries to stack its Item delegates beside itself; because this
+    // service is a QtObject, both the Repeater and delegates have no visual
+    // parent and Qt emits stackBefore/stackAfter warnings. Instantiator owns
+    // the same delegate lifecycle without attempting visual stacking.
+    property Instantiator _trayRepeater: Instantiator {
         model: SystemTray.items
         delegate: Item {
             id: trayItemDelegate

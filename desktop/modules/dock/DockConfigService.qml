@@ -47,6 +47,36 @@ QtObject {
     property string iconTintColor:   "#a855f7"
     readonly property real iconSaturation: iconMode === "color" ? 1.0 : 0.0
     readonly property real iconTintEnabled: iconMode === "tint" ? 1.0 : 0.0
+    readonly property color resolvedIconTintColor: iconTintColor
+
+    // Shared projection for non-icon Dock artwork such as weather, clock and
+    // temperature card backgrounds. It mirrors the icon shader contract:
+    // colour is untouched, grayscale preserves luminance, and tint preserves
+    // luminance while introducing the selected hue.
+    function styledDockColor(source) {
+        if (iconMode === "color")
+            return source
+        const luminance = source.r * 0.299 + source.g * 0.587
+            + source.b * 0.114
+        if (iconMode === "grayscale")
+            return Qt.rgba(luminance, luminance, luminance, source.a)
+        const tint = resolvedIconTintColor
+        return Qt.rgba(
+            (tint.r + (1 - tint.r) * luminance) * luminance,
+            (tint.g + (1 - tint.g) * luminance) * luminance,
+            (tint.b + (1 - tint.b) * luminance) * luminance,
+            source.a)
+    }
+
+    // Flat shell SVGs have no internal light/dark pixels for the application
+    // icon shader to preserve. Treat them as a 72% luminance glyph so tint
+    // mode receives the same restrained tonal colour instead of a fully
+    // saturated paint bucket.
+    function styledDockIconColor() {
+        if (iconMode !== "tint")
+            return Qt.rgba(1, 1, 1, 1)
+        return styledDockColor(Qt.rgba(0.72, 0.72, 0.72, 1))
+    }
     // Dock show mode. Single mutually-exclusive enum: "always" | "smart" |
     // "persistent". Never store two booleans — that allows impossible states.
     property string visibilityMode: "always"

@@ -24,6 +24,8 @@ Item {
     id: panel
 
     property Item anchorItem: null
+    property bool dockHosted: false
+    property string dockEdge: "bottom"
     property real volumePreview: ControlCenterService.volumePercent
     property bool draggingVolume: false
     property real brightnessPreview: ControlCenterService.brightnessPercent
@@ -39,6 +41,7 @@ Item {
     // The target screen (the bar's output). Cards live on the same screen.
     readonly property var targetScreen: Quickshell.screens.length > 1
         ? Quickshell.screens[1] : Quickshell.screens[0]
+    readonly property int controlCenterHeight: 597
 
     // Compact counterpart to the Dock player's transport controls. It keeps
     // the same circular glass treatment but is sized for this small panel.
@@ -57,8 +60,14 @@ Item {
         // after SlideX clamping. panelRight=0 puts the control center's right
         // edge at screen right - 20 (the rightmost cards use offsetRight=20),
         // and panelTop=35 matches the Wi-Fi panel's top.
-        panelTop: 35
+        panelTop: panel.dockHosted && panel.targetScreen
+            ? Math.max(12, panel.targetScreen.height
+                - ConfigService.baseHeight
+                - AppearanceTokens.dock.edgeMargin
+                - panel.controlCenterHeight - 8)
+            : 35
         panelRight: 0
+        anchorLeft: panel.dockHosted && panel.dockEdge === "left"
     }
 
     function toggle(item) {

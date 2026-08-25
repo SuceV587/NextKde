@@ -25,6 +25,15 @@ Item {
     property string displayName: ""
     property string appId:       ""
     property string windowId:    ""
+    // KWin's real internal UUID, kept separate from WindowService's synthetic
+    // windowId used by Dock actions and previews.
+    property string animationWindowId: ""
+    // The owning DockWindow supplies its real layer-surface origin. QWindow's
+    // mapToGlobal is not reliable for layer-shell surfaces on Wayland,
+    // especially when the Dock lives on a non-primary output.
+    property var targetScreen: null
+    property real surfaceOriginX: 0
+    property real surfaceOriginY: 0
     // `isRunning` is visual runtime state. `isWindowItem` identifies which
     // context-menu actions are valid, because a pinned running app has no
     // single windowId even though it displays a running indicator.
@@ -77,16 +86,30 @@ Item {
 
     // Active background radius is proportional to the icon height. This is
     // intentionally independent from the icon/background gap.
-    readonly property real activeBackgroundRadius: iconSize * 0.3
+    readonly property real activeBackgroundRadius: iconSize
+        * AppearanceTokens.dock.activeRadiusRatio
     readonly property real iconSlotSize: iconSize + activeBackgroundGap * 2
-    // macOS running indicator geometry. The dot floats centred between the
-    // icon edge and the dock panel edge: 0.20 is the vertical panel padding
-    // ratio (vpad), so the dot occupies the midpoint of that gap.
-    readonly property real runningDotSize: Math.max(4,
-        Math.round(iconSize * 0.13))
-    readonly property real runningDotGap: Math.max(1,
-        (iconSize * 0.20 - runningDotSize) / 2)
-    readonly property real activeBackgroundAlpha: ConfigService.iconMode === "color" ? 0.5 : Math.max(0.1, ConfigService.iconOpacity)
+    readonly property bool dotIndicator:
+        AppearanceTokens.dock.indicatorStyle === "dot"
+    readonly property real runningIndicatorWidth: dotIndicator
+        ? Math.max(4, Math.round(iconSize * AppearanceTokens.dock.indicatorLengthRatio))
+        : Math.max(12, Math.round(iconSize * AppearanceTokens.dock.indicatorLengthRatio))
+    readonly property real runningIndicatorHeight: dotIndicator
+        ? runningIndicatorWidth
+        : Math.max(3, Math.round(iconSize
+            * AppearanceTokens.dock.indicatorThicknessRatio))
+    readonly property real runningIndicatorGap: Math.max(1,
+        (iconSize * AppearanceTokens.dock.verticalPaddingRatio
+            - runningIndicatorHeight) / 2)
+    readonly property real activeBackgroundAlpha: {
+        const configuredAlpha = ConfigService.iconMode === "color"
+            ? 0.5 : Math.max(0.1, ConfigService.iconOpacity)
+        if (AppearanceTokens.dock.activeBackgroundMode === "tonal")
+            return Math.min(0.34, configuredAlpha)
+        if (AppearanceTokens.dock.activeBackgroundMode === "subtle")
+            return Math.min(0.22, configuredAlpha)
+        return configuredAlpha
+    }
     readonly property bool showActiveBackground: isRunning && isActivated
     readonly property bool showUrgentBackground: isRunning && isUrgent
         && !showActiveBackground
@@ -95,6 +118,98 @@ Item {
     signal requestEdit()
     signal contextRequested()
     property bool _heldForEdit: false
+    property real _windowHandoffOpacity: 1.0
+    opacity: _windowHandoffOpacity
+
+    function playWindowToIconHandoff(durationMs) {
+        windowHandoffOpacity.stop()
+        _windowHandoffOpacity = 1.0
+        windowHandoffPause.duration = Math.max(0, Number(durationMs) - 210)
+        windowHandoffOpacity.start()
+    }
+
+    SequentialAnimation {
+        id: windowHandoffOpacity
+        PauseAnimation {
+            id: windowHandoffPause
+            duration: 270
+        }
+        NumberAnimation {
+            target: icon
+            property: "_windowHandoffOpacity"
+            from: 1.0
+            to: 0.0
+            duration: 50
+            easing.type: Easing.Linear
+        }
+        PauseAnimation { duration: 150 }
+        NumberAnimation {
+            target: icon
+            property: "_windowHandoffOpacity"
+            from: 0.0
+            to: 1.0
+            duration: 10
+            easing.type: Easing.Linear
+        }
+    }
+
+    // KWin's private KOS Effect consumes compositor-global icon rectangles.
+    // The target uses the stable slot centre rather than iconImage's hover
+    // scale/lift. Ancestor transforms still preserve the Dock's live hide and
+    // surface scale, while minimize/restore now share one exact centre.
+    function windowAnimationTarget() {
+        if (!icon.visible || !icon.appId || icon.iconSize <= 0)
+            return null
+        const slotParent = icon.parent
+        const centerX = icon.x + icon.width / 2
+        const centerY = icon.y + icon.height / 2
+        const topLeft = slotParent
+            ? slotParent.mapToItem(null, centerX - icon.iconSize / 2,
+                                   centerY - icon.iconSize / 2)
+            : iconImage.mapToItem(null, 0, 0)
+        const bottomRight = slotParent
+            ? slotParent.mapToItem(null, centerX + icon.iconSize / 2,
+                                   centerY + icon.iconSize / 2)
+            : iconImage.mapToItem(null, iconImage.width, iconImage.height)
+        const left = icon.surfaceOriginX
+            + Math.min(topLeft.x, bottomRight.x)
+        const top = icon.surfaceOriginY
+            + Math.min(topLeft.y, bottomRight.y)
+        const targetWidth = Math.abs(bottomRight.x - topLeft.x)
+        const targetHeight = Math.abs(bottomRight.y - topLeft.y)
+        if (targetWidth < 1 || targetHeight < 1)
+            return null
+        let animationIconSource = String(icon.iconSource || "")
+        // Compatibility for icons resolved before AppPresentationService was
+        // changed to preserve local files. KWin cannot access Quickshell's
+        // private image provider, but it can read the underlying PNG.
+        if (animationIconSource.startsWith("image://icon//"))
+            animationIconSource = animationIconSource.substring("image://icon/".length)
+        return {
+            appId: icon.appId,
+            windowId: icon.animationWindowId,
+            // KWin uses the same artwork as this Dock delegate during the
+            // final thumbnail-to-icon texture handoff. Most application
+            // icons resolve to a local file URL; the effect falls back to
+            // EffectWindow::icon() for providers it cannot read directly.
+            iconSource: animationIconSource,
+            dockEdge: icon.dockEdge,
+            outputName: icon.targetScreen ? icon.targetScreen.name : "",
+            x: left,
+            y: top,
+            width: targetWidth,
+            height: targetHeight
+        }
+    }
+
+    Component.onCompleted: DockWindowAnimationTargetService.registerIcon(icon)
+    Component.onDestruction: DockWindowAnimationTargetService.unregisterIcon(icon)
+    onAppIdChanged: DockWindowAnimationTargetService.schedulePublish()
+    onWindowIdChanged: DockWindowAnimationTargetService.schedulePublish()
+    onAnimationWindowIdChanged: DockWindowAnimationTargetService.schedulePublish()
+    onIconSourceChanged: DockWindowAnimationTargetService.schedulePublish()
+    onVisibleChanged: DockWindowAnimationTargetService.schedulePublish()
+    onIconSizeChanged: DockWindowAnimationTargetService.schedulePublish()
 
     // Reserve the background's outer slot for every app icon. Only the active
     // window paints it; reserving the slot prevents focus changes from moving
@@ -107,12 +222,15 @@ Item {
     // Scale model
     // ═══════════════════════════════════════════════════════════
     // Final scale: 1.0 (or larger on hover).
-    property real _targetScale: _hovering ? DockAnimation.iconHoverScale : 1.0
+    property real _targetScale: _hovering
+        ? AppearanceTokens.dock.hoverScale : 1.0
     // Lift non-focused tasks to make pointer feedback unmistakable. The active
     // task keeps its shared background vertically stable, while scale alone
     // still makes its hover state clear.
     readonly property real _hoverLift: _hovering && !showActiveBackground
-        ? -Math.max(2, Math.round(iconSize * 0.08)) : 0
+        && AppearanceTokens.dock.hoverLiftRatio > 0
+        ? -Math.max(2, Math.round(iconSize
+            * AppearanceTokens.dock.hoverLiftRatio)) : 0
     property real _attentionScale: 1.0
     property real _attentionLift: 0
     property real _attentionGlow: 0
@@ -245,7 +363,13 @@ Item {
         // Both are local to the icon, so the highlight always tracks its task
         // without any shared indicator or geometry tracking.
         color: icon.showActiveBackground
-            ? Qt.rgba(1, 1, 1, icon.activeBackgroundAlpha)
+            ? (AppearanceTokens.dock.activeBackgroundMode === "tonal"
+                ? Qt.rgba(ThemeService.accentColor.r,
+                    ThemeService.accentColor.g, ThemeService.accentColor.b,
+                    icon.activeBackgroundAlpha)
+                : AppearanceTokens.dock.activeBackgroundMode === "subtle"
+                    ? Qt.rgba(1, 1, 1, icon.activeBackgroundAlpha)
+                    : Qt.rgba(1, 1, 1, icon.activeBackgroundAlpha))
             : Qt.rgba(1.0, 0.30, 0.12, icon.activeBackgroundAlpha)
         visible: (icon.showActiveBackground && !icon.useSharedActiveBackground)
             || icon.showUrgentBackground
@@ -278,7 +402,7 @@ Item {
         width: icon.iconSize
         height: icon.iconSize
         anchors.centerIn: parent
-        radius: icon.iconSize * 0.30
+        radius: icon.activeBackgroundRadius
         color: Qt.rgba(1, 1, 1, 0.12)
         opacity: icon._hovering && !icon.showActiveBackground
             && !icon.showUrgentBackground ? 1.0 : 0.0
@@ -302,7 +426,7 @@ Item {
         width: icon.iconSize
         height: icon.iconSize
         anchors.centerIn: parent
-        radius: icon.iconSize * 0.30
+        radius: icon.activeBackgroundRadius
         color: Qt.rgba(1, 1, 1, 0.12)
         opacity: 0.0
         visible: opacity > 0.0
@@ -344,7 +468,8 @@ Item {
         layer.smooth: true
         
         // Icon appearance style from ConfigService
-        opacityMultiplier: ConfigService.iconMode === "color" ? 1.0 : ConfigService.iconOpacity
+        opacityMultiplier: ConfigService.iconMode === "color"
+            ? 1.0 : ConfigService.iconOpacity
         saturation: ConfigService.iconSaturation
         tintEnabled: ConfigService.iconTintEnabled
         tintColor: ConfigService.iconTintColor
@@ -365,20 +490,20 @@ Item {
         }
     }
 
-    // macOS-style running indicator: a small dot on the icon edge facing the
-    // docked screen edge (below on a bottom dock, on the screen-edge side of
-    // side docks). The content row rotates 90° clockwise on side docks, which
-    // maps the unrotated *bottom* edge to the screen-left side of the
-    // counter-rotated icon and the *top* edge to its screen-right side.
-    // The dot sits *outside* the icon edge with a breathing gap: anchor its
-    // far side to the icon edge so the margin pushes it away, never inside.
+    // Style-driven running indicator: macOS uses a dot, Windows a longer
+    // underline, and Material a shorter tonal pill. Rotation of the content
+    // row naturally turns the line toward the attached edge on side docks.
     Rectangle {
         id: runningIndicator
-        width: icon.runningDotSize
-        height: icon.runningDotSize
+        width: icon.runningIndicatorWidth
+        height: icon.runningIndicatorHeight
         radius: width / 2
-        color: Qt.rgba(1, 1, 1, 0.95)
-        border { width: 1; color: Qt.rgba(0, 0, 0, 0.40) }
+        color: icon.dotIndicator ? Qt.rgba(1, 1, 1, 0.95)
+            : ThemeService.accentColor
+        border {
+            width: icon.dotIndicator ? 1 : 0
+            color: Qt.rgba(0, 0, 0, 0.40)
+        }
         opacity: icon.isRunning ? 1 : 0
         visible: opacity > 0.01
         z: 2
@@ -391,8 +516,8 @@ Item {
             ? undefined : iconImage.bottom
         anchors.bottom: icon.vertical && icon.dockEdge === "right"
             ? iconImage.top : undefined
-        anchors.topMargin: icon.runningDotGap
-        anchors.bottomMargin: icon.runningDotGap
+        anchors.topMargin: icon.runningIndicatorGap
+        anchors.bottomMargin: icon.runningIndicatorGap
         Behavior on opacity {
             NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
         }
@@ -492,8 +617,9 @@ Item {
                 }
                 DockModelService.activeContextMenu = contextMenu
                 DockModelService.openDockPopup(contextMenu)
-            } else if (!icon._heldForEdit)
+            } else if (!icon._heldForEdit) {
                 icon.activate()
+            }
         }
         onEntered: {
             icon._hovering = true

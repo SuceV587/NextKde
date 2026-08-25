@@ -33,22 +33,25 @@ type MetricSample struct {
 	Memory        float64 `json:"memory,omitempty"`
 	Disk          float64 `json:"disk,omitempty"`
 	Frequency     float64 `json:"frequencyMhz,omitempty"`
+	CurrentMilliC float64 `json:"currentMilliC,omitempty"`
 	AverageMilliC float64 `json:"averageMilliC,omitempty"`
 	MaximumMilliC float64 `json:"maximumMilliC,omitempty"`
 }
 type Metrics struct {
-	CPU              float64         `json:"cpu"`
-	Memory           float64         `json:"memory"`
-	Disk             float64         `json:"disk"`
-	FrequencyMHz     float64         `json:"frequencyMhz"`
-	AverageMilliC    float64         `json:"averageMilliC"`
-	MaximumMilliC    float64         `json:"maximumMilliC"`
-	MemoryUsedBytes  float64         `json:"memoryUsedBytes"`
-	MemoryTotalBytes float64         `json:"memoryTotalBytes"`
-	DiskUsedBytes    float64         `json:"diskUsedBytes"`
-	DiskTotalBytes   float64         `json:"diskTotalBytes"`
-	Sensors          []SensorReading `json:"sensors"`
-	History          []MetricSample  `json:"history"`
+	CPU                  float64         `json:"cpu"`
+	Memory               float64         `json:"memory"`
+	Disk                 float64         `json:"disk"`
+	FrequencyMHz         float64         `json:"frequencyMhz"`
+	CurrentMilliC        float64         `json:"currentMilliC"`
+	Maximum5MinuteMilliC float64         `json:"maximum5MinuteMilliC"`
+	AverageMilliC        float64         `json:"averageMilliC"`
+	MaximumMilliC        float64         `json:"maximumMilliC"`
+	MemoryUsedBytes      float64         `json:"memoryUsedBytes"`
+	MemoryTotalBytes     float64         `json:"memoryTotalBytes"`
+	DiskUsedBytes        float64         `json:"diskUsedBytes"`
+	DiskTotalBytes       float64         `json:"diskTotalBytes"`
+	Sensors              []SensorReading `json:"sensors"`
+	History              []MetricSample  `json:"history"`
 }
 
 // SensorReading is one live hwmon/thermal reading, enumerated exactly like the
@@ -59,6 +62,9 @@ type SensorReading struct {
 	Label  string  `json:"label"`
 	MilliC float64 `json:"milliC"`
 }
+
+const temperaturePeakWindow = 5 * time.Minute
+
 type AppUsage struct {
 	Name    string  `json:"name,omitempty"`
 	Icon    string  `json:"icon,omitempty"`
@@ -697,9 +703,58 @@ func readFrequency() float64 {
 	return sum / count
 }
 
-func readTemperature() (avg, maximum float64, readings []SensorReading) {
+// cpuTemperaturePriority selects one canonical package-level reading instead
+// of averaging duplicate ACPI, thermal-zone, and per-core views of the same
+// processor. Direct hwmon package sensors are preferred, then package thermal
+// zones, with CPU-labelled zones and individual cores as fallbacks.
+func cpuTemperaturePriority(reading SensorReading) int {
+	if reading.MilliC <= 0 {
+		return 0
+	}
+	source := strings.ToLower(reading.Source)
+	device := strings.ToLower(reading.Device)
+	label := strings.ToLower(reading.Label)
+
+	switch {
+	case device == "coretemp" && strings.Contains(label, "package id"):
+		return 100
+	case (device == "k10temp" || strings.Contains(device, "zenpower")) && label == "tctl":
+		return 100
+	case (device == "k10temp" || strings.Contains(device, "zenpower")) && label == "tdie":
+		return 95
+	case source == "thermal" && label == "x86_pkg_temp":
+		return 90
+	case strings.Contains(label, "package") || strings.Contains(label, "pkg"):
+		return 80
+	case source == "thermal" && strings.Contains(label, "tcpu"):
+		return 70
+	case device == "coretemp" && strings.HasPrefix(label, "core "):
+		return 60
+	case source == "thermal" && strings.Contains(label, "cpu"):
+		return 50
+	default:
+		return 0
+	}
+}
+
+func selectCurrentCPUTemperature(readings []SensorReading) float64 {
+	priority := 0
+	current := float64(-1)
+	for _, reading := range readings {
+		candidatePriority := cpuTemperaturePriority(reading)
+		if candidatePriority == 0 || candidatePriority < priority {
+			continue
+		}
+		if candidatePriority > priority || reading.MilliC > current {
+			priority = candidatePriority
+			current = reading.MilliC
+		}
+	}
+	return current
+}
+
+func readTemperature() (current float64, readings []SensorReading) {
 	zones, _ := filepath.Glob("/sys/class/thermal/thermal_zone*/type")
-	zoneSum, zoneCount, zoneMax := float64(0), float64(0), float64(0)
 	for _, t := range zones {
 		label := strings.TrimSpace(string(readRaw(t)))
 		index := strings.TrimPrefix(t, "/sys/class/thermal/thermal_zone")
@@ -709,13 +764,6 @@ func readTemperature() (avg, maximum float64, readings []SensorReading) {
 			continue
 		}
 		value := parseF64("/sys/class/thermal/thermal_zone" + index + "/temp")
-		if value > 0 {
-			zoneSum += value
-			zoneCount++
-			if value > zoneMax {
-				zoneMax = value
-			}
-		}
 		readings = append(readings, SensorReading{
 			Source: "thermal", Device: "kernel", Label: label, MilliC: value,
 		})
@@ -736,10 +784,37 @@ func readTemperature() (avg, maximum float64, readings []SensorReading) {
 			})
 		}
 	}
-	if zoneCount == 0 || zoneMax <= 0 {
-		return -1, -1, readings
+	return selectCurrentCPUTemperature(readings), readings
+}
+
+func metricSampleTemperature(sample MetricSample) float64 {
+	if sample.CurrentMilliC > 0 {
+		return sample.CurrentMilliC
 	}
-	return zoneSum / zoneCount, zoneMax, readings
+	// State written before currentMilliC existed stored an instantaneous
+	// thermal-zone maximum and average. Prefer the former during the five-minute
+	// migration window so an actual recent peak is not understated.
+	if sample.MaximumMilliC > 0 {
+		return sample.MaximumMilliC
+	}
+	if sample.AverageMilliC > 0 {
+		return sample.AverageMilliC
+	}
+	return -1
+}
+
+func rollingTemperatureMaximum(history []MetricSample, nowMillis int64, window time.Duration) float64 {
+	cutoff := nowMillis - window.Milliseconds()
+	maximum := float64(-1)
+	for _, sample := range history {
+		if sample.At < cutoff || sample.At > nowMillis {
+			continue
+		}
+		if value := metricSampleTemperature(sample); value > maximum {
+			maximum = value
+		}
+	}
+	return maximum
 }
 
 // readRaw returns a file's bytes trimmed of whitespace; missing/unreadable
@@ -882,7 +957,8 @@ func (s *Service) settle(now time.Time) {
 func (s *Service) sample() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	avg, max, readings := readTemperature()
+	now := time.Now()
+	current, readings := readTemperature()
 	memUsed, memTotal := readMem()
 	diskUsed, diskTotal := readDisk()
 	cpu := s.readCPU()
@@ -897,19 +973,28 @@ func (s *Service) sample() {
 		s.state.Metrics.Disk = diskUsed / diskTotal
 	}
 	s.state.Metrics.FrequencyMHz = frequency
-	s.state.Metrics.AverageMilliC = avg
-	s.state.Metrics.MaximumMilliC = max
+	s.state.Metrics.CurrentMilliC = current
 	s.state.Metrics.MemoryUsedBytes = memUsed
 	s.state.Metrics.MemoryTotalBytes = memTotal
 	s.state.Metrics.DiskUsedBytes = diskUsed
 	s.state.Metrics.DiskTotalBytes = diskTotal
 	s.state.Metrics.Sensors = readings
-	sample := MetricSample{At: time.Now().UnixMilli(), CPU: cpu, Memory: s.state.Metrics.Memory,
-		Disk: s.state.Metrics.Disk, Frequency: frequency, AverageMilliC: avg, MaximumMilliC: max}
+	sample := MetricSample{At: now.UnixMilli(), CPU: cpu, Memory: s.state.Metrics.Memory,
+		Disk: s.state.Metrics.Disk, Frequency: frequency, CurrentMilliC: current,
+		// Keep writing the old fields for one compatibility cycle. New readers
+		// consume currentMilliC and maximum5MinuteMilliC.
+		AverageMilliC: current, MaximumMilliC: current}
 	s.state.Metrics.History = append(s.state.Metrics.History, sample)
 	if len(s.state.Metrics.History) > 360 {
 		s.state.Metrics.History = s.state.Metrics.History[len(s.state.Metrics.History)-360:]
 	}
+	maximum5Minute := rollingTemperatureMaximum(
+		s.state.Metrics.History, now.UnixMilli(), temperaturePeakWindow)
+	s.state.Metrics.Maximum5MinuteMilliC = maximum5Minute
+	// Compatibility aliases keep older shell surfaces correct while every
+	// in-tree consumer migrates to the explicit field names.
+	s.state.Metrics.AverageMilliC = current
+	s.state.Metrics.MaximumMilliC = maximum5Minute
 }
 func (s *Service) event(e Event) *EventResponse {
 	// Desktop mutations originate from the shell itself as well as external

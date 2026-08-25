@@ -1,11 +1,32 @@
 import Quickshell
 import Quickshell.Services.UPower
 import QtQuick
+import QtQuick.Effects
 import qs.desktop.modules.dock
 
 // Compact battery indicator with charging-state colours and hover details.
 Item {
     id: root
+
+    property bool dockHosted: false
+    property string dockEdge: "bottom"
+    property bool verticalDock: false
+    rotation: verticalDock ? -90 : 0
+    readonly property bool tintActive: dockHosted
+        && ConfigService.iconMode === "tint"
+    readonly property color dockTintColor: tintActive
+        ? ConfigService.styledDockIconColor()
+        : ThemeService.foregroundColor
+    opacity: tintActive ? ConfigService.iconOpacity : 1.0
+    layer.enabled: tintActive
+    layer.effect: MultiEffect {
+        shadowEnabled: true
+        shadowColor: Qt.rgba(0, 0, 0, 0.82)
+        shadowOpacity: 0.62
+        shadowBlur: 0.32
+        shadowVerticalOffset: 0.7
+        shadowScale: 1.04
+    }
 
     implicitWidth: 22
     implicitHeight: 12
@@ -24,7 +45,7 @@ Item {
         color: "transparent"
         border {
             width: 1.5
-            color: ThemeService.foregroundColor
+            color: root.dockTintColor
         }
     }
 
@@ -36,7 +57,7 @@ Item {
         width: 2
         height: 3.5
         radius: 1
-        color: ThemeService.foregroundColor
+        color: root.dockTintColor
     }
 
     Rectangle {
@@ -76,9 +97,19 @@ Item {
         color: "transparent"
         anchor {
             item: root
-            edges: Edges.Bottom
-            gravity: Edges.Bottom
-            margins.bottom: -6
+            edges: !root.dockHosted ? Edges.Bottom
+                : root.dockEdge === "left" ? Edges.Right
+                : root.dockEdge === "right" ? Edges.Left : Edges.Top
+            gravity: !root.dockHosted ? Edges.Bottom
+                : root.dockEdge === "left" ? Edges.Right
+                : root.dockEdge === "right" ? Edges.Left : Edges.Top
+            margins.top: root.dockHosted
+                && root.dockEdge === "bottom" ? -6 : 0
+            margins.bottom: root.dockHosted ? 0 : -6
+            margins.left: root.dockHosted
+                && root.dockEdge === "right" ? -6 : 0
+            margins.right: root.dockHosted
+                && root.dockEdge === "left" ? -6 : 0
         }
 
         Rectangle {
@@ -110,13 +141,15 @@ Item {
     readonly property bool isCharging: batteryDevice.ready
         && (batteryDevice.state === UPowerDeviceState.Charging
             || batteryDevice.state === UPowerDeviceState.PendingCharge)
-    readonly property color fillColor: percent > 95
+    readonly property color fillColor: tintActive ? dockTintColor
+        : percent > 95
         ? "#30d158"
         : percent >= 50
             ? "#ffffff"
             : percent >= 15
                 ? "#ff9f0a"
                 : "#ff453a"
-    readonly property color boltColor: percent >= 50 && percent <= 95
+    readonly property color boltColor: tintActive ? "white"
+        : percent >= 50 && percent <= 95
         ? "#ff9f0a" : "#ffffff"
 }

@@ -13,11 +13,28 @@ PopupWindow {
     id: panel
 
     property Item anchorItem: null
+    property bool dockHosted: false
+    property string dockEdge: "bottom"
     implicitWidth: 300
     implicitHeight: 340
     color: "transparent"
     grabFocus: true
-    anchor { item: panel.anchorItem; edges: Edges.Bottom; gravity: Edges.Bottom; margins.bottom: -6 }
+    anchor {
+        item: panel.anchorItem
+        edges: !panel.dockHosted ? Edges.Bottom
+            : panel.dockEdge === "left" ? Edges.Right
+            : panel.dockEdge === "right" ? Edges.Left : Edges.Top
+        gravity: !panel.dockHosted ? Edges.Bottom
+            : panel.dockEdge === "left" ? Edges.Right
+            : panel.dockEdge === "right" ? Edges.Left : Edges.Top
+        margins.top: panel.dockHosted
+            && panel.dockEdge === "bottom" ? -6 : 0
+        margins.bottom: panel.dockHosted ? 0 : -6
+        margins.left: panel.dockHosted
+            && panel.dockEdge === "right" ? -6 : 0
+        margins.right: panel.dockHosted
+            && panel.dockEdge === "left" ? -6 : 0
+    }
 
     // Real liquid glass: compositor blur region so windows behind the device
     // list are visible through the glass. Stepped region encodes the radius

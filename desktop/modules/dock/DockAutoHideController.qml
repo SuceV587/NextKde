@@ -103,8 +103,9 @@ Item {
 
     function _recomputeConflict() {
         if (!ctl.windowDataReady || ctl.dockWidth <= 0 || ctl.dockHeight <= 0) {
+            const changed = ctl.hasWindowConflict
             ctl.hasWindowConflict = false
-            return
+            return changed
         }
         const target = ctl._targetRect()
         const base = DockMath.visibleDockRect(target, ctl.position,
@@ -113,8 +114,10 @@ Item {
         const next = DockMath.hasConflict(cands, target,
             DockMath.avoidanceRect(base), DockMath.releaseRect(base),
             ctl.hasWindowConflict, WindowService.currentDesktopId)
-        if (next !== ctl.hasWindowConflict)
+        const changed = next !== ctl.hasWindowConflict
+        if (changed)
             ctl.hasWindowConflict = next
+        return changed
     }
 
     // ────────────────────────────────────────────────────────────
@@ -410,10 +413,16 @@ Item {
         // moved/resized/appeared — the cached conflict must be recomputed, not
         // just re-evaluated against the stale value (otherwise a window that
         // arrives after boot never hides a smart dock).
-        function onRevisionChanged() { ctl._recomputeConflict(); ctl._scheduleEvaluate() }
+        function onRevisionChanged() {
+            // Geometry snapshots are already throttled at the KWin boundary.
+            // React to an actual collision edge immediately; waiting on the
+            // generic 80ms debounce made reveal/hide lag behind the window.
+            if (ctl._recomputeConflict())
+                ctl._doEvaluate()
+        }
         function onCurrentDesktopIdChanged() {
-            ctl._recomputeConflict()
-            ctl._scheduleEvaluate()
+            if (ctl._recomputeConflict())
+                ctl._doEvaluate()
         }
     }
 

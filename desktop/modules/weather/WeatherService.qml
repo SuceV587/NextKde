@@ -37,6 +37,8 @@ QtObject {
         ? Math.round(Number(current.wind_speed_10m)) + " km/h" : "--"
     readonly property string windDirection: available
         ? Math.round(Number(current.wind_direction_10m)) + "°" : "--"
+    readonly property string sunriseTime: dailyTime("sunrise")
+    readonly property string sunsetTime: dailyTime("sunset")
     readonly property var forecastDays: {
         if (!daily || !daily.time || !daily.weather_code
                 || !daily.temperature_2m_max || !daily.temperature_2m_min)
@@ -52,6 +54,17 @@ QtObject {
             })
         }
         return days
+    }
+
+    function dailyTime(field) {
+        const values = service.daily?.[field]
+        if (!values || values.length === 0)
+            return "--:--"
+        // With timezone=auto Open-Meteo returns local ISO values such as
+        // 2026-08-24T06:03. Keep the local clock portion without reparsing it
+        // through JavaScript's system timezone.
+        const match = String(values[0]).match(/T(\d{2}:\d{2})/)
+        return match ? match[1] : "--:--"
     }
 
     function conditionText(code) {
@@ -98,7 +111,7 @@ QtObject {
         const url = "https://api.open-meteo.com/v1/forecast?latitude="
             + latitude + "&longitude=" + longitude
             + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m,wind_direction_10m"
-            + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
+            + "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset"
             + "&timezone=auto&forecast_days=7"
         const proc = processFactory.createObject(service, {
             command: ["curl", "--compressed", "--fail", "--silent", "--show-error",

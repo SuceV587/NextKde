@@ -8,14 +8,8 @@ Item {
     property int widthUnits: 4
     readonly property real backgroundGap: iconSize * 0.1
     readonly property real contentWidth: iconSize * widthUnits
-    readonly property bool monochrome: ConfigService.iconMode !== "color"
-
     function tone(color) {
-        if (!monochrome)
-            return color
-        const luminance = color.r * 0.2126 + color.g * 0.7152
-            + color.b * 0.0722
-        return Qt.rgba(luminance, luminance, luminance, color.a)
+        return ConfigService.styledDockColor(color)
     }
 
     function backgroundStart(code, day) {

@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Widgets
 import qs.desktop.modules.dock
 import qs.desktop.modules.common
 
@@ -10,9 +11,13 @@ import qs.desktop.modules.common
 Item {
     id: root
 
-    property bool available: MetricsService.averageMilliC >= 0 && MetricsService.maximumMilliC >= 0
-    readonly property int averageC: Math.round(MetricsService.averageMilliC / 1000)
-    readonly property int maximumC: Math.round(MetricsService.maximumMilliC / 1000)
+    property bool dockHosted: false
+
+    property bool available: MetricsService.currentMilliC >= 0
+        && MetricsService.maximum5MinuteMilliC >= 0
+    readonly property int currentC: Math.round(MetricsService.currentMilliC / 1000)
+    readonly property int maximum5MinuteC: Math.round(
+        MetricsService.maximum5MinuteMilliC / 1000)
     readonly property real memoryUsage: MetricsService.memoryTotalBytes > 0
         ? MetricsService.memoryUsedBytes / MetricsService.memoryTotalBytes : 0
     readonly property real diskUsage: MetricsService.diskTotalBytes > 0
@@ -29,13 +34,10 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 3
 
-        GlassText {
-            text: ""
-            color: ThemeService.foregroundColor
-            font {
-                family: "LXGW WenKai Mono Nerd Font"
-                pixelSize: 17
-            }
+        SystemIcon {
+            width: 17
+            height: 17
+            role: "cpu"
             anchors.verticalCenter: parent.verticalCenter
         }
 
@@ -44,7 +46,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
 
             GlassText {
-                text: "平均温度 " + root.averageC + "°"
+                text: "平均温度 " + root.currentC + "°"
                 color: ThemeService.foregroundColor
                 font {
                     family: "SF Pro Display"
@@ -54,7 +56,7 @@ Item {
             }
 
             GlassText {
-                text: "最高温度 " + root.maximumC + "°"
+                text: "最高温度 " + root.maximum5MinuteC + "°"
                 color: ThemeService.foregroundColor
                 font {
                     family: "SF Pro Display"
@@ -80,9 +82,10 @@ Item {
         color: "transparent"
         anchor {
             item: root
-            edges: Edges.Bottom
-            gravity: Edges.Bottom
-            margins.bottom: -6
+            edges: root.dockHosted ? Edges.Top : Edges.Bottom
+            gravity: root.dockHosted ? Edges.Top : Edges.Bottom
+            margins.top: root.dockHosted ? -6 : 0
+            margins.bottom: root.dockHosted ? 0 : -6
         }
 
         Rectangle {
@@ -93,7 +96,8 @@ Item {
             Text {
                 id: tooltipText
                 anchors.centerIn: parent
-                text: "CPU 平均 " + root.averageC + "°C · 60 秒最高 " + root.maximumC + "°C"
+                text: "CPU 平均 " + root.currentC + "°C · 60 秒最高 "
+                    + root.maximum5MinuteC + "°C"
                 color: ThemeService.foregroundColor
                 font {
                     family: "Noto Sans CJK SC"
@@ -114,9 +118,10 @@ Item {
         color: "transparent"
         anchor {
             item: root
-            edges: Edges.Bottom
-            gravity: Edges.Bottom
-            margins.bottom: -6
+            edges: root.dockHosted ? Edges.Top : Edges.Bottom
+            gravity: root.dockHosted ? Edges.Top : Edges.Bottom
+            margins.top: root.dockHosted ? -6 : 0
+            margins.bottom: root.dockHosted ? 0 : -6
         }
 
         LiquidGlassSurface {
@@ -185,8 +190,8 @@ Item {
                     spacing: 8
                     Repeater {
                         model: [
-                            { label: "平均 CPU", value: root.averageC + "°C" },
-                            { label: "60 秒最高", value: root.maximumC + "°C" }
+                            { label: "平均 CPU", value: root.currentC + "°C" },
+                            { label: "60 秒最高", value: root.maximum5MinuteC + "°C" }
                         ]
                         delegate: Rectangle {
                             width: (parent.width - 8) / 2

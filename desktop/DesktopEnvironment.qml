@@ -13,6 +13,22 @@ import qs.desktop.modules.common
 Item {
     id: shell
 
+    readonly property bool barIntegratedWithDock:
+        AppearanceConfigService.barIntegratedWithDock
+
+    Component {
+        id: integratedBarStatus
+        BarStatusArea {
+            dockHosted: true
+            dockEdge: ConfigService.position
+        }
+    }
+
+    Component {
+        id: integratedSideClock
+        SideDockClockStatus {}
+    }
+
     // Theme watching is non-visual and only loads a tiny FileView. The
     // AppLauncher and its icon grid remain lazy.
     Component.onCompleted: IconThemeReloadService.initialize()
@@ -82,12 +98,74 @@ Item {
 
     }
 
+    // Shell-wide appearance controls used by the standalone Settings app.
+    // Blur/liquid values are synchronized only with the custom Glass effect,
+    // never KDE's stock blur effect. shellStyle selects semantic shape tokens.
+    IpcHandler {
+        target: "appearance-settings"
+
+        function snapshot(): string {
+            return JSON.stringify({
+                blurStrength: AppearanceConfigService.blurStrength,
+                liquidStrength: AppearanceConfigService.liquidStrength,
+                shellStyle: AppearanceConfigService.shellStyle,
+                barIntegratedWithDock:
+                    AppearanceConfigService.barIntegratedWithDock,
+                tokenVersion: AppearanceTokens.version,
+            })
+        }
+
+        function updateBlurStrength(value: real): string {
+            AppearanceConfigService.updateBlurStrength(value)
+            return snapshot()
+        }
+
+        function updateLiquidStrength(value: real): string {
+            AppearanceConfigService.updateLiquidStrength(value)
+            return snapshot()
+        }
+
+        function updateShellStyle(style: string): string {
+            AppearanceConfigService.updateShellStyle(style)
+            return snapshot()
+        }
+
+        function updateBarIntegratedWithDock(enabled: bool): string {
+            AppearanceConfigService.updateBarIntegratedWithDock(enabled)
+            return snapshot()
+        }
+
+        function resetStrengths(): string {
+            AppearanceConfigService.resetStrengths()
+            return snapshot()
+        }
+    }
+
+    // The KWin effect observes pointer presses at compositor scope and routes
+    // them through WindowService's existing local bridge. Keep the policy here
+    // so individual desktop, Dock, and tray surfaces need no outside-click
+    // listeners.
+    Connections {
+        target: WindowService
+        function onGlobalPointerPressed(x, y, button, timestamp) {
+            ContextMenuCoordinator.dismissForGlobalPointerPress(x, y, timestamp)
+        }
+    }
+
     QuickSearch {
         id: quickSearch
     }
     AppLauncher {}
     NotificationCenter {}
     DeskCenter {}
-    Bar {}
-    Dock {}
+    Bar { enabled: !shell.barIntegratedWithDock }
+    Dock {
+        clockInInfoCarousel: shell.barIntegratedWithDock
+            && ConfigService.position === "bottom"
+        leadingAccessory: shell.barIntegratedWithDock
+            && ConfigService.position !== "bottom"
+            ? integratedSideClock : null
+        trailingAccessory: shell.barIntegratedWithDock
+            ? integratedBarStatus : null
+    }
 }

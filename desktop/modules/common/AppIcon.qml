@@ -14,13 +14,15 @@ Item {
     property real   saturation:        1.0
     property real   tintEnabled:       0.0
     property color  tintColor:         "#a855f7"
+    property bool   asynchronous:      true
+    property bool   smooth:            true
 
     IconImage {
         id: iconImage
         anchors.fill: parent
         source: root.source
-        smooth: true
-        asynchronous: true
+        smooth: root.smooth
+        asynchronous: root.asynchronous
         backer.cache: false
         visible: false
     }

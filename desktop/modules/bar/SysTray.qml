@@ -2,6 +2,8 @@ import Quickshell
 import Quickshell.Services.SystemTray
 import Quickshell.Widgets
 import QtQuick
+import qs.desktop.modules.common
+import qs.desktop.modules.dock
 
 // StatusNotifierItem host. Referencing SystemTray claims and tracks tray items.
 Item {
@@ -12,20 +14,46 @@ Item {
     // Visual-only adjustment; transforms preserve the item's input region
     // and the menu anchor follows the transformed icon position.
     property int visualYOffset: 0
-    readonly property int itemSize: iconSize + 4
+    property bool dockHosted: false
+    property string dockEdge: "bottom"
+    property bool verticalDock: false
+    readonly property int popupEdge: !dockHosted ? Edges.Bottom
+        : dockEdge === "left" ? Edges.Right
+        : dockEdge === "right" ? Edges.Left : Edges.Top
+    // BarStatusArea appends Wi-Fi, battery, settings and control-centre cells
+    // here so native tray items and shell controls share one continuous grid.
+    property var trailingComponents: []
+    // Supplied by BarStatusArea. Keeping this separate from the tray's own
+    // implicitHeight avoids a height/row-count binding cycle.
+    property real availableHeight: 24
+    readonly property int itemSize: iconSize + 8
+    // UntypedObjectModel intentionally has no length/get API; Repeater.count
+    // is the supported reactive item count for layout calculations.
+    readonly property int itemCount: trayRepeater.count
+        + (trailingComponents ? trailingComponents.length : 0)
+    readonly property int twoRowThreshold: itemSize * 2
+    readonly property bool twoRows: dockHosted && itemCount > 1
+        && availableHeight >= twoRowThreshold
+    readonly property int rowCount: twoRows ? 2 : 1
+    readonly property real singleRowImplicitWidth: itemCount > 0
+        ? itemCount * itemSize + (itemCount - 1) * iconSpacing : 0
 
-    implicitWidth: trayRow.width
-    implicitHeight: itemSize
+    implicitWidth: trayGrid.implicitWidth
+    implicitHeight: trayGrid.implicitHeight
     width: implicitWidth
     height: implicitHeight
     transform: Translate { y: root.visualYOffset }
 
-    Row {
-        id: trayRow
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: root.iconSpacing
+    Grid {
+        id: trayGrid
+        anchors.centerIn: parent
+        rows: root.rowCount
+        flow: Grid.TopToBottom
+        columnSpacing: root.iconSpacing
+        rowSpacing: 0
 
         Repeater {
+            id: trayRepeater
             model: SystemTray.items
 
             delegate: Item {
@@ -37,8 +65,17 @@ Item {
                     || modelData.title || modelData.id
 
                 function openMenu() {
-                    if (modelData.hasMenu)
-                        trayMenu.open()
+                    if (!modelData.hasMenu)
+                        return
+
+                    // QsMenuAnchor owns a native Qt menu. Release any
+                    // self-drawn desktop popup first, then let it finish
+                    // unmapping before Qt calculates this menu's anchor.
+                    ContextMenuCoordinator.closeActive()
+                    Qt.callLater(function() {
+                        if (trayItem.modelData && trayItem.modelData.hasMenu)
+                            trayMenu.open()
+                    })
                 }
 
                 function activatePrimary() {
@@ -55,13 +92,20 @@ Item {
                     visible: trayMouse.containsMouse || trayMenu.visible
                 }
 
-                IconImage {
+                AppIcon {
                     width: root.iconSize
                     height: root.iconSize
                     anchors.centerIn: parent
                     source: trayItem.modelData.icon
-                    smooth: true
-                    asynchronous: true
+                    opacityMultiplier: root.dockHosted
+                        && ConfigService.iconMode !== "color"
+                        ? ConfigService.iconOpacity : 1.0
+                    saturation: root.dockHosted
+                        ? ConfigService.iconSaturation : 1.0
+                    tintEnabled: root.dockHosted
+                        ? ConfigService.iconTintEnabled : 0.0
+                    tintColor: ConfigService.iconTintColor
+                    rotation: root.verticalDock ? -90 : 0
                 }
 
                 MouseArea {
@@ -88,9 +132,15 @@ Item {
                     menu: trayItem.modelData.menu
                     anchor {
                         item: trayItem
-                        edges: Edges.Bottom
-                        gravity: Edges.Bottom
-                        margins.bottom: -4
+                        edges: root.popupEdge
+                        gravity: root.popupEdge
+                        margins.top: root.dockHosted
+                            && root.dockEdge === "bottom" ? -4 : 0
+                        margins.bottom: root.dockHosted ? 0 : -4
+                        margins.left: root.dockHosted
+                            && root.dockEdge === "right" ? -4 : 0
+                        margins.right: root.dockHosted
+                            && root.dockEdge === "left" ? -4 : 0
                     }
                 }
 
@@ -103,9 +153,15 @@ Item {
                     color: "transparent"
                     anchor {
                         item: trayItem
-                        edges: Edges.Bottom
-                        gravity: Edges.Bottom
-                        margins.bottom: -6
+                        edges: root.popupEdge
+                        gravity: root.popupEdge
+                        margins.top: root.dockHosted
+                            && root.dockEdge === "bottom" ? -6 : 0
+                        margins.bottom: root.dockHosted ? 0 : -6
+                        margins.left: root.dockHosted
+                            && root.dockEdge === "right" ? -6 : 0
+                        margins.right: root.dockHosted
+                            && root.dockEdge === "left" ? -6 : 0
                     }
 
                     Rectangle {
@@ -124,5 +180,22 @@ Item {
                 }
             }
         }
+
+        Repeater {
+            id: trailingRepeater
+            model: root.trailingComponents || []
+
+            delegate: Loader {
+                required property var modelData
+                width: root.itemSize
+                height: root.itemSize
+                sourceComponent: modelData
+            }
+        }
+    }
+
+    function trailingItem(index) {
+        const loader = trailingRepeater.itemAt(index)
+        return loader?.item ?? null
     }
 }

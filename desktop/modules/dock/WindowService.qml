@@ -20,6 +20,11 @@ QtObject {
     property int revision: 0
     property string activeWindowId: ""
 
+    // Forwarded by the KWin input effect through this service's existing local
+    // bridge. Consumers use the global logical coordinates for outside-click
+    // dismissal; the event itself is never consumed by KWin.
+    signal globalPointerPressed(real x, real y, int button, real timestamp)
+
     property int _nextWindowNumber: 1
     property var _recordsById: ({})
     // KWin does not implement zwlr-foreign-toplevel-management-v1. Its local
@@ -542,7 +547,12 @@ QtObject {
                         if (!svc._kwinReceivedInitialSnapshot) {
                             svc._kwinReceivedInitialSnapshot = true;
                         }
-                        svc._scheduleUpdate();
+                        // KWin already coalesces metadata bursts and throttles
+                        // live geometry. Apply its authoritative snapshot now;
+                        // another 40ms debounce here only adds latency to Dock
+                        // collision edges and can itself be restarted by motion.
+                        svc._updateTimer.stop();
+                        svc._rebuild();
                 } else if (event.type === "thumbnail" && event.id) {
                         const pending = Object.assign({}, svc._thumbnailPendingByHandle);
                         delete pending[event.id];
@@ -563,6 +573,10 @@ QtObject {
                             svc.desktops = event.desktops;
                             svc.currentDesktopId = event.current ?? "";
                         }
+                } else if (event.type === "global-pointer-press") {
+                        svc.globalPointerPressed(Number(event.x), Number(event.y),
+                                                 Number(event.button),
+                                                 Number(event.timestamp));
                 }
             } catch (e) {
                 console.warn("[WindowService] invalid KWin event: " + e);

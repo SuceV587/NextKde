@@ -25,14 +25,15 @@ Item {
     // control: the button then reads as a frosted swatch of that artwork.
     property bool stretchSource: false
     // Frosted blur strength in pixels.
-    property real blurRadius: 10
+    property real blurRadius: AppearanceConfigService.blurStrength * 24
     // Rounded shape; defaults to a circle.
     property real cornerRadius: width / 2
     // Translucent body tint layered over the blur.
     property color tintColor: Qt.rgba(1, 1, 1, 0.10)
     // Top reflection strength, like the larger liquid surfaces.
-    property real highlightStrength: 0.30
-    property color borderColor: Qt.rgba(1, 1, 1, 0.30)
+    property real highlightStrength: 0.30 * AppearanceConfigService.liquidStrength
+    property color borderColor: Qt.rgba(
+        1, 1, 1, 0.30 * AppearanceConfigService.liquidStrength)
     property real borderWidth: 1
 
     // The captured region in the source item's coordinate space. Recalculated
@@ -67,7 +68,7 @@ Item {
         // clipping it to a hard square.
         transparentBorder: true
         cached: true
-        visible: root.sourceItem !== null
+        visible: root.sourceItem !== null && root.blurRadius > 0.01
     }
 
     // Clip the blurred rectangle to the control's rounded shape.
@@ -75,7 +76,7 @@ Item {
         anchors.fill: parent
         source: glassBlur
         maskSource: glassMask
-        visible: root.sourceItem !== null
+        visible: root.sourceItem !== null && root.blurRadius > 0.01
     }
     Rectangle {
         id: glassMask

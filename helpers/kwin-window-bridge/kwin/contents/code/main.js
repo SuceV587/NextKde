@@ -178,8 +178,11 @@ function snapshot() {
     callDBus(service, path, iface, "Publish", json);
 }
 
-// KWin emits several property changes while switching virtual desktops. Wait
+// KWin emits several metadata changes while switching virtual desktops. Wait
 // for that burst to settle, rather than presenting a transient taskbar icon.
+// Geometry is deliberately handled by the separate throttled timer below:
+// debouncing frameGeometryChanged here made smart-hide wait until a window had
+// stopped moving before it could notice that the Dock boundary was crossed.
 const snapshotTimer = new QTimer();
 snapshotTimer.interval = 120;
 snapshotTimer.repeat = false;
@@ -187,6 +190,26 @@ snapshotTimer.timeout.connect(snapshot);
 
 function scheduleSnapshot() {
     snapshotTimer.start();
+}
+
+// Publish at most once per compositor frame while a window is moving. This is
+// a leading/trailing-friendly throttle, not a debounce: repeated geometry
+// signals do not restart the timer, and snapshot() always reads the latest
+// frameGeometry when the timer fires.
+const geometrySnapshotTimer = new QTimer();
+geometrySnapshotTimer.interval = 24;
+geometrySnapshotTimer.repeat = false;
+let geometrySnapshotPending = false;
+geometrySnapshotTimer.timeout.connect(function() {
+    geometrySnapshotPending = false;
+    snapshot();
+});
+
+function scheduleGeometrySnapshot() {
+    if (geometrySnapshotPending)
+        return;
+    geometrySnapshotPending = true;
+    geometrySnapshotTimer.start();
 }
 
 function publishAction(command, found) {
@@ -330,8 +353,8 @@ function watchWindow(window) {
     window.skipTaskbarChanged.connect(scheduleSnapshot);
     // Geometry/placement changes drive the Dock auto-hide collision judgement.
     // Each connect is defensive: one missing signal must not kill the bridge.
-    try { window.frameGeometryChanged.connect(scheduleSnapshot); } catch (error) {}
-    try { window.outputChanged.connect(scheduleSnapshot); } catch (error) {}
+    try { window.frameGeometryChanged.connect(scheduleGeometrySnapshot); } catch (error) {}
+    try { window.outputChanged.connect(scheduleGeometrySnapshot); } catch (error) {}
     try { window.maximizedChanged.connect(scheduleSnapshot); } catch (error) {}
     try { window.desktopsChanged.connect(scheduleSnapshot); } catch (error) {}
     window.closed.connect(scheduleSnapshot);

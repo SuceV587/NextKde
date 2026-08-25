@@ -42,9 +42,24 @@ PanelWindow {
     // edge. Anchoring only top (without bottom) would let a side surface
     // collapse to the implicit thickness and become 0-height.
     property string position: "bottom"
+    property Component leadingAccessory: null
+    property Component trailingAccessory: null
+    property bool clockInInfoCarousel: false
     readonly property bool vertical: root.position === "left"
         || root.position === "right"
-    readonly property int edgeMargin: 5
+    readonly property int edgeMargin: AppearanceTokens.dock.edgeMargin
+    readonly property int workspaceGap: AppearanceTokens.dock.workspaceGap
+    // Wayland does not expose a trustworthy QWindow global position to QML.
+    // Derive this layer surface's compositor-global origin from the output it
+    // is explicitly bound to and from the anchors declared below.
+    readonly property real surfaceGlobalX: (root.screen ? root.screen.x : 0)
+        + (root.position === "right"
+            ? (root.screen ? root.screen.width : root.width) - root.width
+            : 0)
+    readonly property real surfaceGlobalY: (root.screen ? root.screen.y : 0)
+        + (root.position === "bottom"
+            ? (root.screen ? root.screen.height : root.height) - root.height
+            : 0)
 
     anchors: ({
         top: root.vertical,
@@ -80,12 +95,14 @@ PanelWindow {
         launcherOpen: AppLauncherService.open
     }
 
-    // §9.3 Only "always" reserves a workspace strip. Hide modes keep the zone
-    // at 0 so maximised windows do not reflow on every show/hide.
+    // §9.3 Only "always" reserves a workspace strip. Floating Dock styles add
+    // workspaceGap beyond the visible glass, keeping maximised windows from
+    // touching it. Hide modes keep the zone at 0 so windows do not reflow on
+    // every show/hide.
     exclusiveZone: ConfigService.visibilityMode === "always"
         ? (root.vertical
-            ? dockContainer.width + root.edgeMargin
-            : dockContainer.height + root.edgeMargin)
+            ? dockContainer.width + root.edgeMargin + root.workspaceGap
+            : dockContainer.height + root.edgeMargin + root.workspaceGap)
         : 0
 
     BackgroundEffect.blurRegion: Region {
@@ -135,6 +152,11 @@ PanelWindow {
         DockContainer {
             id: dockContainer
             targetScreen: root.screen
+            surfaceOriginX: root.surfaceGlobalX
+            surfaceOriginY: root.surfaceGlobalY
+            leadingAccessory: root.leadingAccessory
+            trailingAccessory: root.trailingAccessory
+            clockInInfoCarousel: root.clockInInfoCarousel
         }
     }
 
@@ -163,7 +185,7 @@ PanelWindow {
         // Wallpaper ambient, same liquid material as the dock's popups.
         ambientPrimary: WallpaperPaletteService.primary
         ambientSecondary: WallpaperPaletteService.secondary
-        ambientStrength: 0.35
+        ambientStrength: 0.35 * AppearanceTokens.glass.ambientMultiplier
         active: hide.handleActive
         onEntered: hide.handleEntered()
         onExited: hide.handleExited()

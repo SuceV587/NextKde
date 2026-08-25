@@ -14,11 +14,14 @@ DockIcon 1.0 DockIcon.qml
 DockDivider 1.0 DockDivider.qml
 DockMusicPlayer 1.0 DockMusicPlayer.qml
 DockInfoCarousel 1.0 DockInfoCarousel.qml
+DockClockWidget 1.0 DockClockWidget.qml
+DockTemperatureWidget 1.0 DockTemperatureWidget.qml
 DockContextMenu 1.0 DockContextMenu.qml
 DockWindowPreview 1.0 DockWindowPreview.qml
 
 # ── Singletons (QML type name matches code usage) ──
 singleton DockAnimation 1.0 DockAnimation.qml
+singleton DockWindowAnimationTargetService 1.0 DockWindowAnimationTargetService.qml
 singleton ConfigService 1.0 DockConfigService.qml
 singleton ThemeService 1.0 DockThemeService.qml
 singleton DockModelService 1.0 DockModelService.qml

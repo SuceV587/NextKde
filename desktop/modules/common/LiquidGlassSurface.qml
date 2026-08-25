@@ -25,6 +25,9 @@ Rectangle {
     property color _displayAmbientSecondary: ambientSecondary
     // 0 = dock/base surface, 1 = popup, 2 = contextual foreground menu.
     property real materialDepth: 0.0
+    property real liquidStrength: AppearanceConfigService.liquidStrength
+    readonly property real normalizedLiquidStrength: Math.max(
+        0.0, Math.min(1.0, liquidStrength))
     readonly property real baseLuminance: baseColor.r * 0.2126
         + baseColor.g * 0.7152 + baseColor.b * 0.0722
     // Bright surfaces need less white overlay to remain translucent; darker
@@ -32,12 +35,14 @@ Rectangle {
     readonly property real highlightFactor: baseLuminance > 0.6 ? 0.70 : 1.0
     readonly property real materialHighlightFactor: highlightFactor
         * (1.0 + Math.max(0.0, materialDepth) * 0.10)
+        * normalizedLiquidStrength
     // Tint the glass body itself as well as its reflection overlay. This is
     // what makes wallpaper adaptation readable on dark desktops instead of
     // disappearing beneath the base surface.
     // A restrained tint keeps the Dock primarily neutral glass while still
     // letting its material pick up a little colour from the wallpaper.
     readonly property real ambientBaseMix: Math.min(0.14, ambientStrength * 0.16)
+        * normalizedLiquidStrength
 
     function _mixColor(from, to, progress) {
         return Qt.rgba(
@@ -104,7 +109,8 @@ Rectangle {
             GradientStop {
                 position: 1.0
                 color: Qt.rgba(0, 0, 0, root.bottomShadeVisible
-                    ? 0.11 + Math.max(0.0, root.materialDepth) * 0.025 : 0.0)
+                    ? (0.11 + Math.max(0.0, root.materialDepth) * 0.025)
+                        * root.normalizedLiquidStrength : 0.0)
             }
         }
     }
@@ -120,14 +126,14 @@ Rectangle {
                 position: 0.0
                 color: Qt.rgba(
                     root._displayAmbientPrimary.r, root._displayAmbientPrimary.g, root._displayAmbientPrimary.b,
-                    root.ambientStrength * 0.26
+                    root.ambientStrength * 0.26 * root.normalizedLiquidStrength
                 )
             }
             GradientStop {
                 position: 0.55
                 color: Qt.rgba(
                     root._displayAmbientSecondary.r, root._displayAmbientSecondary.g, root._displayAmbientSecondary.b,
-                    root.ambientStrength * 0.15
+                    root.ambientStrength * 0.15 * root.normalizedLiquidStrength
                 )
             }
             GradientStop { position: 1.0; color: Qt.rgba(1, 1, 1, 0.0) }
@@ -174,9 +180,9 @@ Rectangle {
         gradient: Gradient {
             orientation: Gradient.Horizontal
             GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.0) }
-            GradientStop { position: 0.20; color: Qt.rgba(0, 0, 0, 0.09) }
-            GradientStop { position: 0.50; color: Qt.rgba(0, 0, 0, 0.16) }
-            GradientStop { position: 0.80; color: Qt.rgba(0, 0, 0, 0.09) }
+            GradientStop { position: 0.20; color: Qt.rgba(0, 0, 0, 0.09 * root.normalizedLiquidStrength) }
+            GradientStop { position: 0.50; color: Qt.rgba(0, 0, 0, 0.16 * root.normalizedLiquidStrength) }
+            GradientStop { position: 0.80; color: Qt.rgba(0, 0, 0, 0.09 * root.normalizedLiquidStrength) }
             GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.0) }
         }
     }

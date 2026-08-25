@@ -75,6 +75,10 @@ QtObject {
         if (_iconCache[value] !== undefined)
             return _iconCache[value]
         let resolved = ""
+        // Keep shell surfaces on Quickshell's icon provider. The Dock's KWin
+        // animation bridge converts provider URLs that wrap local custom
+        // images at its process boundary; changing the global source to a raw
+        // file URL makes the rendered Dock artwork lose provider-side sizing.
         try { resolved = Quickshell.iconPath(value, true) || "" } catch (e) {}
         if (!resolved && value.startsWith("/"))
             resolved = "file://" + value

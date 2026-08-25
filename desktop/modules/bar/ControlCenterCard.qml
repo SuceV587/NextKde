@@ -66,7 +66,11 @@ PanelWindow {
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Top
 
-    anchors { top: true; right: true }
+    anchors {
+        top: true
+        left: root.coordinator?.anchorLeft ?? false
+        right: !(root.coordinator?.anchorLeft ?? false)
+    }
     margins {
         // Off-screen (well above the display) while hidden; the real position
         // (panel origin + this card's grid offset) when shown.
@@ -77,6 +81,7 @@ PanelWindow {
         // the screen's right edge (positive px). offsetRight is this card's
         // right edge to the control center's right edge. Sum = screen inset.
         right: Math.max(0, (root.coordinator ? root.coordinator.panelRight : 20) + root.offsetRight)
+        left: Math.max(0, (root.coordinator ? root.coordinator.panelRight : 20) + root.offsetRight)
     }
 
     implicitWidth: root.cardWidth

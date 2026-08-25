@@ -1,9 +1,8 @@
 import QtQuick
 
 // A row in a ContextMenu: icon + label, with optional checkmark (checkable),
-// submenu chevron, and a thin separator variant. Hover driven by
-// onEntered/onExited (the codebase's pattern) with a darker theme-foreground
-// tint so the pointer row reads clearly over the liquid glass.
+// submenu chevron, and a thin separator variant. Hover only changes the row's
+// visual highlight; navigation is owned by ContextMenu's click handler.
 Item {
     id: row
 
@@ -17,7 +16,11 @@ Item {
     property bool separator: false
     signal clicked()
 
-    property bool _hover: false
+    // Bind directly to MouseArea.containsMouse instead of maintaining a
+    // transient flag.  Delegates are replaced when entering a submenu, and a
+    // flag set by onEntered/onExited can otherwise be stale or miss the first
+    // hover event in a PopupWindow.
+    readonly property bool _hover: pointer.containsMouse
     readonly property color _hi: Qt.rgba(
         row.foregroundColor.r, row.foregroundColor.g, row.foregroundColor.b,
         itemEnabled ? 0.24 : 0.20)
@@ -41,7 +44,7 @@ Item {
     Rectangle {
         id: bg
         anchors.fill: parent
-        radius: 10
+        radius: 14
         color: (row._hover && row.itemEnabled && !row.separator) ? row._hi : "transparent"
         Behavior on color { ColorAnimation { duration: 90 } }
     }
@@ -90,11 +93,10 @@ Item {
     }
 
     MouseArea {
+        id: pointer
         anchors.fill: parent
         hoverEnabled: true
         enabled: row.itemEnabled && !row.separator
         onClicked: row.clicked()
-        onEntered: row._hover = true
-        onExited: row._hover = false
     }
 }

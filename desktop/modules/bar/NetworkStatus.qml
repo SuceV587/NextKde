@@ -1,6 +1,8 @@
 import QtQuick
 import Quickshell
+import Quickshell.Widgets
 import qs.desktop.modules.bar
+import qs.desktop.modules.common
 import qs.desktop.modules.dock
 
 // Passive first-stage network indicator. Connection controls will later use
@@ -10,10 +12,13 @@ Item {
 
     signal panelToggleRequested()
     property bool sharedPanelOpen: false
+    property bool dockHosted: false
+    property string dockEdge: "bottom"
+    property bool verticalDock: false
+    rotation: verticalDock ? -90 : 0
 
-    // Reserve the same visual footprint as the adjacent status glyphs. Wi-Fi
-    // arcs occupy only part of a nominal canvas, so a 16px canvas looked both
-    // smaller and lower than Battery/CPU despite Row centering correctly.
+    // Reserve the same visual footprint as the adjacent status glyphs while
+    // allowing differently proportioned system-theme icons to stay centred.
     implicitWidth: 21
     implicitHeight: 18
     width: implicitWidth
@@ -25,63 +30,16 @@ Item {
         || (NetworkService.deviceState === "connected"
             && NetworkService.connectivity === "none")
     readonly property bool connected: NetworkService.deviceState === "connected"
-    // Do not use themed symbolic colours here: KDE themes can render them
-    // black, which disappears on a transparent status bar. A tiny Canvas
-    // keeps the same crisp white foreground across every wallpaper/theme.
-    Canvas {
+    DockStatusSvgIcon {
         id: networkGlyph
         anchors.centerIn: parent
         width: 20
         height: 20
+        source: Qt.resolvedUrl(NetworkService.connectionType === "ethernet"
+            ? "../../assets/status-ethernet.svg"
+            : "../../assets/status-wifi.svg")
+        useDockTint: root.dockHosted
         opacity: root.connected ? 0.96 : 0.68
-        onPaint: {
-            const ctx = getContext("2d")
-            ctx.reset()
-            ctx.strokeStyle = "white"
-            ctx.fillStyle = "white"
-            ctx.lineWidth = 1.55
-            ctx.lineCap = "round"
-            ctx.lineJoin = "round"
-            // Give the stroke the same visual weight as the 17px CPU glyph.
-            // Wi-Fi's fan is optically low within its bounding box; raise
-            // only that variant instead of offsetting Ethernet as well.
-            ctx.scale(1.08, 1.08)
-            if (NetworkService.connectionType === "wifi")
-                ctx.translate(0, -1.8)
-            if (NetworkService.connectionType === "ethernet") {
-                ctx.strokeRect(2.5, 2.2, 11, 8.2)
-                ctx.beginPath()
-                ctx.moveTo(5, 13.3); ctx.lineTo(11, 13.3)
-                ctx.moveTo(6, 10.4); ctx.lineTo(6, 13.3)
-                ctx.moveTo(10, 10.4); ctx.lineTo(10, 13.3)
-                ctx.stroke()
-            } else if (NetworkService.connectionType === "wifi") {
-                const rings = NetworkService.signalStrength < 25 ? 1
-                    : (NetworkService.signalStrength < 50 ? 2 : 3)
-                for (let ring = 0; ring < rings; ring++) {
-                    const radius = 3.1 + ring * 2.45
-                    ctx.beginPath()
-                    ctx.arc(8, 14.2, radius, Math.PI * 1.25, Math.PI * 1.75)
-                    ctx.stroke()
-                }
-                ctx.beginPath()
-                ctx.arc(8, 13.8, 1.15, 0, Math.PI * 2)
-                ctx.fill()
-            } else {
-                ctx.beginPath()
-                ctx.arc(8, 8, 5.4, 0, Math.PI * 2)
-                ctx.stroke()
-                ctx.beginPath()
-                ctx.moveTo(4.2, 4.2); ctx.lineTo(11.8, 11.8)
-                ctx.stroke()
-            }
-        }
-        Connections {
-            target: NetworkService
-            function onConnectionTypeChanged() { networkGlyph.requestPaint() }
-            function onSignalStrengthChanged() { networkGlyph.requestPaint() }
-            function onDeviceStateChanged() { networkGlyph.requestPaint() }
-        }
     }
 
     Rectangle {
@@ -114,9 +72,19 @@ Item {
         color: "transparent"
         anchor {
             item: root
-            edges: Edges.Bottom
-            gravity: Edges.Bottom
-            margins.bottom: -6
+            edges: !root.dockHosted ? Edges.Bottom
+                : root.dockEdge === "left" ? Edges.Right
+                : root.dockEdge === "right" ? Edges.Left : Edges.Top
+            gravity: !root.dockHosted ? Edges.Bottom
+                : root.dockEdge === "left" ? Edges.Right
+                : root.dockEdge === "right" ? Edges.Left : Edges.Top
+            margins.top: root.dockHosted
+                && root.dockEdge === "bottom" ? -6 : 0
+            margins.bottom: root.dockHosted ? 0 : -6
+            margins.left: root.dockHosted
+                && root.dockEdge === "right" ? -6 : 0
+            margins.right: root.dockHosted
+                && root.dockEdge === "left" ? -6 : 0
         }
 
         Rectangle {

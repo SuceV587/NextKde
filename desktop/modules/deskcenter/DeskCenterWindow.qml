@@ -35,8 +35,20 @@ PanelWindow {
     // widget uses integer spans, giving desktop cards the intentional, large
     // iPadOS scale rather than a collection of small floating macOS tiles.
     readonly property int columns: 10
-    readonly property real sideMargin: 8
-    readonly property real topInset: 56
+    readonly property real sideMargin: 20
+    // Keep card sizing tied to the original grid metrics. The larger visual
+    // insets should consume the flexible desktop-file field on the right,
+    // rather than shrinking or reflowing the established widget layout.
+    readonly property real layoutBaseSideMargin: 8
+    readonly property real layoutBaseGap: 10
+    // The standalone Bar needs its 35px strip plus breathing room. Once Bar
+    // content is hosted by the bottom Dock, reclaim that strip for widgets and
+    // desktop files instead of leaving a permanent empty band.
+    readonly property bool barIntegratedWithDock:
+        AppearanceConfigService.barIntegratedWithDock
+        && ConfigService.position === "bottom"
+    readonly property real topInset: barIntegratedWithDock
+        ? 24 : Math.max(56, ConfigService.barHeight + 21)
     readonly property real bottomInset: Math.max(96, AppLauncherService.dockHeight + 24)
     // A side dock reserves its own strip on the left/right edge; shift the
     // grid and the desktop file field inward so the dock never covers them.
@@ -51,9 +63,10 @@ PanelWindow {
     readonly property real rightInset: ConfigService.position === "right"
         && ConfigService.visibilityMode === "always"
         ? AppLauncherService.dockHeight + 24 : root.sideMargin
-    readonly property real gap: 10
+    readonly property real gap: 12
     readonly property real cellSize: Math.max(1,
-        (width - leftInset - rightInset - gap * (columns - 1)) / columns)
+        (width - layoutBaseSideMargin * 2
+            - layoutBaseGap * (columns - 1)) / columns)
     readonly property int usableRows: Math.max(0, Math.floor(
         (height - topInset - bottomInset + gap) / (cellSize + gap)))
     property int timerSeconds: 0
@@ -173,7 +186,7 @@ PanelWindow {
         { id: "system", title: "", columns: 2, rows: 1, priority: 70, row: 1, column: 0,
             startColor: "#f5f3f6", endColor: "#e9e6eb", surface: false },
         { id: "activity", title: "", columns: 2, rows: 1, priority: 60, row: 2, column: 0,
-            startColor: "#29252f", endColor: "#17151c", surface: true },
+            startColor: "#29252f", endColor: "#17151c", surface: false },
         { id: "music", title: "", columns: 2, rows: 1, priority: 50, row: 2, column: 2,
             startColor: "#101010", endColor: "#101010", surface: false }
     ]
@@ -950,9 +963,12 @@ PanelWindow {
                     anchors { left: parent.left; leftMargin: parent.width * 0.02; bottom: parent.bottom; bottomMargin: parent.height * 0.045 }
                     width: parent.width * 0.36
                     height: parent.height * 0.17
-                    readonly property real averageC: Number(systemContent.metrics.averageMilliC ?? -1) / 1000
-                    readonly property real maximumC: Number(systemContent.metrics.maximumMilliC ?? -1) / 1000
-                    readonly property bool available: averageC >= 0 && maximumC >= 0
+                    readonly property real currentC: Number(
+                        systemContent.metrics.currentMilliC ?? -1) / 1000
+                    readonly property real maximum5MinuteC: Number(
+                        systemContent.metrics.maximum5MinuteMilliC ?? -1) / 1000
+                    readonly property bool available: currentC >= 0
+                        && maximum5MinuteC >= 0
 
                     Row {
                         anchors.centerIn: parent
@@ -966,7 +982,8 @@ PanelWindow {
                         Column {
                             spacing: -1
                             Text {
-                                text: temperatureSummary.available ? Math.round(temperatureSummary.averageC) + "°" : "--"
+                                text: temperatureSummary.available
+                                    ? Math.round(temperatureSummary.currentC) + "°" : "--"
                                 color: "#7d7782"
                                 font { family: "SF Pro Display"; pixelSize: Math.max(10, temperatureSummary.height * 0.42); weight: Font.DemiBold }
                             }
@@ -985,7 +1002,8 @@ PanelWindow {
                         Column {
                             spacing: -1
                             Text {
-                                text: temperatureSummary.available ? Math.round(temperatureSummary.maximumC) + "°" : "--"
+                                text: temperatureSummary.available
+                                    ? Math.round(temperatureSummary.maximum5MinuteC) + "°" : "--"
                                 color: "#7d7782"
                                 font { family: "SF Pro Display"; pixelSize: Math.max(10, temperatureSummary.height * 0.42); weight: Font.DemiBold }
                             }
@@ -1725,8 +1743,9 @@ PanelWindow {
             property string orderJson: "[]"
             property int iconSize: 56
             property bool showExtensions: true
-            // Per-entry customisation keyed by absolute path. Existing folder
-            // settings keep using this key for backwards compatibility.
+            // Per-entry customisation keyed by absolute path. The historical
+            // key name is retained so existing folder settings stay intact;
+            // files and folders both use the same payload.
             // Each value is { "color": "#hex", "emoji": "📁" }.
             property string folderCustomJson: "{}"
         }
@@ -2216,7 +2235,9 @@ PanelWindow {
         }
 
         function canChooseOpenWith(entry) {
-            return entry?.kind !== "folder" && entry?.kind !== "launcher"
+            // Background menus have no entry.  Treating undefined as a
+            // non-folder used to make showMenu() dereference entry.path.
+            return !!entry && entry.kind !== "folder" && entry.kind !== "launcher"
         }
 
         function applicationName(id) {
@@ -2239,17 +2260,29 @@ PanelWindow {
             // Build and show immediately - never block the right click on the
             // async gio open-with query (a slow/failed query must not make a
             // right click appear to do nothing).
+            //
+            // Do not use a timed rebuild here: setItems() intentionally resets
+            // ContextMenu's navigation path, which made a folder's appearance
+            // submenu disappear while it was being browsed.
+            if (entry && canChooseOpenWith(entry)) {
+                const entryPath = entry.path
+                root.desktopFiles.queryOpenWith(entry, function() {
+                    // A result may arrive after another item was right-clicked.
+                    // Refresh only the still-open root menu; once the user has
+                    // entered a submenu, keep that interaction stable and show
+                    // the refreshed open-with list on the next invocation.
+                    if (desktopContextMenu.visible
+                            && contextEntry?.path === entryPath
+                            && desktopContextMenu.atRoot)
+                        desktopFileGrid.setContextMenuItems()
+                })
+            }
             desktopFileGrid.setContextMenuItems()
             const pt = windowPoint && windowPoint.x !== undefined
                 ? windowPoint : Qt.point(desktopFileGrid.width - 12, 12)
             desktopContextAnchor.x = pt.x
             desktopContextAnchor.y = pt.y
             desktopContextMenu.show()
-            if (canChooseOpenWith(entry))
-                root.desktopFiles.queryOpenWith(entry)
-            // Refresh a few times once the (async) open-with list settles.
-            contextMenuRebuild._tries = 0
-            contextMenuRebuild.restart()
         }
 
         function clearDesktopSelection() {
@@ -2299,10 +2332,15 @@ PanelWindow {
 
         // ── Liquid context-menu data + builder ──
 
-        function _ctxSub(label, children) { return { label: label, children: children } }
-        function _ctxAct(label, cmd, icon) { return { icon: icon || "", label: label, cmd: cmd, enabled: true } }
-        function _ctxCheck(label, cmd, value, checked) {
-            return { label: label, cmd: cmd, checkable: true, checked: checked, value: value, enabled: true }
+        function _ctxSub(label, children, icon) {
+            return { icon: icon || "", label: label, children: children }
+        }
+        function _ctxAct(label, cmd, icon) {
+            return { icon: icon || "", label: label, cmd: cmd, enabled: true }
+        }
+        function _ctxCheck(label, cmd, value, checked, icon) {
+            return { icon: icon || "", label: label, cmd: cmd,
+                checkable: true, checked: checked, value: value, enabled: true }
         }
 
         function buildContextItems() {
@@ -2329,18 +2367,22 @@ PanelWindow {
                 if (selectedEntries().length === 1)
                     root.push(_ctxAct("重命名", "rename", ""))
 
-                // 自定义外观 → 文件夹颜色 + emoji 分类 + 移除
-                const colorKids = FOLDER_COLORS.map(([label, val]) => _ctxCheck(label, "setColor", val, curColor === val))
-                const appearKids = [ _ctxSub("文件夹颜色", colorKids) ]
-                if (canChooseOpenWith(e)) {
-                    for (const [catTitle, list] of EMOJI_CATS) {
-                        const rows = [_ctxCheck("无", "setEmoji", "", curEmoji === "")]
-                            .concat(list.map(([label, em]) => _ctxCheck(label, "setEmoji", em, curEmoji === em)))
-                        appearKids.push(_ctxSub(catTitle, rows))
-                    }
+                // 自定义外观 applies to every desktop entry. The path-based
+                // storage retains the setting across filesystem snapshots.
+                const colorKids = FOLDER_COLORS.map(([label, val]) =>
+                    _ctxCheck(label, "setColor", val, curColor === val, ""))
+                const appearKids = [ _ctxSub("颜色", colorKids, "") ]
+                for (const [catTitle, list] of EMOJI_CATS) {
+                    const rows = [_ctxCheck("无", "setEmoji", "", curEmoji === "", "")]
+                        .concat(list.map(([label, em]) =>
+                            _ctxCheck(label, "setEmoji", em, curEmoji === em, "")))
+                    const categoryIcon = catTitle === "学习" ? ""
+                        : catTitle === "生活" ? ""
+                        : catTitle === "符号" ? "" : ""
+                    appearKids.push(_ctxSub(catTitle, rows, categoryIcon))
                 }
                 appearKids.push(_ctxAct("移除自定义", "removeCustom", ""))
-                root.push(_ctxSub("自定义外观", appearKids))
+                root.push(_ctxSub("自定义外观", appearKids, ""))
 
                 // 打开方式（动态）
                 if (canChooseOpenWith(e)) {
@@ -2348,10 +2390,10 @@ PanelWindow {
                     for (let i = 0; i < 6; i++) {
                         const id = openWithIdAt(i)
                         if (id)
-                            owKids.push({ icon: "", label: applicationName(id), cmd: "openWith", value: id, enabled: true })
+                            owKids.push({ icon: "", label: applicationName(id), cmd: "openWith", value: id, enabled: true })
                     }
                     owKids.push(_ctxAct("其他应用程序…", "openWithMore", ""))
-                    root.push(_ctxSub("打开方式", owKids))
+                    root.push(_ctxSub("打开方式", owKids, ""))
                 }
 
                 root.push(_ctxAct("复制", "copy", ""))
@@ -2364,17 +2406,19 @@ PanelWindow {
                 root.push(_ctxAct("新建文件夹", "newFolder", ""))
                 root.push(_ctxAct("粘贴", "paste", ""))
                 const arrange = [
-                    _ctxAct("按名称", "arrangeByName"), _ctxAct("按类型", "arrangeByType"),
-                    _ctxAct("按修改时间（最新）", "arrangeModifiedNew"),
-                    _ctxAct("按修改时间（最早）", "arrangeModifiedOld")
+                    _ctxAct("按名称", "arrangeByName", ""), _ctxAct("按类型", "arrangeByType", ""),
+                    _ctxAct("按修改时间（最新）", "arrangeModifiedNew", ""),
+                    _ctxAct("按修改时间（最早）", "arrangeModifiedOld", "")
                 ]
-                root.push(_ctxSub("整理方式", arrange))
-                root.push(_ctxAct("重置图标排序", "resetLayout", ""))
-                root.push(_ctxCheck("显示文件扩展名", "toggleExtensions", null, desktopLayout.showExtensions))
+                root.push(_ctxSub("整理方式", arrange, ""))
+                root.push(_ctxAct("重置图标排序", "resetLayout", ""))
+                root.push(_ctxCheck("显示文件扩展名", "toggleExtensions", null,
+                    desktopLayout.showExtensions, ""))
                 const sizeKids = [[40, "小"], [56, "中"], [72, "大"]]
-                    .map(([px, l]) => _ctxCheck(l, "setIconSize", px, iconSize === px))
-                root.push(_ctxSub("图标大小", sizeKids))
-                root.push(_ctxAct("刷新", "refresh", ""))
+                    .map(([px, l]) => _ctxCheck(l, "setIconSize", px,
+                        iconSize === px, ""))
+                root.push(_ctxSub("图标大小", sizeKids, ""))
+                root.push(_ctxAct("刷新", "refresh", ""))
             }
             return root
         }
@@ -2413,24 +2457,6 @@ PanelWindow {
                 break
             case "setIconSize": setIconSize(v); break
             case "refresh": triggerContextAction("refresh"); break
-            }
-        }
-
-        Timer {
-            id: contextMenuRebuild
-            interval: 320
-            repeat: true
-            property int _tries: 0
-            onTriggered: {
-                // Poll only a few times right after opening so the async
-                // open-with list settles, then stop - a continous rebuild would
-                // reset submenu navigation while the user is browsing.
-                if (desktopContextMenu.visible && contextMenuRebuild._tries < 3) {
-                    contextMenuRebuild._tries++
-                    desktopFileGrid.setContextMenuItems()
-                } else {
-                    contextMenuRebuild.stop()
-                }
             }
         }
 

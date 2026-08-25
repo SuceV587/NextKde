@@ -524,9 +524,6 @@ Item {
         initialized = true
     }
 
-    Component.onCompleted: resetLayout(entries)
-    onEntriesChanged: resetLayout(entries)
-
     function clearFolderTarget() {
         targetFolder = ""
         if (dragMode === "addToFolder")
@@ -836,13 +833,57 @@ Item {
         }
     }
 
+    // The desktop service publishes whole snapshots. Feeding those arrays
+    // directly to Repeater destroys every delegate on each create/delete,
+    // including unchanged image previews. This model is reconciled by path so
+    // an unrelated filesystem update leaves existing delegates alive.
+    ListModel {
+        id: desktopEntryModel
+    }
+
+    function syncEntryModel(sourceEntries) {
+        const next = sourceEntries || []
+        const nextPaths = ({})
+        for (let i = 0; i < next.length; ++i)
+            nextPaths[next[i].path] = true
+
+        for (let i = desktopEntryModel.count - 1; i >= 0; --i) {
+            if (!nextPaths[desktopEntryModel.get(i).path])
+                desktopEntryModel.remove(i)
+        }
+
+        for (let target = 0; target < next.length; ++target) {
+            const entry = next[target]
+            let current = -1
+            for (let i = target; i < desktopEntryModel.count; ++i) {
+                if (desktopEntryModel.get(i).path === entry.path) {
+                    current = i
+                    break
+                }
+            }
+            if (current < 0) {
+                desktopEntryModel.insert(target, { path: entry.path, entry: entry })
+            } else {
+                if (current !== target)
+                    desktopEntryModel.move(current, target, 1)
+                // Keep metadata fresh without replacing the delegate itself.
+                desktopEntryModel.set(target, { path: entry.path, entry: entry })
+            }
+        }
+    }
+
+    Component.onCompleted: syncEntryModel(entries)
+    onEntriesChanged: {
+        resetLayout(entries)
+        syncEntryModel(entries)
+    }
+
     Repeater {
-        model: root.entryIds
+        model: desktopEntryModel
         delegate: Item {
             id: delegateRoot
-            required property string modelData
-            readonly property string itemId: modelData
-            readonly property var entry: root.entryFor(itemId)
+            required property var entry
+            readonly property string itemId: entry?.path || ""
             readonly property bool isFolder: entry && entry.kind === "folder"
             readonly property var folderCustom: root.folderCustomFor(itemId)
             readonly property bool usesCustomFolderVisual: isFolder
@@ -1071,7 +1112,7 @@ Item {
                             sourceSize.width: Math.max(1, Math.ceil(width * 2))
                             sourceSize.height: Math.max(1, Math.ceil(height * 2))
                             asynchronous: true
-                            cache: false
+                            cache: true
                             smooth: true
                             // OpacityMask renders this source. Hiding only the
                             // source avoids drawing the same image twice.

@@ -131,6 +131,10 @@ QtObject {
                 nowUrgent.push(record.windowId);
             nextItems.push({
                 windowId: record.windowId,
+                // The animation effect must address the compositor window,
+                // not WindowService's provider-neutral synthetic id.
+                effectWindowId: record.provider === "kwin"
+                    ? String(record.handleId ?? "") : "",
                 desktopId: record.identity.desktopId,
                 appId: record.identity.desktopId,
                 rawAppId: record.identity.rawAppId,
@@ -218,7 +222,12 @@ QtObject {
 
         if (windows.length === 0) {
             console.log("[DockModel] launch app=" + identity.desktopId);
-            AppActionService.launch(identity);
+            // KWin must receive the Dock launch ticket before the client can
+            // map its first window. Otherwise the real window may be painted
+            // once and only then jump back to the Dock animation origin.
+            DockWindowAnimationTargetService.prepareLaunch(identity, function() {
+                AppActionService.launch(identity);
+            });
             return;
         }
 

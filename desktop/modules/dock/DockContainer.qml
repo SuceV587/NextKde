@@ -25,6 +25,11 @@ Item {
     // Quickshell.screens[0]: on a multi-monitor setup the Dock may be on a
     // different output with a different width.
     property var targetScreen: null
+    property real surfaceOriginX: 0
+    property real surfaceOriginY: 0
+    property Component leadingAccessory: null
+    property Component trailingAccessory: null
+    property bool clockInInfoCarousel: false
 
     // ═══════════════════════════════════════════════════════════
     // Inputs (from services / parent)
@@ -36,22 +41,63 @@ Item {
     readonly property int windowCount: DockModelService.windowCount
     readonly property bool hasPlayingMusic: DockMprisService.hasPlayingPlayer
     readonly property bool hasWeather: WeatherService.available
-    readonly property bool hasInfo: hasPlayingMusic || hasWeather
+    readonly property bool hasClock: clockInInfoCarousel && !vertical
+    // Temperature is a permanent horizontal Dock page. MetricsService may
+    // still be loading its first snapshot; the card remains and shows "--".
+    readonly property bool hasTemperature: !vertical
+    readonly property bool hasInfo: hasPlayingMusic || hasWeather || hasClock
+        || hasTemperature
     readonly property int screenWidth: targetScreen?.width
         ?? Quickshell.screens[0]?.width ?? 1920
     readonly property int screenHeight: targetScreen?.height
         ?? Quickshell.screens[0]?.height ?? 1080
-    // Side docks budget their column against the area below the top status
-    // bar (which is always visible for now), so a long stack of icons never
-    // reaches into the reserved strip.
+    readonly property bool barIntegratedWithDock:
+        AppearanceConfigService.barIntegratedWithDock
+    readonly property real reservedBarHeight: barIntegratedWithDock
+        ? 0 : ConfigService.barHeight
+    // A fused side Dock gets the full output height because the standalone
+    // top Bar and its exclusive strip are disabled too.
     readonly property int availableLength: vertical
-        ? screenHeight - ConfigService.barHeight
+        ? screenHeight - reservedBarHeight
         : screenWidth
     readonly property real baseHeight: ConfigService.baseHeight
-    readonly property var proportions: ConfigService.proportions
+    // Shape proportions come from the selected shell style. The macOS token
+    // values equal the previous Dock defaults, preserving the upgrade baseline.
+    // User-owned height/position/visibility remain in DockConfigService.
+    readonly property var proportions: ({
+        vpad: AppearanceTokens.dock.verticalPaddingRatio,
+        hpad: AppearanceTokens.dock.horizontalPaddingRatio,
+        spacing: AppearanceTokens.dock.itemSpacingRatio,
+        divmargin: AppearanceTokens.dock.dividerMarginRatio,
+    })
     // Side docks (left/right) stack icons vertically instead of horizontally.
     readonly property bool vertical: ConfigService.position === "left"
         || ConfigService.position === "right"
+    readonly property int accessoryCount:
+        (leadingAccessoryLoader.active ? 1 : 0)
+        + (trailingAccessoryLoader.active ? 1 : 0)
+    readonly property real accessoryContentWidth:
+        leadingAccessoryLoader.width + trailingAccessoryLoader.width
+    // Some accessories fold their content vertically when enough Dock height
+    // is available. Feed their stable maximum width into the height solver so
+    // that changing row count cannot create a width/height binding loop; the
+    // final Dock width below still uses the accessory's actual folded width.
+    readonly property real leadingAccessoryReserveWidth:
+        leadingAccessoryLoader.active && leadingAccessoryLoader.item
+        ? (leadingAccessoryLoader.item.layoutMaximumWidth !== undefined
+            ? leadingAccessoryLoader.item.layoutMaximumWidth
+            : leadingAccessoryLoader.width) : 0
+    readonly property real trailingAccessoryReserveWidth:
+        trailingAccessoryLoader.active && trailingAccessoryLoader.item
+        ? (trailingAccessoryLoader.item.layoutMaximumWidth !== undefined
+            ? trailingAccessoryLoader.item.layoutMaximumWidth
+            : trailingAccessoryLoader.width) : 0
+    // Reserve accessory width before solving iconSize. The extra estimate
+    // covers one separator and two Row gaps per accessory; the exact value is
+    // added back after AdaptiveMath returns its scale-dependent margins.
+    readonly property real estimatedAccessoryWidth:
+        leadingAccessoryReserveWidth + trailingAccessoryReserveWidth
+        + accessoryCount * baseHeight * 0.60
 
     // ═══════════════════════════════════════════════════════════
     // Computed layout (re-evaluates on any input change)
@@ -64,19 +110,22 @@ Item {
         // The info carousel is hidden on side docks (vertical Phase 2); its
         // invisible units must not shrink the icon column.
         hasInfo && !vertical,
-        availableLength,
+        Math.max(baseHeight, availableLength - estimatedAccessoryWidth),
         proportions,
         vertical ? AdaptiveMath.MAX_HEIGHT_RATIO : AdaptiveMath.MAX_WIDTH_RATIO
     )
 
     readonly property int computedDockHeight: _layout.dockHeight
     readonly property int iconSize: _layout.iconSize
-    readonly property int computedDockWidth: _layout.dockWidth
+    readonly property int computedDockWidth: Math.round(_layout.dockWidth
+        + accessoryContentWidth
+        + accessoryCount * (2 + dividerMargin * 2 + itemSpacing * 2))
     readonly property int itemSpacing: _layout.itemSpacing
     readonly property int hPadding: _layout.hPadding
     readonly property int vPadding: _layout.vPadding
     readonly property int dividerMargin: _layout.dividerMargin
-    readonly property int pillRadius: _layout.pillRadius
+    readonly property int pillRadius: Math.round(computedDockHeight
+        * AppearanceTokens.dock.radiusRatio)
     // DockIcon reserves this invisible outer slot even when inactive. This
     // keeps the Row width stable while the active background appears/disappears.
     readonly property real activeBackgroundGap: _layout.activeBackgroundGap
@@ -113,7 +162,7 @@ Item {
             WallpaperPaletteService.primary,
             WallpaperPaletteService.secondary,
             ThemeService.foregroundColor,
-            ConfigService.barHeight)
+            reservedBarHeight)
     }
 
     // Several layout and palette bindings can change in the same event-loop
@@ -185,6 +234,12 @@ Item {
 
     // ── Smooth resize transitions ──
     Behavior on height {
+        NumberAnimation {
+            duration: DockAnimation.dockResizeDuration
+            easing.type: DockAnimation.dockResizeEasing
+        }
+    }
+    Behavior on width {
         NumberAnimation {
             duration: DockAnimation.dockResizeDuration
             easing.type: DockAnimation.dockResizeEasing
@@ -268,13 +323,31 @@ Item {
         rightPadding: container.hPadding
         height: container.computedDockHeight
 
+        Loader {
+            id: leadingAccessoryLoader
+            active: container.leadingAccessory !== null
+            sourceComponent: container.leadingAccessory
+            width: active && item ? item.implicitWidth : 0
+            height: container.computedDockHeight
+            visible: active
+        }
+
+        DockDivider {
+            dockHeight: container.computedDockHeight
+            dividerWidth: 2
+            sideMargin: container.dividerMargin
+            visible: leadingAccessoryLoader.active
+        }
+
         // ── Pinned apps ──
         // Fixed launcher slot. This project-owned image avoids icon-theme
-        // lookup differences. Interaction is deliberately disabled until the
-        // app-launcher surface is implemented. Keeping it outside the Repeater
-        // makes it immutable with respect to pinned-app ordering.
+        // lookup differences. Keeping it outside the Repeater makes it
+        // immutable with respect to pinned-app ordering.
         DockIcon {
             id: appLauncherIcon
+            targetScreen: container.targetScreen
+            surfaceOriginX: container.surfaceOriginX
+            surfaceOriginY: container.surfaceOriginY
             vertical: container.vertical
             iconSize: container.iconSize
             activeBackgroundGap: container.activeBackgroundGap
@@ -301,6 +374,9 @@ Item {
         // intentionally outside the pinned-app model and its drag ordering.
         DockIcon {
             id: trashIcon
+            targetScreen: container.targetScreen
+            surfaceOriginX: container.surfaceOriginX
+            surfaceOriginY: container.surfaceOriginY
             vertical: container.vertical
             iconSize: container.iconSize
             activeBackgroundGap: container.activeBackgroundGap
@@ -495,6 +571,9 @@ Item {
                             spacing: container.itemSpacing
 
                             DockIcon {
+                                targetScreen: container.targetScreen
+                                surfaceOriginX: container.surfaceOriginX
+                                surfaceOriginY: container.surfaceOriginY
                                 vertical: container.vertical
                                 dockEdge: ConfigService.position
                                 iconSize: container.iconSize
@@ -522,6 +601,9 @@ Item {
                                 model: pinnedItemLoader.itemData.extraWindows ?? []
                                 delegate: DockIcon {
                                     required property var modelData
+                                    targetScreen: container.targetScreen
+                                    surfaceOriginX: container.surfaceOriginX
+                                    surfaceOriginY: container.surfaceOriginY
                                     vertical: container.vertical
                                     dockEdge: ConfigService.position
                                     iconSize: container.iconSize
@@ -534,6 +616,8 @@ Item {
                                     isUrgent: modelData.isUrgent ?? false
                                     appId: modelData.identity.desktopId ?? ""
                                     windowId: modelData.windowId ?? ""
+                                    animationWindowId: modelData.provider === "kwin"
+                                        ? String(modelData.handleId ?? "") : ""
                                     isWindowItem: true
                                     isPinnedItem: false
                                     onActivate: DockModelService.toggleWindow(windowId)
@@ -563,6 +647,9 @@ Item {
             id: windowsRepeater
             model: DockModelService.windowModel
             delegate: DockIcon {
+                targetScreen: container.targetScreen
+                surfaceOriginX: container.surfaceOriginX
+                surfaceOriginY: container.surfaceOriginY
                 vertical: container.vertical
                 dockEdge: ConfigService.position
                 iconSize: container.iconSize
@@ -574,6 +661,7 @@ Item {
                 isUrgent: model.isUrgent ?? false
                 appId: model.appId ?? ""
                 windowId: model.windowId ?? ""
+                animationWindowId: model.effectWindowId ?? ""
                 isWindowItem: true
                 isPinnedItem: false
                 onActivate: {
@@ -592,14 +680,32 @@ Item {
             visible: container.hasInfo && !container.vertical
         }
 
-        // ── Shared music / weather information slot ──
+        // ── Shared music / weather / clock / temperature information slot ──
         DockInfoCarousel {
             iconSize: container.iconSize
             dockHeight: container.computedDockHeight
             widthUnits: container.infoUnits
+            showClock: container.hasClock
+            showTemperature: container.hasTemperature
             // The carousel's internal pages assume a horizontal slot; hide it
             // on side docks until it gains a vertical layout (Phase 2).
             visible: container.hasInfo && !container.vertical
+        }
+
+        DockDivider {
+            dockHeight: container.computedDockHeight
+            dividerWidth: 2
+            sideMargin: container.dividerMargin
+            visible: trailingAccessoryLoader.active
+        }
+
+        Loader {
+            id: trailingAccessoryLoader
+            active: container.trailingAccessory !== null
+            sourceComponent: container.trailingAccessory
+            width: active && item ? item.implicitWidth : 0
+            height: container.computedDockHeight
+            visible: active
         }
     }
 }

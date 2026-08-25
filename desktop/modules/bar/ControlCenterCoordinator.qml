@@ -24,6 +24,9 @@ QtObject {
     // Distance from the control center's RIGHT edge to the screen's right
     // edge (logical pixels). Positive = inset from the right edge.
     property int panelRight: 20
+    // Side-Dock fusion mirrors the card grid from the screen's left edge.
+    // Bottom/right hosts keep the established top-right placement.
+    property bool anchorLeft: false
 
     // ── Registered cards ──
     property var cards: []
