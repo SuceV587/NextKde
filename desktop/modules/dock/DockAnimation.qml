@@ -57,7 +57,7 @@ QtObject {
     // Dock show-mode (smart auto-hide / persistent) timings.
     // Times and curves are tuned constants consumed by the auto-hide
     // controller; nothing is scattered into UI components. See
-    // docs/DockSmartHideDesign.md §6.2.
+    // docs/DockArchitecture.md, "Visibility modes and auto-hide".
     // ═══════════════════════════════════════════════════════════
     readonly property int   smartHideConflictDelay:   120   // first window-overlap debounce
     readonly property int   smartHideModeSwitchGrace: 700   // persistent switch confirmation period

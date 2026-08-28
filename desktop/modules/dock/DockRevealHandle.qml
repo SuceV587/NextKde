@@ -8,7 +8,8 @@ import qs.desktop.modules.common
 // Renders an iOS-style white pill on the screen edge and exposes an invisible
 // hit target large enough to catch a cursory pointer pass. It never reads any
 // service/configuration; the owning DockWindow positions it inside the dock
-// surface and feeds it state. See docs/DockSmartHideDesign.md §6.4/§10.2.
+// surface and feeds it state. See docs/DockArchitecture.md, "Visibility modes
+// and auto-hide".
 // ────────────────────────────────────────────────────────────────
 
 Item {

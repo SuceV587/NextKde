@@ -3,7 +3,8 @@
 //
 // Collision judgement ALWAYS uses the static rectangle the dock would occupy at
 // full reveal — never the animated transform position — so a controller can
-// evaluate without racing its own animation (see docs/DockSmartHideDesign.md §7).
+// evaluate without racing its own animation (see docs/DockArchitecture.md,
+// "Visibility modes and auto-hide").
 
 export function round(value) {
     return Math.round(value);

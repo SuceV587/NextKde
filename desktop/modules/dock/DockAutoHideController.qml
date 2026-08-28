@@ -13,8 +13,8 @@ import "./DockAutoHideMath.mjs" as DockMath
 // configuration, never creates windows and never touches icons.
 //
 // Collision judgement always uses the static rectangle the dock would occupy
-// at full reveal — never the animated transform — see
-// docs/DockSmartHideDesign.md §7/§8.
+// at full reveal — never the animated transform — see docs/DockArchitecture.md,
+// "Visibility modes and auto-hide".
 // ────────────────────────────────────────────────────────────────
 
 Item {

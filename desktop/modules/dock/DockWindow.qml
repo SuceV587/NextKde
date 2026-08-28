@@ -12,7 +12,7 @@ import qs.desktop.modules.common
 // never destroys the window, toggles visible, or changes anchors — it only
 // moves dockWrapper via the controller's single reveal-progress-derived offset,
 // and shapes the input region with a mask so transparent areas pass clicks
-// through (docs/DockSmartHideDesign.md §9).
+// through (docs/DockArchitecture.md, "Visibility modes and auto-hide").
 PanelWindow {
     id: root
 
@@ -42,7 +42,6 @@ PanelWindow {
     // edge. Anchoring only top (without bottom) would let a side surface
     // collapse to the implicit thickness and become 0-height.
     property string position: "bottom"
-    property Component leadingAccessory: null
     property Component trailingAccessory: null
     property bool clockInInfoCarousel: false
     readonly property bool vertical: root.position === "left"
@@ -154,7 +153,6 @@ PanelWindow {
             targetScreen: root.screen
             surfaceOriginX: root.surfaceGlobalX
             surfaceOriginY: root.surfaceGlobalY
-            leadingAccessory: root.leadingAccessory
             trailingAccessory: root.trailingAccessory
             clockInInfoCarousel: root.clockInInfoCarousel
         }
