@@ -314,8 +314,31 @@ QtObject {
         svc._refreshPresentation();
     }
 
+    // Drag slots are indices into the *visible* pinned list, which hides
+    // pinned apps that currently have windows (they show as window tasks in
+    // the right-hand section instead). Persisted order lives in the full
+    // ConfigService.dockItems list, so a visible slot must be translated to
+    // the full-list index of the item occupying it; otherwise every drop
+    // lands in the wrong place while any pinned app is running. Inserting at
+    // the target's full index is correct in both directions because
+    // moveDockItem splices after removing the source.
+    function _visibleSlotToDockIndex(type, visibleIndex) {
+        const visible = svc.pinnedItems
+        const dockItems = ConfigService.dockItems || []
+        if (type === "app" && visibleIndex >= 0 && visibleIndex < visible.length) {
+            const targetAppId = visible[visibleIndex].appId
+            for (let i = 0; i < dockItems.length; i++) {
+                const item = dockItems[i]
+                if (item.type === "app" && item.appId === targetAppId)
+                    return i
+            }
+        }
+        return visibleIndex
+    }
+
     function movePinnedItem(type, key, targetIndex) {
-        if (!ConfigService.moveDockItem(type, key, targetIndex))
+        if (!ConfigService.moveDockItem(type, key,
+                _visibleSlotToDockIndex(type, targetIndex)))
             return
         console.log("[DockModel] reorder " + type + "=" + key
                     + " target=" + targetIndex)

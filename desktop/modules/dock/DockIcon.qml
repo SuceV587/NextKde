@@ -555,10 +555,13 @@ Item {
         hoverEnabled: true
         acceptedButtons: (icon.showContextMenu || icon.customContextMenu)
             ? Qt.LeftButton | Qt.RightButton : Qt.LeftButton
-        // Normal clicks stay owned by the icon.  Once a long press enables dock
-        // edit mode, let the parent DragHandler take the pointer to reorder
-        // pinned apps; otherwise the wiggle animation starts but dragging cannot.
-        preventStealing: !icon.editMode
+        // Never resist pointer stealing: a deliberate drag must let the
+        // pinned delegate's DragHandler take the grab and reorder directly
+        // (macOS-style), not only after a long press enters edit mode. Plain
+        // clicks still complete here because the handler only steals after
+        // its drag threshold, which cancels this MouseArea instead of
+        // emitting clicked.
+        preventStealing: false
         cursorShape: Qt.PointingHandCursor
         onPressed: {
             icon._heldForEdit = false
