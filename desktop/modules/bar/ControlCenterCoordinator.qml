@@ -46,6 +46,7 @@ QtObject {
     // the compositor doesn't have to map nine surfaces in one frame (which
     // causes churn/flicker) and the entrance reads as a subtle cascade.
     property bool open: false
+    property bool suspended: false
     property int _openingIndex: -1
 
     function openAll() {
@@ -60,6 +61,7 @@ QtObject {
 
     function closeAll() {
         open = false
+        suspended = false
         _openingIndex = -1
         for (const card of cards)
             card.cardShown = false

@@ -65,7 +65,10 @@ PopupWindow {
     // The join sheet (LiquidGlassSurface) is a separate QML material on top;
     // the list card below becomes transparent so this blur shows through.
     readonly property int blurRadius: Math.max(1, Math.min(19, Math.floor(310 / 2)))
-    BackgroundEffect.blurRegion: Region {
+    BackgroundEffect.blurRegion: (AppearanceConfigService.effectiveBarBlur > 0.005) ? networkBlurRegionHolder : null
+
+    Region {
+        id: networkBlurRegionHolder
         x: panel.blurRadius
         y: 0
         width: 310 - panel.blurRadius
@@ -197,6 +200,21 @@ PopupWindow {
             selectedNetwork.savedProfileUuid || "")
     }
 
+    LiquidGlassSurface {
+        id: panelSurface
+        anchors.fill: parent
+        radius: panel.blurRadius
+        baseColor: ThemeService.backgroundColor
+        surfaceOpacity: 1.0
+        blurStrength: AppearanceConfigService.effectiveBarBlur
+        liquidStrength: AppearanceConfigService.effectiveBarLiquid
+        ambientPrimary: WallpaperPaletteService.primary
+        ambientSecondary: WallpaperPaletteService.secondary
+        ambientStrength: 0.35 * AppearanceTokens.glass.ambientMultiplier
+        border.width: 1
+        border.color: ThemeService.isDark ? Qt.rgba(0.74, 0.95, 1, 0.30) : Qt.rgba(0, 0, 0, 0.10)
+    }
+
     Column {
         anchors.fill: parent
         anchors.margins: 10
@@ -241,18 +259,19 @@ PopupWindow {
                 radius: width / 2
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                 color: NetworkService.wifiEnabled
-                    ? "#f7fbff" : Qt.rgba(1, 1, 1, 0.22)
+                    ? (ThemeService.isDark ? "#f7fbff" : Qt.rgba(0, 0, 0, 0.08))
+                    : (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(0, 0, 0, 0.05))
                 opacity: NetworkService.wifiToggleInProgress ? 0.55 : 1.0
                 Behavior on color { ColorAnimation { duration: 140 } }
                 border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.28)
+                border.color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.28) : Qt.rgba(0, 0, 0, 0.10)
                 Canvas {
                     id: networkPanelWifiGlyph
                     anchors.centerIn: parent
                     width: 20
                     height: 20
                     property bool active: NetworkService.wifiEnabled
-                    property color glyphColor: active ? "#0a84ff" : "white"
+                    property color glyphColor: active ? "#0a84ff" : (ThemeService.isDark ? "white" : "#000000")
                     onActiveChanged: requestPaint()
                     onGlyphColorChanged: requestPaint()
                     onPaint: {
