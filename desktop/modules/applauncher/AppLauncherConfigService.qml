@@ -14,10 +14,66 @@ QtObject {
 
     readonly property string configDir: Quickshell.stateDir + "/applauncher"
     readonly property string configPath: configDir + "/config.json"
+    property string displayMode: "bottom"
+    property real iconSize: 52
+    property real iconSpacing: 24
+    property real fontSize: 11
+    property string fontWeight: "normal" // "normal" | "medium" | "bold"
     property var rootItems: []
     property var hiddenAppIds: []
     property var appOverrides: ({})
     signal customIconImportFinished(string appId, string path, bool success)
+
+    function isValidDisplayMode(mode) {
+        return mode === "bottom" || mode === "center" || mode === "fullscreen"
+    }
+
+    function isValidFontWeight(weight) {
+        return weight === "normal" || weight === "medium" || weight === "bold"
+    }
+
+    function updateDisplayMode(mode) {
+        if (!isValidDisplayMode(mode) || displayMode === mode)
+            return false
+        displayMode = mode
+        scheduleSave()
+        return true
+    }
+
+    function updateIconSize(size) {
+        const clamped = Math.max(40, Math.min(80, Math.round(size)))
+        if (iconSize === clamped)
+            return false
+        iconSize = clamped
+        scheduleSave()
+        return true
+    }
+
+    function updateIconSpacing(spacing) {
+        const clamped = Math.max(10, Math.min(48, Math.round(spacing)))
+        if (iconSpacing === clamped)
+            return false
+        iconSpacing = clamped
+        scheduleSave()
+        return true
+    }
+
+    function updateFontSize(size) {
+        const clamped = Math.max(9, Math.min(18, Math.round(size)))
+        if (fontSize === clamped)
+            return false
+        fontSize = clamped
+        scheduleSave()
+        return true
+    }
+
+    function updateFontWeight(weight) {
+        if (!isValidFontWeight(weight) || fontWeight === weight)
+            return false
+        fontWeight = weight
+        scheduleSave()
+        return true
+    }
 
     // Layout remains launcher-local; presentation overrides are published to
     // the common service so Dock and QuickSearch consume the same record.
@@ -463,7 +519,12 @@ QtObject {
 
     function _save() {
         const json = JSON.stringify({
-            version: 1,
+            version: 2,
+            displayMode: displayMode,
+            iconSize: iconSize,
+            iconSpacing: iconSpacing,
+            fontSize: fontSize,
+            fontWeight: fontWeight,
             rootItems: rootItems,
             hiddenAppIds: hiddenAppIds,
             appOverrides: appOverrides,
@@ -494,12 +555,22 @@ QtObject {
             if (code === 0 && output) {
                 try {
                     const saved = JSON.parse(output)
+                    if (service.isValidDisplayMode(saved.displayMode))
+                        displayMode = saved.displayMode
+                    if (typeof saved.iconSize === "number" && saved.iconSize >= 40 && saved.iconSize <= 80)
+                        iconSize = saved.iconSize
+                    if (typeof saved.iconSpacing === "number" && saved.iconSpacing >= 10 && saved.iconSpacing <= 48)
+                        iconSpacing = saved.iconSpacing
+                    if (typeof saved.fontSize === "number" && saved.fontSize >= 9 && saved.fontSize <= 18)
+                        fontSize = saved.fontSize
+                    if (service.isValidFontWeight(saved.fontWeight))
+                        fontWeight = saved.fontWeight
                     rootItems = _normalizeRootItems(saved.rootItems)
                     hiddenAppIds = Array.isArray(saved.hiddenAppIds)
                         ? saved.hiddenAppIds : []
                     appOverrides = saved.appOverrides ?? ({})
                     service._publishPresentationOverrides()
-                    console.log("[AppLauncherConfig] loaded roots=" + rootItems.length)
+                    console.log("[AppLauncherConfig] loaded roots=" + rootItems.length + " mode=" + displayMode)
                 } catch (error) {
                     console.warn("[AppLauncherConfig] parse failed: " + error)
                 }

@@ -33,7 +33,7 @@ QtObject {
     // Runtime values (backed by JSON when available)
     // ═══════════════════════════════════════════════════════════
     property real   baseHeight:   60
-    property string theme:        "dark"
+    property string theme:        "system"
     property string position:     "bottom"
     // Reserved strip of the top status bar. Side docks subtract it from the
     // screen height so their column cap never overlaps the bar. The bar reads

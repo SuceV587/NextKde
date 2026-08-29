@@ -2,6 +2,7 @@ import QtQuick
 import Qt.labs.platform as Platform
 import Quickshell
 import "./AdaptiveMath.mjs" as AdaptiveMath
+import qs.desktop
 import qs.desktop.modules.applauncher
 import qs.desktop.modules.common
 import qs.desktop.modules.weather
@@ -293,6 +294,45 @@ Item {
         }
     }
 
+    Platform.Menu {
+        id: appLauncherContextMenu
+        function setDockPopupVisible(shouldOpen) {
+            if (shouldOpen)
+                open()
+            else
+                close()
+        }
+        function dismissDockPopupImmediately() { close() }
+
+        Platform.MenuItem {
+            text: "底部吸附"
+            checkable: true
+            checked: AppLauncherConfigService.displayMode === "bottom"
+            onTriggered: AppLauncherConfigService.updateDisplayMode("bottom")
+        }
+        Platform.MenuItem {
+            text: "屏幕居中"
+            checkable: true
+            checked: AppLauncherConfigService.displayMode === "center"
+            onTriggered: AppLauncherConfigService.updateDisplayMode("center")
+        }
+        Platform.MenuItem {
+            text: "全屏覆盖"
+            checkable: true
+            checked: AppLauncherConfigService.displayMode === "fullscreen"
+            onTriggered: AppLauncherConfigService.updateDisplayMode("fullscreen")
+        }
+        Platform.MenuSeparator {}
+        Platform.MenuItem {
+            text: "启动台设置…"
+            onTriggered: DesktopAppLauncher.openSettings()
+        }
+        onAboutToHide: {
+            if (DockModelService.activeDockPopup === appLauncherContextMenu)
+                DockModelService.releaseDockPopup(appLauncherContextMenu)
+        }
+    }
+
     DockTrashConfirmPopup {
         id: trashConfirmPopup
         anchorItem: trashIcon
@@ -354,6 +394,7 @@ Item {
             iconSource: Qt.resolvedUrl("../../assets/appLancher.svg")
             displayName: "应用程序"
             showContextMenu: false
+            customContextMenu: true
             allowEdit: false
             dismissAppLauncherOnInteraction: false
             isPinnedItem: false
@@ -368,6 +409,7 @@ Item {
                         DockModelService.activeDockPopup, false)
                 AppLauncherService.toggle()
             }
+            onContextRequested: DockModelService.openDockPopup(appLauncherContextMenu)
         }
 
         // Permanent shell control, kept on the left with the app launcher and

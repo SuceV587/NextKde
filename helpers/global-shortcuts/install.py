@@ -53,10 +53,62 @@ def existing_launch_bindings():
     return bindings
 
 
+KEY_MAP = {
+    "space": 0x20,
+    "tab": 0x01000001,
+    "return": 0x01000004,
+    "enter": 0x01000004,
+    "esc": 0x01000000,
+    "escape": 0x01000000,
+}
+
+MOD_MAP = {
+    "meta": 0x10000000,
+    "super": 0x10000000,
+    "ctrl": 0x04000000,
+    "control": 0x04000000,
+    "alt": 0x08000000,
+    "shift": 0x02000000,
+}
+
+
+def parse_combo(combo: str) -> int:
+    mods = 0
+    key = 0
+    for part in combo.split("+"):
+        pl = part.lower()
+        if pl in MOD_MAP:
+            mods |= MOD_MAP[pl]
+        elif pl in KEY_MAP:
+            key = KEY_MAP[pl]
+        elif len(part) == 1:
+            key = ord(part.upper())
+    return mods | key
+
+
+def register_via_dbus(shortcuts):
+    try:
+        import dbus
+        bus = dbus.SessionBus()
+        kg = bus.get_object("org.kde.kglobalaccel", "/kglobalaccel")
+        iface = dbus.Interface(kg, "org.kde.KGlobalAccel")
+        for entry in shortcuts:
+            desktop_name = entry["id"] + ".desktop"
+            action_id = [desktop_name, "_launch", entry["description"], entry["description"]]
+            iface.doRegister(action_id)
+            key_code = parse_combo(entry["default"])
+            keys = dbus.Array([dbus.Int32(key_code)], signature="i")
+            iface.setForeignShortcut(action_id, keys)
+            print(f"[global-shortcuts] DBus 实时注册: {desktop_name} -> {entry['default']}")
+    except Exception as e:
+        print(f"[global-shortcuts] DBus 注册跳过/警告: {e}")
+
+
 def main():
     table = load_table()
     os.makedirs(APPS_DIR, exist_ok=True)
     bindings = existing_launch_bindings()
+    registered_shortcuts = []
     for entry in table["shortcuts"]:
         shortcut_id = entry["id"]
         command = table["command"].format(config=CONFIG_DIR,
@@ -118,6 +170,10 @@ def main():
         with open(SHORTCUTS_RC, "w", encoding="utf-8") as f:
             f.writelines(rc_lines)
         print(f"[global-shortcuts] 绑定 {entry['default']} -> {shortcut_id}")
+        registered_shortcuts.append(entry)
+
+    # Register via DBus directly into kglobalaccel daemon
+    register_via_dbus(registered_shortcuts)
 
     # kglobalacceld watches the applications directory; notify it by restarting
     # the user service so the new Command Shortcuts become active immediately.

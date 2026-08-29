@@ -42,6 +42,7 @@ PanelWindow {
     // edge. Anchoring only top (without bottom) would let a side surface
     // collapse to the implicit thickness and become 0-height.
     property string position: "bottom"
+    property Component leadingAccessory: null
     property Component trailingAccessory: null
     property bool clockInInfoCarousel: false
     readonly property bool vertical: root.position === "left"
@@ -104,7 +105,10 @@ PanelWindow {
             : dockContainer.height + root.edgeMargin + root.workspaceGap)
         : 0
 
-    BackgroundEffect.blurRegion: Region {
+    BackgroundEffect.blurRegion: (AppearanceConfigService.effectiveDockBlur > 0.005) ? dockBlurRegionHolder : null
+
+    Region {
+        id: dockBlurRegionHolder
         RoundedBlurRegion {
             id: glassRegion
             item: dockWrapper
@@ -153,6 +157,7 @@ PanelWindow {
             targetScreen: root.screen
             surfaceOriginX: root.surfaceGlobalX
             surfaceOriginY: root.surfaceGlobalY
+            leadingAccessory: root.leadingAccessory
             trailingAccessory: root.trailingAccessory
             clockInInfoCarousel: root.clockInInfoCarousel
         }

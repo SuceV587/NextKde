@@ -47,6 +47,18 @@ def main():
         f.writelines(kept)
     print("[global-shortcuts] kglobalshortcutsrc 已清理")
 
+    try:
+        import dbus
+        bus = dbus.SessionBus()
+        kg = bus.get_object("org.kde.kglobalaccel", "/kglobalaccel")
+        iface = dbus.Interface(kg, "org.kde.KGlobalAccel")
+        for entry in table["shortcuts"]:
+            desktop_name = entry["id"] + ".desktop"
+            iface.unregister(desktop_name, "_launch")
+            print(f"[global-shortcuts] DBus 释放: {desktop_name}")
+    except Exception as e:
+        print(f"[global-shortcuts] DBus 释放跳过/警告: {e}")
+
     subprocess.run(["systemctl", "--user", "restart", "plasma-kglobalaccel.service"],
                    check=False)
     print("[global-shortcuts] 完成；kglobalaccel 已重载")
