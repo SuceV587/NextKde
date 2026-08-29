@@ -3,15 +3,15 @@
 
 Each shortcut in shortcuts.json becomes:
   - a .desktop launcher in ~/.local/share/applications whose Exec runs
-    `qs -p <config> ipc call <target> <action>` (the same Command Shortcut
-    mechanism the existing net.local.qs shortcuts use), and
-  - a `[services][<id>.desktop] _launch=<combo>` entry in kglobalshortcutsrc
-    that binds the default combo.
+    `qs -p <config> ipc call <target> <action>`, and
+  - a `[services][<id>.desktop] _launch=<combo>` entry in kglobalshortcutsrc —
+    the exact format Plasma itself writes for Command Shortcuts.
 
-Conflicts are detected against every existing _launch binding in
+kglobalaccel grabs the key and launches the .desktop when the combo is
+pressed. Conflicts are detected against every existing binding in
 kglobalshortcutsrc; a duplicate combo is reported and skipped so two actions
-never fight over one key. Run install.py again after editing shortcuts.json to
-re-apply. Combo changes are best done in System Settings → Shortcuts, which
+never fight over one key. Run install.py again after editing shortcuts.json
+to re-apply. Combo changes are best done in System Settings → Shortcuts, which
 keeps the per-user bindings (this script only seeds defaults).
 
 Usage: python3 install.py [config-dir]     (default: this repository root)
@@ -19,8 +19,10 @@ Usage: python3 install.py [config-dir]     (default: this repository root)
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_DIR = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(SCRIPT_DIR, "..", ".."))
@@ -41,16 +43,107 @@ def existing_launch_bindings():
         with open(SHORTCUTS_RC, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                m = re.match(r"\[services\]\[(.+)\]", line)
+                m = re.match(r"\[(.+)\]", line)
                 if m:
-                    section = m.group(1)
+                    sec = m.group(1)
+                    if sec.startswith("services]["):
+                        sec = sec[len("services]["):]
+                    section = sec
                     continue
-                m = re.match(r"_launch=(\S+)", line)
+                m = re.match(r"(?:_launch|[^=]+)=([^,\n]+)", line)
                 if m and section:
-                    bindings.setdefault(m.group(1), []).append(section)
+                    for combo in m.group(1).split("\\t"):
+                        combo = combo.strip()
+                        if combo and combo != "none":
+                            bindings.setdefault(combo, []).append(section)
     except FileNotFoundError:
         pass
     return bindings
+
+
+def clear_default_claims(combo):
+    """Strip `combo` from other components' *default* bindings.
+
+    kglobalaccel lets a component claim its default keys whenever it
+    re-registers, even when the current binding is "none". klipper defaults
+    to Meta+V ("show clipboard item at mouse position"), powerdevil's
+    powerProfile to Meta+B, and KWin's window walking to Meta+Tab — after the
+    daemon restarts they steal those combos back from the Command Shortcuts
+    this script just registered. Removing the combo from the default field
+    (leaving genuinely active bindings untouched) prevents the theft.
+    """
+    try:
+        with open(SHORTCUTS_RC, encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return
+    changed = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("[") or stripped.startswith("_"):
+            continue
+        key, sep, value = stripped.partition("=")
+        if not sep:
+            continue
+        parts = value.split(",", 2)
+        if len(parts) != 3:
+            continue
+        current, defaults, label = parts
+        current_keys = current.split("\\t")
+        default_keys = defaults.split("\\t")
+        if combo not in default_keys:
+            continue
+        # The combo sits in the default column. If it also sits in the current
+        # column the component merely claimed its default (klipper does this
+        # with Meta+V after a daemon restart), so free both columns; if only
+        # the default holds it, strip just the default so it can never be
+        # claimed back later.
+        new_current_keys = [k for k in current_keys if k != combo] or ["none"]
+        new_default_keys = [k for k in default_keys if k != combo] or ["none"]
+        new_current = "\\t".join(new_current_keys)
+        new_defaults = "\\t".join(new_default_keys)
+        lines[index] = f"{key}={new_current},{new_defaults},{label}\n"
+        print(f"[global-shortcuts] 释放默认绑定 {combo} <- {key.strip()}")
+        changed = True
+    if changed:
+        with open(SHORTCUTS_RC, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+
+
+def rewrite_shortcut_rc(shortcut_id, combo):
+    """Write the `[services][<id>.desktop]` group Plasma uses for Command
+    Shortcuts, replacing every group previously written for this shortcut.
+
+    The bare `[<id>.desktop]` groups an older version of this script wrote
+    are removed too: kglobalaccel reads those as a regular application
+    component that no running client owns, and that dead component collides
+    with the Command Shortcut registered under the same name — the key ends
+    up grabbed by a component whose trigger nobody answers.
+    """
+    own_headers = {f"[{shortcut_id}.desktop]", f"[services][{shortcut_id}.desktop]"}
+    try:
+        with open(SHORTCUTS_RC, encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        lines = []
+
+    kept, dropping = [], False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            dropping = stripped in own_headers
+            if dropping:
+                continue
+        elif dropping:
+            continue
+        kept.append(line)
+
+    if kept and not kept[-1].endswith("\n"):
+        kept[-1] += "\n"
+    kept.append(f"[services][{shortcut_id}.desktop]\n")
+    kept.append(f"_launch={combo}\n")
+    with open(SHORTCUTS_RC, "w", encoding="utf-8") as f:
+        f.writelines(kept)
 
 
 KEY_MAP = {
@@ -87,31 +180,51 @@ def parse_combo(combo: str) -> int:
 
 
 def register_via_dbus(shortcuts):
-    try:
-        import dbus
-        bus = dbus.SessionBus()
-        kg = bus.get_object("org.kde.kglobalaccel", "/kglobalaccel")
-        iface = dbus.Interface(kg, "org.kde.KGlobalAccel")
-        for entry in shortcuts:
-            desktop_name = entry["id"] + ".desktop"
-            action_id = [desktop_name, "_launch", entry["description"], entry["description"]]
-            iface.doRegister(action_id)
-            key_code = parse_combo(entry["default"])
-            keys = dbus.Array([dbus.Int32(key_code)], signature="i")
-            iface.setForeignShortcut(action_id, keys)
-            print(f"[global-shortcuts] DBus 实时注册: {desktop_name} -> {entry['default']}")
-    except Exception as e:
-        print(f"[global-shortcuts] DBus 注册跳过/警告: {e}")
+    """Re-apply the bindings in the live daemon.
+
+    This runs AFTER the daemon restart, not before: a restart drops all
+    in-memory DBus registrations, so registering first and restarting second
+    throws the work away.
+    """
+    for attempt in range(5):
+        try:
+            import dbus
+            bus = dbus.SessionBus()
+            kg = bus.get_object("org.kde.kglobalaccel", "/kglobalaccel")
+            iface = dbus.Interface(kg, "org.kde.KGlobalAccel")
+            for entry in shortcuts:
+                desktop_name = entry["id"] + ".desktop"
+                action_id = [desktop_name, "_launch", entry["description"], entry["description"]]
+                iface.doRegister(action_id)
+                keys = dbus.Array([dbus.Int32(parse_combo(entry["default"]))], signature="i")
+                iface.setForeignShortcut(action_id, keys)
+                print(f"[global-shortcuts] DBus 实时注册: {desktop_name} -> {entry['default']}")
+            return
+        except ImportError:
+            print("[global-shortcuts] 未安装 python3-dbus，跳过实时注册（重启守护进程后由配置生效）")
+            return
+        except Exception as e:
+            if attempt == 4:
+                print(f"[global-shortcuts] DBus 注册失败: {e}")
+            else:
+                time.sleep(1)
 
 
 def main():
     table = load_table()
     os.makedirs(APPS_DIR, exist_ok=True)
+    # Release the default-column claims (klipper's Meta+V, powerdevil's
+    # Meta+B, KWin's Meta+Tab) before reading bindings, so the conflict
+    # check below only trips on shortcuts the user assigned deliberately.
+    for entry in table["shortcuts"]:
+        clear_default_claims(entry["default"])
     bindings = existing_launch_bindings()
     registered_shortcuts = []
+    qs_bin = shutil.which("qs") or os.path.expanduser("~/.local/bin/qs")
     for entry in table["shortcuts"]:
         shortcut_id = entry["id"]
-        command = table["command"].format(config=CONFIG_DIR,
+        command = table["command"].format(qs=qs_bin,
+                                          config=CONFIG_DIR,
                                           target=entry["target"],
                                           action=entry["action"])
         desktop_path = os.path.join(APPS_DIR, shortcut_id + ".desktop")
@@ -137,48 +250,20 @@ def main():
             )
         print(f"[global-shortcuts] 写入 {desktop_path}")
 
-        # Seed the default binding. The section must exist even when the user
-        # later rebinds the combo in System Settings, or the shortcut is shown
-        # as unbound until then.
-        section = f"[services][{shortcut_id}.desktop]"
-        try:
-            with open(SHORTCUTS_RC, encoding="utf-8") as f:
-                rc_lines = f.readlines()
-        except FileNotFoundError:
-            rc_lines = []
-        header_at = None
-        in_section = False
-        updated = False
-        for index, line in enumerate(rc_lines):
-            stripped = line.strip()
-            if stripped.startswith("[services][") and stripped.endswith("]"):
-                in_section = stripped == section
-                if in_section:
-                    header_at = index
-            elif in_section and stripped.startswith("_launch="):
-                rc_lines[index] = f"_launch={entry['default']}\n"
-                updated = True
-                break
-        if not updated:
-            if header_at is not None:
-                # Section exists but has no _launch yet.
-                rc_lines.insert(header_at + 1, f"_launch={entry['default']}\n")
-            else:
-                # Append a fresh section at the end of the file. Section
-                # ordering is irrelevant to kglobalaccel.
-                rc_lines.append(f"{section}\n_launch={entry['default']}\n")
-        with open(SHORTCUTS_RC, "w", encoding="utf-8") as f:
-            f.writelines(rc_lines)
+        rewrite_shortcut_rc(shortcut_id, entry["default"])
         print(f"[global-shortcuts] 绑定 {entry['default']} -> {shortcut_id}")
         registered_shortcuts.append(entry)
 
-    # Register via DBus directly into kglobalaccel daemon
-    register_via_dbus(registered_shortcuts)
-
-    # kglobalacceld watches the applications directory; notify it by restarting
-    # the user service so the new Command Shortcuts become active immediately.
+    # kglobalacceld keeps kglobalshortcutsrc in memory and rewrites it from
+    # that state; restart it so the freshly written [services] groups are read
+    # back cleanly instead of being clobbered or merged with stale ones.
     subprocess.run(["systemctl", "--user", "restart", "plasma-kglobalaccel.service"],
                    check=False)
+
+    # The service is DBus-activated and needs a moment to come back up; the
+    # retry loop inside handles that.
+    register_via_dbus(registered_shortcuts)
+
     print("[global-shortcuts] 完成；kglobalaccel 已重载")
 
 
