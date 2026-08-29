@@ -8,7 +8,7 @@ Item {
     id: root
 
     implicitWidth: content.implicitWidth
-    implicitHeight: 24
+    implicitHeight: content.implicitHeight
 
     SystemClock {
         id: clock
@@ -17,33 +17,34 @@ Item {
 
     Row {
         id: content
-        anchors.centerIn: parent
+        anchors.verticalCenter: parent.verticalCenter
         spacing: 7
 
         Text {
             id: timeText
+            anchors.verticalCenter: parent.verticalCenter
             text: Qt.formatDateTime(clock.date, "h:mm")
             color: ThemeService.foregroundColor
-            style: Text.Outline
-            styleColor: Qt.rgba(0, 0, 0, 0.38)
+            style: ThemeService.isDark ? Text.Outline : Text.Normal
+            styleColor: Qt.rgba(0, 0, 0, 0.40)
             font {
-                family: "SF Pro Display"
+                family: "SF Pro Display, Noto Sans CJK SC, sans-serif"
                 pixelSize: 14
-                weight: Font.Bold
+                weight: Font.DemiBold
             }
         }
 
         Text {
+            anchors.verticalCenter: parent.verticalCenter
             text: Qt.formatDateTime(clock.date, "M月d日 dddd")
             color: ThemeService.foregroundColor
-            style: Text.Outline
-            styleColor: Qt.rgba(0, 0, 0, 0.38)
+            style: ThemeService.isDark ? Text.Outline : Text.Normal
+            styleColor: Qt.rgba(0, 0, 0, 0.40)
             font {
-                family: "Noto Sans CJK SC"
+                family: "Noto Sans CJK SC, sans-serif"
                 pixelSize: 14
-                weight: Font.Bold
+                weight: Font.DemiBold
             }
-            anchors.baseline: timeText.baseline
         }
     }
 }

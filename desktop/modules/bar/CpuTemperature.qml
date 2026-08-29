@@ -42,24 +42,28 @@ Item {
         }
 
         Column {
-            spacing: -1
+            spacing: 0
             anchors.verticalCenter: parent.verticalCenter
 
-            GlassText {
+            Text {
                 text: "平均温度 " + root.currentC + "°"
                 color: ThemeService.foregroundColor
+                style: ThemeService.isDark ? Text.Outline : Text.Normal
+                styleColor: Qt.rgba(0, 0, 0, 0.40)
                 font {
-                    family: "SF Pro Display"
+                    family: "Noto Sans CJK SC, sans-serif"
                     pixelSize: 9
                     weight: Font.Normal
                 }
             }
 
-            GlassText {
+            Text {
                 text: "最高温度 " + root.maximum5MinuteC + "°"
                 color: ThemeService.foregroundColor
+                style: ThemeService.isDark ? Text.Outline : Text.Normal
+                styleColor: Qt.rgba(0, 0, 0, 0.40)
                 font {
-                    family: "SF Pro Display"
+                    family: "Noto Sans CJK SC, sans-serif"
                     pixelSize: 9
                     weight: Font.Normal
                 }

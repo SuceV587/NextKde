@@ -20,6 +20,8 @@ Item {
     property bool controlCenterLoaded: false
     readonly property var controlCenter: controlCenterLoader.item
     readonly property bool controlCenterOpen: controlCenter?.isOpen ?? false
+    readonly property bool anyPanelOpen: (networkPanel?.visible ?? false)
+        || (bluetoothPanel?.visible ?? false) || root.controlCenterOpen
 
     function toggleControlCenter(anchorItem) {
         controlCenterUnloadTimer.stop()

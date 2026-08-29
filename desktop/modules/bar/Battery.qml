@@ -145,11 +145,11 @@ Item {
         : percent > 95
         ? "#30d158"
         : percent >= 50
-            ? "#ffffff"
+            ? ThemeService.foregroundColor
             : percent >= 15
                 ? "#ff9f0a"
                 : "#ff453a"
-    readonly property color boltColor: tintActive ? "white"
+    readonly property color boltColor: tintActive ? dockTintColor
         : percent >= 50 && percent <= 95
-        ? "#ff9f0a" : "#ffffff"
+        ? "#ff9f0a" : ThemeService.foregroundColor
 }

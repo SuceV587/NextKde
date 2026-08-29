@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Services.SystemTray
 import Quickshell.Widgets
 import QtQuick
+import QtQuick.Effects
 import qs.desktop.modules.common
 import qs.desktop.modules.dock
 
@@ -63,6 +64,11 @@ Item {
                 height: root.itemSize
                 readonly property string tooltip: modelData.tooltipTitle
                     || modelData.title || modelData.id
+                readonly property bool isSymbolicMask: Boolean(modelData.isMask)
+                    || (typeof modelData.icon === "string" && (
+                        modelData.icon.indexOf("symbolic") !== -1
+                        || modelData.icon.indexOf("-mask") !== -1
+                    ))
 
                 function openMenu() {
                     if (!modelData.hasMenu)
@@ -88,7 +94,7 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     radius: 5
-                    color: Qt.rgba(1, 1, 1, 0.14)
+                    color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.08)
                     visible: trayMouse.containsMouse || trayMenu.visible
                 }
 
@@ -106,6 +112,11 @@ Item {
                         ? ConfigService.iconTintEnabled : 0.0
                     tintColor: ConfigService.iconTintColor
                     rotation: root.verticalDock ? -90 : 0
+                    layer.enabled: trayItem.isSymbolicMask && (!root.dockHosted || ConfigService.iconMode === "color")
+                    layer.effect: MultiEffect {
+                        colorization: 1.0
+                        colorizationColor: ThemeService.foregroundColor
+                    }
                 }
 
                 MouseArea {
