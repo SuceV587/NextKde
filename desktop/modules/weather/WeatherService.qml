@@ -174,9 +174,11 @@ QtObject {
             onRead: _ => service.reload()
         }
         stderr: SplitParser { splitMarker: "\n" }
-        onExited: function() {
-            service.subscriptionEnabled = false
-            service.subscriptionRetry.restart()
+        onRunningChanged: {
+            if (!running && service.subscriptionEnabled) {
+                service.subscriptionEnabled = false
+                service.subscriptionRetry.restart()
+            }
         }
     }
 
