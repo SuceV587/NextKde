@@ -105,7 +105,7 @@ PanelWindow {
             : dockContainer.height + root.edgeMargin + root.workspaceGap)
         : 0
 
-    BackgroundEffect.blurRegion: (AppearanceConfigService.effectiveDockBlur > 0.005) ? dockBlurRegionHolder : null
+    BackgroundEffect.blurRegion: (root.visible && AppearanceConfigService.effectiveDockBlur > 0.005) ? dockBlurRegionHolder : null
 
     Region {
         id: dockBlurRegionHolder

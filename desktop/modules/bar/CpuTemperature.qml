@@ -313,9 +313,14 @@ Item {
             }
         }
 
-        BackgroundEffect.blurRegion: RoundedBlurRegion {
-            item: detailsSurface
-            radius: detailsSurface.radius
+        BackgroundEffect.blurRegion: detailsPopup.visible ? cpuDetailsBlurHolder : null
+
+        Region {
+            id: cpuDetailsBlurHolder
+            RoundedBlurRegion {
+                item: detailsSurface
+                radius: detailsSurface.radius
+            }
         }
     }
 

@@ -52,7 +52,7 @@ PanelWindow {
         right: (AppearanceConfigService.barLayoutMode === "floating") ? 15 : 0
     }
 
-    BackgroundEffect.blurRegion: (AppearanceConfigService.effectiveBarBlur > 0.005) ? barBlurRegionHolder : null
+    BackgroundEffect.blurRegion: (root.visible && AppearanceConfigService.effectiveBarBlur > 0.005) ? barBlurRegionHolder : null
 
     Region {
         id: barBlurRegionHolder

@@ -82,9 +82,14 @@ PanelWindow {
             }
         }
     }
-    BackgroundEffect.blurRegion: RoundedBlurRegion {
-        item: blurTrack
-        radius: 28
+    BackgroundEffect.blurRegion: (root.visible && blurTrackHeight.value > 0) ? notifBlurRegionHolder : null
+
+    Region {
+        id: notifBlurRegionHolder
+        RoundedBlurRegion {
+            item: blurTrack
+            radius: 28
+        }
     }
 
     ListView {

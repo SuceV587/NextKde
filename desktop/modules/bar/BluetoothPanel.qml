@@ -40,7 +40,7 @@ PopupWindow {
     // list are visible through the glass. Stepped region encodes the radius
     // (top scanline at x=blurRadius) so the plugin rounds corners exactly.
     readonly property int blurRadius: Math.max(1, Math.min(20, Math.floor(300 / 2)))
-    BackgroundEffect.blurRegion: (AppearanceConfigService.effectiveBarBlur > 0.005) ? bluetoothBlurRegionHolder : null
+    BackgroundEffect.blurRegion: (panel.visible && AppearanceConfigService.effectiveBarBlur > 0.005) ? bluetoothBlurRegionHolder : null
 
     Region {
         id: bluetoothBlurRegionHolder

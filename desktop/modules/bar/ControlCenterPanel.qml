@@ -40,8 +40,7 @@ Item {
     readonly property bool isOpen: coordinator.open
 
     // The target screen (the bar's output). Cards live on the same screen.
-    readonly property var targetScreen: Quickshell.screens.length > 1
-        ? Quickshell.screens[1] : Quickshell.screens[0]
+    readonly property var targetScreen: ScreenLifecycle.activeScreen
     readonly property int controlCenterHeight: 597
     readonly property real effectiveBlur: dockHosted
         ? AppearanceConfigService.effectiveDockBlur
@@ -126,7 +125,8 @@ Item {
     PanelWindow {
         id: dismissalBackdrop
         screen: panel.targetScreen
-        visible: coordinator.open || panel.sessionModalVisible
+        visible: ScreenLifecycle.outputAvailable && panel.targetScreen !== null
+            && (coordinator.open || panel.sessionModalVisible)
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Top

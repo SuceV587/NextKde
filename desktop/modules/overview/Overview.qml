@@ -1,5 +1,6 @@
 import Quickshell
 import Quickshell.Io
+import qs.desktop.modules.common
 
 // Workspace overview controller. KWin owns the actual virtual-desktop
 // switching; this module reads WindowService's desktop/window model and shows
@@ -8,9 +9,7 @@ Scope {
     id: root
 
     property bool open: false
-    readonly property var targetScreen: Quickshell.screens.length > 1
-        ? Quickshell.screens[1]
-        : (Quickshell.screens[0] ?? null)
+    readonly property var targetScreen: ScreenLifecycle.activeScreen
 
     function show() { open = true }
     function hide() { open = false }
@@ -23,14 +22,10 @@ Scope {
         function toggle(): void { root.toggle() }
     }
 
-    Variants {
-        model: Quickshell.screens
-
-        OverviewWindow {
-            required property var modelData
-            screen: modelData
-            open: root.open
-            onCloseRequested: root.hide()
-        }
+    OverviewWindow {
+        screen: root.targetScreen
+        open: root.open && ScreenLifecycle.outputAvailable
+            && root.targetScreen !== null
+        onCloseRequested: root.hide()
     }
 }

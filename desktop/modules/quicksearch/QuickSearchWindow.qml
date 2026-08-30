@@ -114,9 +114,14 @@ PanelWindow {
     focusable: true
     // Blur only the compact search card; the rest of the screen remains an
     // untouched, transparent Spotlight-style surface.
-    BackgroundEffect.blurRegion: RoundedBlurRegion {
-        item: dialog
-        radius: dialog.radius
+    BackgroundEffect.blurRegion: (root.visible && dialog.radius > 0) ? searchBlurRegionHolder : null
+
+    Region {
+        id: searchBlurRegionHolder
+        RoundedBlurRegion {
+            item: dialog
+            radius: dialog.radius
+        }
     }
     anchors {
         top: true

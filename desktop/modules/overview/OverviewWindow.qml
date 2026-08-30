@@ -22,6 +22,9 @@ PanelWindow {
 
     signal closeRequested
 
+    // The controller already suppresses `open` while no real output exists.
+    // Reading PanelWindow.screen from its own visibility binding creates a
+    // Quickshell window/screen resolution cycle.
     visible: open
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
@@ -61,9 +64,14 @@ PanelWindow {
     }
 
     // KWin compositor backdrop blur
-    BackgroundEffect.blurRegion: RoundedBlurRegion {
-        item: backdrop
-        radius: 0
+    BackgroundEffect.blurRegion: (root.visible && root.open) ? overviewBlurRegionHolder : null
+
+    Region {
+        id: overviewBlurRegionHolder
+        RoundedBlurRegion {
+            item: backdrop
+            radius: 0
+        }
     }
 
     Rectangle {

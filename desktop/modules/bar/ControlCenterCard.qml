@@ -42,7 +42,7 @@ PanelWindow {
     // overlays that manage their own visibility (e.g. logout confirmation).
     property bool managedByCoordinator: true
     // Which output this card lives on (the same screen as the bar).
-    property var targetScreen: Quickshell.screens.length > 1 ? Quickshell.screens[1] : Quickshell.screens[0]
+    property var targetScreen: ScreenLifecycle.activeScreen
 
     // Control-center cards get the same highlight family as the bar (cards
     // float over the bar's screen area).
@@ -66,6 +66,7 @@ PanelWindow {
         : root.cardShown
 
     screen: root.targetScreen
+    visible: ScreenLifecycle.outputAvailable && root.targetScreen !== null
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Overlay
@@ -114,7 +115,7 @@ PanelWindow {
     // smoothQuickshellCard reads exactly this inset as the corner radius.
     // Everything below it is full-width so the card blurs completely and the
     // SDF mask rounds the corners to blurRadius.
-    BackgroundEffect.blurRegion: (root.effectiveBlur > 0.005) ? cardBlurRegionHolder : null
+    BackgroundEffect.blurRegion: (root.visible && root.effectiveBlur > 0.005) ? cardBlurRegionHolder : null
 
     Region {
         id: cardBlurRegionHolder

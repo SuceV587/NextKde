@@ -19,3 +19,4 @@ singleton IconThemeReloadService 1.0 IconThemeReloadService.qml
 singleton SystemIconResolver 1.0 SystemIconResolver.qml
 singleton AppearanceConfigService 1.0 AppearanceConfigService.qml
 singleton AppearanceTokens 1.0 AppearanceTokens.qml
+singleton ScreenLifecycle 1.0 ScreenLifecycle.qml
