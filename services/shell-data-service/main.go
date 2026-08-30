@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"golang.org/x/sys/unix"
 )
 
 // MetricSample keeps one fixed-interval telemetry point. Ratios are 0..1 and
@@ -1190,10 +1191,29 @@ func serve(s *Service, path string) error {
 	}
 }
 
+func acquireInstanceLock(socketPath string) (*os.File, error) {
+	lockPath := socketPath + ".lock"
+	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("open service lock: %w", err)
+	}
+	if err = unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		_ = lock.Close()
+		return nil, fmt.Errorf("another shell-data-service instance is active: %w", err)
+	}
+	return lock, nil
+}
+
 func main() {
 	s := newService()
 	runtime := homePath("XDG_RUNTIME_DIR", "/tmp")
 	socket := filepath.Join(runtime, "shell-data-service.sock")
+	instanceLock, err := acquireInstanceLock(socket)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+	defer instanceLock.Close()
 	// Publish the initial full directory snapshot before accepting subscribers.
 	// This removes the startup race where QML connected while snapshot.json was
 	// still stale and then waited indefinitely for a second filesystem event.

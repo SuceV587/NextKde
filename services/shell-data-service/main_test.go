@@ -102,3 +102,26 @@ func TestNormalizeClipboardPaths(t *testing.T) {
 		t.Fatalf("unexpected paths: %#v", paths)
 	}
 }
+
+func TestAcquireInstanceLockIsExclusive(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "shell-data-service.sock")
+	first, err := acquireInstanceLock(socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := acquireInstanceLock(socketPath)
+	if err == nil {
+		second.Close()
+		t.Fatal("second service instance acquired the same lock")
+	}
+
+	if err = first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	third, err := acquireInstanceLock(socketPath)
+	if err != nil {
+		t.Fatalf("lock was not released after close: %v", err)
+	}
+	third.Close()
+}

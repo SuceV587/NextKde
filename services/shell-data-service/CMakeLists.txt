@@ -1,0 +1,50 @@
+find_program(KOS_GO_EXECUTABLE NAMES go REQUIRED)
+
+set(kos_shell_data_service_sources
+    ${CMAKE_CURRENT_SOURCE_DIR}/main.go
+    ${CMAKE_CURRENT_SOURCE_DIR}/weather.go
+    ${CMAKE_CURRENT_SOURCE_DIR}/go.mod
+    ${CMAKE_CURRENT_SOURCE_DIR}/go.sum
+)
+set(KOS_SHELL_DATA_SERVICE_EXECUTABLE
+    ${CMAKE_CURRENT_BINARY_DIR}/kos-shell-data-service
+)
+
+add_custom_command(
+    OUTPUT ${KOS_SHELL_DATA_SERVICE_EXECUTABLE}
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        ${CMAKE_CURRENT_BINARY_DIR}/go-cache
+    COMMAND ${CMAKE_COMMAND} -E env
+        GOCACHE=${CMAKE_CURRENT_BINARY_DIR}/go-cache
+        ${KOS_GO_EXECUTABLE} build -trimpath
+            -o ${KOS_SHELL_DATA_SERVICE_EXECUTABLE} .
+    DEPENDS ${kos_shell_data_service_sources}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Building KOS shared data service"
+    VERBATIM
+)
+
+add_custom_target(kos-shell-data-service ALL
+    DEPENDS ${KOS_SHELL_DATA_SERVICE_EXECUTABLE}
+)
+
+install(PROGRAMS ${KOS_SHELL_DATA_SERVICE_EXECUTABLE}
+    DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+if(BUILD_TESTING)
+    add_test(NAME kos-shell-data-service.go
+        COMMAND ${CMAKE_COMMAND} -E env
+            GOCACHE=${CMAKE_CURRENT_BINARY_DIR}/go-test-cache
+            ${KOS_GO_EXECUTABLE} test ./...
+    )
+    set_tests_properties(kos-shell-data-service.go PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        TIMEOUT 60
+    )
+endif()
+
+set(KOS_SHELL_DATA_SERVICE_EXECUTABLE
+    ${KOS_SHELL_DATA_SERVICE_EXECUTABLE}
+    PARENT_SCOPE
+)
