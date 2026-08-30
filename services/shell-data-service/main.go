@@ -91,42 +91,56 @@ type Desktop struct {
 	UpdatedAt int64          `json:"updatedAt"`
 }
 type Snapshot struct {
-	GeneratedAt int64    `json:"generatedAt"`
-	Metrics     Metrics  `json:"metrics"`
-	Activity    Activity `json:"activity"`
-	Desktop     Desktop  `json:"desktop"`
+	SchemaVersion int          `json:"schemaVersion"`
+	GeneratedAt   int64        `json:"generatedAt"`
+	Metrics       Metrics      `json:"metrics"`
+	Activity      Activity     `json:"activity"`
+	Desktop       Desktop      `json:"desktop"`
+	Weather       WeatherState `json:"weather"`
 }
 type State struct {
-	Metrics  Metrics  `json:"metrics"`
-	Activity Activity `json:"activity"`
-	Desktop  Desktop  `json:"desktop"`
+	Metrics  Metrics      `json:"metrics"`
+	Activity Activity     `json:"activity"`
+	Desktop  Desktop      `json:"desktop"`
+	Weather  WeatherState `json:"weather"`
 }
 type Event struct {
-	Type   string   `json:"type,omitempty"`
-	AppID  string   `json:"appID,omitempty"`
-	Name   string   `json:"name,omitempty"`
-	Icon   string   `json:"icon,omitempty"`
-	Active *bool    `json:"active,omitempty"`
-	Mode   string   `json:"mode,omitempty"`
-	Paths  []string `json:"paths,omitempty"`
+	Type     string           `json:"type,omitempty"`
+	AppID    string           `json:"appID,omitempty"`
+	Name     string           `json:"name,omitempty"`
+	Icon     string           `json:"icon,omitempty"`
+	Active   *bool            `json:"active,omitempty"`
+	Mode     string           `json:"mode,omitempty"`
+	Paths    []string         `json:"paths,omitempty"`
+	Query    string           `json:"query,omitempty"`
+	Language string           `json:"language,omitempty"`
+	Limit    int              `json:"limit,omitempty"`
+	Units    string           `json:"units,omitempty"`
+	Location *WeatherLocation `json:"location,omitempty"`
 }
 
 type EventResponse struct {
-	Type  string   `json:"type"`
-	OK    bool     `json:"ok"`
-	Mode  string   `json:"mode,omitempty"`
-	Paths []string `json:"paths,omitempty"`
-	Error string   `json:"error,omitempty"`
+	Type      string            `json:"type"`
+	OK        bool              `json:"ok"`
+	Accepted  bool              `json:"accepted,omitempty"`
+	Mode      string            `json:"mode,omitempty"`
+	Paths     []string          `json:"paths,omitempty"`
+	Locations []WeatherLocation `json:"locations,omitempty"`
+	Error     string            `json:"error,omitempty"`
 }
 
 type Service struct {
 	mu                        sync.Mutex
 	desktopSubscribersMu      sync.Mutex
 	desktopSubscribers        map[net.Conn]struct{}
+	weatherSubscribersMu      sync.Mutex
+	weatherSubscribers        map[net.Conn]struct{}
 	state                     State
 	statePath, snapshotPath   string
 	desktopDirectory          string
 	clipboard                 *ClipboardManager
+	weatherProvider           WeatherProvider
+	weatherRequestSerial      uint64
 	last                      time.Time
 	prevCPUTotal, prevCPUIdle float64
 }
@@ -149,6 +163,8 @@ func newService() *Service {
 		desktopDirectory:   desktopDirectory(),
 		clipboard:          newClipboardManager(),
 		desktopSubscribers: map[net.Conn]struct{}{},
+		weatherSubscribers: map[net.Conn]struct{}{},
+		weatherProvider:    newOpenMeteoProvider(),
 		last:               time.Now(),
 	}
 	s.state.Activity.TodayApps = map[string]AppUsage{}
@@ -162,6 +178,7 @@ func newService() *Service {
 	if s.state.Activity.UptimeByDay == nil {
 		s.state.Activity.UptimeByDay = map[string]float64{}
 	}
+	normalizeWeatherState(&s.state.Weather)
 	return s
 }
 
@@ -183,7 +200,14 @@ func (s *Service) persist() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.settle(time.Now())
-	snapshot := Snapshot{GeneratedAt: time.Now().UnixMilli(), Metrics: s.state.Metrics, Activity: s.state.Activity, Desktop: s.state.Desktop}
+	snapshot := Snapshot{
+		SchemaVersion: 1,
+		GeneratedAt:   time.Now().UnixMilli(),
+		Metrics:       s.state.Metrics,
+		Activity:      s.state.Activity,
+		Desktop:       s.state.Desktop,
+		Weather:       s.state.Weather,
+	}
 	_ = writeJSON(s.statePath, s.state)
 	_ = writeJSON(s.snapshotPath, snapshot)
 }
@@ -219,6 +243,36 @@ func (s *Service) publishDesktop() {
 		_ = conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
 		if _, err := conn.Write([]byte("desktop_changed\n")); err != nil {
 			delete(s.desktopSubscribers, conn)
+			_ = conn.Close()
+		}
+	}
+}
+
+func (s *Service) subscribeWeather(conn net.Conn) {
+	s.weatherSubscribersMu.Lock()
+	_, alreadySubscribed := s.weatherSubscribers[conn]
+	s.weatherSubscribers[conn] = struct{}{}
+	s.weatherSubscribersMu.Unlock()
+	if alreadySubscribed {
+		return
+	}
+	_ = conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+	_, _ = conn.Write([]byte("weather_changed\n"))
+}
+
+func (s *Service) unsubscribeWeather(conn net.Conn) {
+	s.weatherSubscribersMu.Lock()
+	delete(s.weatherSubscribers, conn)
+	s.weatherSubscribersMu.Unlock()
+}
+
+func (s *Service) publishWeather() {
+	s.weatherSubscribersMu.Lock()
+	defer s.weatherSubscribersMu.Unlock()
+	for conn := range s.weatherSubscribers {
+		_ = conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+		if _, err := conn.Write([]byte("weather_changed\n")); err != nil {
+			delete(s.weatherSubscribers, conn)
 			_ = conn.Close()
 		}
 	}
@@ -1022,6 +1076,44 @@ func (s *Service) event(e Event) *EventResponse {
 		return &EventResponse{Type: "clipboard", OK: true,
 			Mode: payload.Mode, Paths: payload.Paths}
 	}
+	if e.Type == "weather_search" {
+		limit := e.Limit
+		if limit == 0 {
+			limit = 8
+		}
+		locations, err := s.searchWeather(e.Query, e.Language, limit)
+		if err != nil {
+			return &EventResponse{Type: "weather_search", OK: false,
+				Error: weatherErrorMessage(err)}
+		}
+		return &EventResponse{Type: "weather_search", OK: true,
+			Locations: locations}
+	}
+	if e.Type == "weather_refresh" {
+		accepted := s.startWeatherRefresh(true)
+		return &EventResponse{Type: "weather_refresh", OK: true,
+			Accepted: accepted}
+	}
+	if e.Type == "weather_set_location" {
+		if e.Location == nil {
+			return &EventResponse{Type: "weather_set_location", OK: false,
+				Error: "weather location is required"}
+		}
+		if err := s.setWeatherLocation(*e.Location); err != nil {
+			return &EventResponse{Type: "weather_set_location", OK: false,
+				Error: weatherErrorMessage(err)}
+		}
+		return &EventResponse{Type: "weather_set_location", OK: true,
+			Accepted: true}
+	}
+	if e.Type == "weather_set_units" {
+		if err := s.setWeatherUnits(e.Units); err != nil {
+			return &EventResponse{Type: "weather_set_units", OK: false,
+				Error: weatherErrorMessage(err)}
+		}
+		return &EventResponse{Type: "weather_set_units", OK: true,
+			Accepted: true}
+	}
 	s.mu.Lock()
 	s.settle(time.Now())
 	switch e.Type {
@@ -1062,14 +1154,20 @@ func serve(s *Service, path string) error {
 			// response parser deliberately ignores non-JSON lines.
 			s.subscribeDesktop(c)
 			defer s.unsubscribeDesktop(c)
+			defer s.unsubscribeWeather(c)
 			scanner := bufio.NewScanner(c)
 			for scanner.Scan() {
+				_ = c.SetWriteDeadline(time.Time{})
 				var event Event
 				if json.Unmarshal(scanner.Bytes(), &event) != nil {
 					continue
 				}
 				if event.Type == "subscribe_desktop" {
 					s.subscribeDesktop(c)
+					continue
+				}
+				if event.Type == "subscribe_weather" {
+					s.subscribeWeather(c)
 					continue
 				}
 				if response := s.event(event); response != nil {
@@ -1098,6 +1196,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 		}
 	}()
+	s.startWeatherRefresh(false)
 	tick := time.NewTicker(10 * time.Second)
 	// Uptime attribution settles every second so a crash or reload loses at
 	// most one second instead of up to a minute. Metrics stay on the slower
@@ -1105,10 +1204,12 @@ func main() {
 	settleTick := time.NewTicker(1 * time.Second)
 	save := time.NewTicker(10 * time.Second)
 	desktopReconcile := time.NewTicker(5 * time.Second)
+	weatherRefresh := time.NewTicker(time.Minute)
 	defer tick.Stop()
 	defer settleTick.Stop()
 	defer save.Stop()
 	defer desktopReconcile.Stop()
+	defer weatherRefresh.Stop()
 	go s.seedJournalHistory()
 	go watchDesktop(s)
 	for {
@@ -1129,6 +1230,8 @@ func main() {
 				s.persist()
 				s.publishDesktop()
 			}
+		case <-weatherRefresh.C:
+			s.startWeatherRefresh(false)
 		}
 	}
 }
