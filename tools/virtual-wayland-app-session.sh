@@ -13,7 +13,11 @@ if [ -z "${KOS_TEST_SCREENSHOT:-}" ]; then
     exec "$app" --smoke-test
 fi
 
-"$app" &
+if [ -n "${KOS_TEST_APP_ARGUMENT:-}" ]; then
+    "$app" "$KOS_TEST_APP_ARGUMENT" &
+else
+    "$app" &
+fi
 app_pid=$!
 
 cleanup()
