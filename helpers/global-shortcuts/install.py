@@ -20,7 +20,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 import time
 
@@ -179,12 +178,38 @@ def parse_combo(combo: str) -> int:
     return mods | key
 
 
+def component_is_active(bus, desktop_name):
+    """Whether the live daemon treats this service component as active.
+
+    A component registered from this short-lived client can stay inactive:
+    kglobalaccel keeps its bindings and answers invokeShortcut, but never
+    grabs the physical key for it. isActive only flips when the compositor
+    loads kglobalshortcutsrc at startup, so an inactive shortcut needs a
+    re-login before its combo actually fires. Return True when the check
+    itself fails so registration output stays quietly optimistic.
+    """
+    try:
+        import dbus
+        kg = bus.get_object("org.kde.kglobalaccel", "/kglobalaccel")
+        iface = dbus.Interface(kg, "org.kde.KGlobalAccel")
+        path = str(iface.getComponent(desktop_name))
+        comp = bus.get_object("org.kde.kglobalaccel", path)
+        comp_iface = dbus.Interface(comp, "org.kde.kglobalaccel.Component")
+        return bool(comp_iface.isActive())
+    except Exception:
+        return True
+
+
 def register_via_dbus(shortcuts):
     """Re-apply the bindings in the live daemon.
 
     This runs AFTER the daemon restart, not before: a restart drops all
     in-memory DBus registrations, so registering first and restarting second
     throws the work away.
+
+    Newly seeded components registered from this temp client may stay
+    inactive for the rest of the session (bindings visible, key never
+    grabbed); collect those and tell the user a re-login is required.
     """
     for attempt in range(5):
         try:
@@ -192,13 +217,22 @@ def register_via_dbus(shortcuts):
             bus = dbus.SessionBus()
             kg = bus.get_object("org.kde.kglobalaccel", "/kglobalaccel")
             iface = dbus.Interface(kg, "org.kde.KGlobalAccel")
+            needs_relogin = []
             for entry in shortcuts:
                 desktop_name = entry["id"] + ".desktop"
                 action_id = [desktop_name, "_launch", entry["description"], entry["description"]]
                 iface.doRegister(action_id)
                 keys = dbus.Array([dbus.Int32(parse_combo(entry["default"]))], signature="i")
                 iface.setForeignShortcut(action_id, keys)
-                print(f"[global-shortcuts] DBus 实时注册: {desktop_name} -> {entry['default']}")
+                if component_is_active(bus, desktop_name):
+                    print(f"[global-shortcuts] DBus 实时注册: {desktop_name} -> {entry['default']}")
+                else:
+                    needs_relogin.append(entry)
+                    print(f"[global-shortcuts] DBus 注册(组件未激活): {desktop_name} -> {entry['default']}")
+            if needs_relogin:
+                print("[global-shortcuts] 以下快捷键已写入配置，但需注销并重新登录后物理按键才会生效:")
+                for entry in needs_relogin:
+                    print(f"[global-shortcuts]   {entry['default']} -> {entry['id']}")
             return
         except ImportError:
             print("[global-shortcuts] 未安装 python3-dbus，跳过实时注册（重启守护进程后由配置生效）")
@@ -254,14 +288,7 @@ def main():
         print(f"[global-shortcuts] 绑定 {entry['default']} -> {shortcut_id}")
         registered_shortcuts.append(entry)
 
-    # kglobalacceld keeps kglobalshortcutsrc in memory and rewrites it from
-    # that state; restart it so the freshly written [services] groups are read
-    # back cleanly instead of being clobbered or merged with stale ones.
-    subprocess.run(["systemctl", "--user", "restart", "plasma-kglobalaccel.service"],
-                   check=False)
-
-    # The service is DBus-activated and needs a moment to come back up; the
-    # retry loop inside handles that.
+    # Register bindings directly via DBus in the live compositor.
     register_via_dbus(registered_shortcuts)
 
     print("[global-shortcuts] 完成；kglobalaccel 已重载")

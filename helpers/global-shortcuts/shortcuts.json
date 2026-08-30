@@ -36,6 +36,13 @@
       "target": "quicksearch",
       "action": "toggle clipboard",
       "default": "Meta+V"
+    },
+    {
+      "id": "net.local.quickshell-show-desktop",
+      "description": "显示/返回桌面",
+      "target": "desktop",
+      "action": "toggle",
+      "default": "Meta+D"
     }
   ]
 }
