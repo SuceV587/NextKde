@@ -116,6 +116,9 @@ Item {
 
     signal activate()
     signal requestEdit()
+    // Emitted when a plain tap (not the press-and-hold that started editing)
+    // lands on the icon while editing; the owning surface ends its edit state.
+    signal requestEditExit()
     signal contextRequested()
     property bool _heldForEdit: false
     property real _windowHandoffOpacity: 1.0
@@ -581,11 +584,14 @@ Item {
             icon.requestEdit()
         }
         onClicked: function(mouse) {
-            // Persistent Dock editing is spatial manipulation, not app
-            // activation. A tap on a pinned icon during this mode must remain
-            // harmless so users can place several icons before tapping away.
-            if (icon.editMode)
+            // Dock editing is spatial manipulation, not app activation. The
+            // hold that started editing must not immediately end it, but any
+            // later plain tap on a dock icon finishes the session.
+            if (icon.editMode) {
+                if (!icon._heldForEdit)
+                    icon.requestEditExit()
                 return
+            }
             if (mouse.button === Qt.RightButton) {
                 if (icon.customContextMenu) {
                     icon.contextRequested()

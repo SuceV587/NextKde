@@ -132,9 +132,11 @@ Item {
     readonly property real activeBackgroundGap: _layout.activeBackgroundGap
     readonly property int iconUnits: _layout.iconUnits
     readonly property int infoUnits: _layout.infoUnits
-    // Long press enters the persistent iPadOS-like edit state. Starting a
-    // real drag also enters that same state, and only an explicit tap-away or
-    // external window focus change ends it.
+    // Long press or starting a real drag enters the iPadOS-like edit state.
+    // It ends automatically: on drop, when a plain tap lands on any Dock
+    // icon, or shortly after the pointer leaves the dock. A direct drag
+    // re-enters the state on its own, so ending on drop keeps every reorder
+    // available without an explicit mode switch.
     property bool editMode: false
     // This tracks only the in-progress source for reorder geometry; it must
     // not decide whether the user remains in persistent edit mode after drop.
@@ -152,6 +154,27 @@ Item {
         id: _dockPointerHover
         enabled: true
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        // Editing is spatial: once the pointer leaves the dock the user is
+        // done placing icons. A grace period keeps a fast diagonal crossing
+        // of a dock corner from ending an in-progress session, and any
+        // started drag cancels the pending exit.
+        onHoveredChanged: {
+            if (hovered)
+                editExitTimer.stop()
+            else if (container.editMode && !container.draggedPinnedLoader)
+                editExitTimer.restart()
+        }
+    }
+
+    Timer {
+        id: editExitTimer
+        interval: 400
+        repeat: false
+        onTriggered: {
+            if (container.editMode && !container.draggedPinnedLoader
+                    && !_dockPointerHover.hovered)
+                container.editMode = false
+        }
     }
 
     function publishLauncherPresentation() {
@@ -430,8 +453,11 @@ Item {
             isPinnedItem: false
             statusBadge: DockTrashService.hasItems
             onActivate: {
-                if (!container.isEditing)
-                    DockTrashService.open()
+                if (container.isEditing) {
+                    container.editMode = false
+                    return
+                }
+                DockTrashService.open()
             }
             onContextRequested: DockModelService.openDockPopup(trashContextMenu)
         }
@@ -534,9 +560,10 @@ Item {
                     onActiveChanged: {
                         if (active) {
                             // A deliberate drag is an alternate entry point
-                            // into persistent edit mode. Do not clear it on
-                            // release: users may reorder several apps in one
-                            // session, like iPadOS.
+                            // into edit mode. It ends automatically when the
+                            // drop settles; a new drag re-enters it, so no
+                            // explicit session is kept between drags.
+                            editExitTimer.stop()
                             container.editMode = true
                             pinnedItemLoader.dragged = true
                             pinnedItemLoader.settling = false
@@ -599,6 +626,9 @@ Item {
                         pinnedItemLoader.dragged = false
                         if (container.draggedPinnedLoader === pinnedItemLoader)
                             container.draggedPinnedLoader = null
+                        // The drag session is complete; editing ends with the
+                        // drop. Reordering again simply starts a new drag.
+                        container.editMode = false
                     }
                 }
 
@@ -630,6 +660,7 @@ Item {
                                 editMode: container.isEditing
                                 isDragging: reorderDrag.active || pinnedItemLoader.settling
                                 onRequestEdit: container.editMode = true
+                                onRequestEditExit: container.editMode = false
                                 onActivate: {
                                     // DockIcon also guards this, but keeping the
                                     // action boundary defensive ensures pinned
@@ -662,7 +693,10 @@ Item {
                                         ? String(modelData.handleId ?? "") : ""
                                     isWindowItem: true
                                     isPinnedItem: false
-                                    onActivate: DockModelService.toggleWindow(windowId)
+                                    onActivate: {
+                                        container.editMode = false
+                                        DockModelService.toggleWindow(windowId)
+                                    }
                                 }
                             }
                         }
