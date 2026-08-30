@@ -286,6 +286,8 @@ Item {
     }
     readonly property bool _hasWindows: _appWindows.length > 0
     readonly property string _previewWindowId: _hasWindows ? _appWindows[0].windowId : (icon.windowId || "")
+    readonly property int _effectiveWindowCount: _hasWindows ? _appWindows.length : (icon.isRunning ? 1 : 0)
+
     Behavior on scale {
         NumberAnimation {
             duration: DockAnimation.iconHoverDuration
@@ -295,14 +297,10 @@ Item {
 
     Timer {
         id: previewDelay
-        // Previews are intentionally deliberate: only a 1s dwell opens
-        // one, so ordinary pointer travel across the Dock remains quiet.
-        interval: 1000
+        // Previews dwell time: 600ms responsive hover
+        interval: 600
         repeat: false
         onTriggered: {
-            // A context menu owns the interaction for its icon. Do not let a
-            // hover timer replace it with a preview while the pointer moves
-            // between Dock icons to open another menu.
             if (icon._hovering && icon._hasWindows && !icon.editMode
                     && !DockModelService.activeContextMenu) {
                 console.log("[DockIcon] preview request app=" + icon.appId
@@ -312,9 +310,6 @@ Item {
                 preview.title = WindowService.windowById(icon._previewWindowId)?.title
                     ?? icon.displayName
                 preview.windows = icon._appWindows
-                // A thumbnail takes precedence over the context menu. Keeping
-                // both surfaces open would make their pointer/focus behavior
-                // ambiguous, especially when moving upward from the Dock.
                 DockModelService.openDockPopup(preview)
             } else if (icon._hovering && icon.isRunning) {
                 console.log("[DockIcon] preview skipped app=" + icon.appId
@@ -323,12 +318,12 @@ Item {
         }
     }
 
-    // The preview is a separate Wayland surface. Leave a small hand-off window
+    // The preview is a separate Wayland surface. Leave a comfortable hand-off window
     // after the pointer exits the icon so it can cross the anchor gap and enter
-    // the preview instead of the preview vanishing mid-move.
+    // the preview smoothly without premature dismissal.
     Timer {
         id: previewCloseDelay
-        interval: 240
+        interval: 480
         repeat: false
         onTriggered: {
             if (!icon._hovering && !preview.pointerInside)
@@ -498,36 +493,52 @@ Item {
         }
     }
 
-    // Style-driven running indicator: macOS uses a dot, Windows a longer
-    // underline, and Material a shorter tonal pill. Rotation of the content
-    // row naturally turns the line toward the attached edge on side docks.
-    Rectangle {
+    // Style-driven running indicator: macOS uses dots (single dot for 1 window,
+    // multi-dot for multiple windows), Windows a longer underline, and Material a shorter tonal pill.
+    Item {
         id: runningIndicator
-        width: icon.runningIndicatorWidth
+        width: indicatorRow.implicitWidth
         height: icon.runningIndicatorHeight
-        radius: width / 2
-        color: icon.dotIndicator ? Qt.rgba(1, 1, 1, 0.95)
-            : ThemeService.accentColor
-        border {
-            width: icon.dotIndicator ? 1 : 0
-            color: Qt.rgba(0, 0, 0, 0.40)
-        }
         opacity: icon.isRunning ? 1 : 0
         visible: opacity > 0.01
         z: 2
         anchors.horizontalCenter: iconImage.horizontalCenter
-        // Right dock: the dot's far (bottom) edge touches the icon's top
-        // edge, placing the dot above it — rendered on the screen-right
-        // side of the icon. All other docks: the dot's near (top) edge
-        // touches the icon's bottom edge, placing the dot below it.
         anchors.top: icon.vertical && icon.dockEdge === "right"
             ? undefined : iconImage.bottom
         anchors.bottom: icon.vertical && icon.dockEdge === "right"
             ? iconImage.top : undefined
         anchors.topMargin: icon.runningIndicatorGap
         anchors.bottomMargin: icon.runningIndicatorGap
+
         Behavior on opacity {
             NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+        }
+
+        Row {
+            id: indicatorRow
+            anchors.centerIn: parent
+            spacing: icon._effectiveWindowCount >= 3 ? 2 : 2.5
+
+            Repeater {
+                model: icon.dotIndicator
+                    ? Math.min(3, Math.max(1, icon._effectiveWindowCount))
+                    : 1
+                delegate: Rectangle {
+                    required property int index
+                    readonly property real dotSize: icon._effectiveWindowCount >= 3
+                        ? Math.max(3, icon.runningIndicatorWidth * 0.82)
+                        : icon.runningIndicatorWidth
+                    width: icon.dotIndicator ? dotSize : icon.runningIndicatorWidth
+                    height: icon.dotIndicator ? dotSize : icon.runningIndicatorHeight
+                    radius: width / 2
+                    color: icon.dotIndicator ? Qt.rgba(1, 1, 1, 0.95)
+                        : ThemeService.accentColor
+                    border {
+                        width: icon.dotIndicator ? 1 : 0
+                        color: Qt.rgba(0, 0, 0, 0.40)
+                    }
+                }
+            }
         }
     }
 

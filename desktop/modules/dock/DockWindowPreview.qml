@@ -18,7 +18,8 @@ PopupWindow {
 
     // Exposed to the owning DockIcon so it can bridge pointer movement across
     // the gap between two separate Wayland popup surfaces.
-    property bool pointerInside: previewRootMouse.containsMouse
+    // HoverHandler on background tracks pointer presence across ALL child controls without occlusion.
+    property bool pointerInside: backgroundHover.hovered || previewRootMouse.containsMouse
 
     signal activateRequested()
 
@@ -142,7 +143,7 @@ PopupWindow {
         item: preview.anchorItem
         edges: Edges.Top
         gravity: Edges.Top
-        margins.top: -10
+        margins.top: -6
     }
 
     LiquidGlassSurface {
@@ -156,6 +157,10 @@ PopupWindow {
         baseColor: ThemeService.backgroundColor
         surfaceOpacity: 0.88
         materialDepth: 2
+
+        HoverHandler {
+            id: backgroundHover
+        }
 
         MouseArea {
             id: previewRootMouse
@@ -438,10 +443,17 @@ PopupWindow {
                             acceptedButtons: Qt.LeftButton
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                if (preview.appId)
-                                    DockModelService.launchNewWindow(preview.appId)
-                                else if (preview.effectiveWindows.length > 0 && preview.effectiveWindows[0].identity?.desktopId)
-                                    DockModelService.launchNewWindow(preview.effectiveWindows[0].identity.desktopId)
+                                const targetAppId = preview.appId
+                                    || (preview.effectiveWindows.length > 0
+                                        ? (preview.effectiveWindows[0].identity?.desktopId
+                                           || preview.effectiveWindows[0].desktopId
+                                           || preview.effectiveWindows[0].appId
+                                           || preview.effectiveWindows[0].identity?.rawAppId
+                                           || preview.effectiveWindows[0].rawAppId)
+                                        : "")
+                                console.log("[DockPreview] plus card clicked targetAppId=" + targetAppId)
+                                if (targetAppId)
+                                    DockModelService.launchNewWindow(targetAppId)
                                 DockModelService.setDockPopupVisible(preview, false)
                             }
                         }

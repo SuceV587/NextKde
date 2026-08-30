@@ -329,8 +329,29 @@ QtObject {
     }
 
     function launchNewWindow(appId) {
+        if (!appId) {
+            console.warn("[DockModel] launchNewWindow: empty appId");
+            return;
+        }
         const identity = AppIdentityService.resolve(appId);
-        console.log("[DockModel] launch new window instance app=" + identity.desktopId);
+        console.log("[DockModel] launch new window instance app=" + identity.desktopId
+                    + " hasEntry=" + !!identity.entry);
+        if (identity.entry) {
+            AppActionService.launch(identity);
+            return;
+        }
+        // Fallback: search catalog for matching desktop entry
+        const catalog = AppPresentationService.catalog();
+        for (let i = 0; i < catalog.length; i++) {
+            const item = catalog[i];
+            if (AppIdentityService.sameApp(item.desktopId, appId)
+                    || AppIdentityService.sameApp(item.rawAppId, appId)) {
+                if (item.entry) {
+                    AppActionService.launch(item);
+                    return;
+                }
+            }
+        }
         AppActionService.launch(identity);
     }
 
