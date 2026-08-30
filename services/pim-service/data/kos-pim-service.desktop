@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=KOS PIM Service
+Comment=Local calendar, task, and reminder service
+Exec=kos-pim-service
+Icon=view-calendar
+NoDisplay=true
+X-KDE-autostart-after=panel
