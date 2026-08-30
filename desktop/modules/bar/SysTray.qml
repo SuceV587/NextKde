@@ -162,6 +162,14 @@ Item {
                     implicitWidth: tooltipText.implicitWidth + 16
                     implicitHeight: tooltipText.implicitHeight + 10
                     color: "transparent"
+
+                    Connections {
+                        target: ScreenLifecycle
+                        function onOutputAvailableChanged() {
+                            if (!ScreenLifecycle.outputAvailable)
+                                trayTooltip.visible = false
+                        }
+                    }
                     anchor {
                         item: trayItem
                         edges: root.popupEdge

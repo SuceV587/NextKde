@@ -42,7 +42,10 @@ QtObject {
     }
 
     function refreshAndSettle() {
-        refresh()
+        // Hide all output-bound surfaces before Qt tears down/recreates its
+        // QScreen objects. Rebinding during that transition can destroy a
+        // QQuickWindow while child items are still attached to it.
+        outputAvailable = false
         settleTimer.restart()
     }
 
@@ -57,5 +60,5 @@ QtObject {
         onTriggered: service.refresh()
     }
 
-    Component.onCompleted: refreshAndSettle()
+    Component.onCompleted: refresh()
 }

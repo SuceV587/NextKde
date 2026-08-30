@@ -48,6 +48,14 @@ QtObject {
             menu.visible = false
     }
 
+    property Connections lifecycleConnections: Connections {
+        target: ScreenLifecycle
+        function onOutputAvailableChanged() {
+            if (!ScreenLifecycle.outputAvailable)
+                coordinator.closeActive()
+        }
+    }
+
     // The KWin effect has already excluded presses routed to popup surfaces,
     // so every event delivered here is an outside press. Do not compare QML
     // PopupWindow coordinates: they are anchor-local rather than compositor

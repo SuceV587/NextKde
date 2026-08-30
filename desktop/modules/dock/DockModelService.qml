@@ -76,6 +76,17 @@ QtObject {
             svc.activeDockPopup = null;
     }
 
+    property Connections lifecycleConnections: Connections {
+        target: ScreenLifecycle
+        function onOutputAvailableChanged() {
+            if (!ScreenLifecycle.outputAvailable) {
+                const popup = svc.activeDockPopup
+                svc.activeDockPopup = null
+                svc.dismissDockPopupImmediately(popup)
+            }
+        }
+    }
+
     function _refreshPinned() {
         const isGrouped = ConfigService.windowGrouping === "grouped";
         const dockItems = ConfigService.dockItems || [];

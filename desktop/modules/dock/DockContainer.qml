@@ -472,7 +472,7 @@ Item {
         Repeater {
             id: pinnedRepeater
             model: DockModelService.pinnedItems
-            delegate: Loader {
+            delegate: Item {
                 id: pinnedItemLoader
                 required property var modelData
                 required property int index
@@ -524,7 +524,7 @@ Item {
                     ? (itemData.extraWindows?.length ?? 0) : 0
                 width: iconSlotWidth * (1 + extraWindowCount)
                     + container.itemSpacing * extraWindowCount
-                // Row places delegates at y=0; keep the Loader dock-height
+                // Row places delegates at y=0; keep the delegate dock-height
                 // tall so the nested square icon can remain vertically centred.
                 height: container.computedDockHeight
                 z: reorderDrag.active || settling ? 10 : 0
@@ -548,8 +548,6 @@ Item {
                 Behavior on opacity {
                     NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
                 }
-                sourceComponent: appDelegate
-
                 // Releasing a drag commits the reordered top-level app.
                 DragHandler {
                     id: reorderDrag
@@ -632,72 +630,64 @@ Item {
                     }
                 }
 
-                Component {
-                    id: appDelegate
-                    // Loader resizes its root item to the full Dock height.
-                    // Keep the actual square icon in a nested child so its
-                    // backgrounds are never stretched by that layout wrapper.
-                    Item {
-                        Row {
-                            anchors.centerIn: parent
-                            spacing: container.itemSpacing
+                Row {
+                    anchors.centerIn: parent
+                    spacing: container.itemSpacing
 
-                            DockIcon {
-                                targetScreen: container.targetScreen
-                                surfaceOriginX: container.surfaceOriginX
-                                surfaceOriginY: container.surfaceOriginY
-                                vertical: container.vertical
-                                dockEdge: ConfigService.position
-                                iconSize: container.iconSize
-                                activeBackgroundGap: container.activeBackgroundGap
-                                iconSource: pinnedItemLoader.itemData.icon ?? ""
-                                displayName: pinnedItemLoader.itemData.name ?? ""
-                                isRunning: pinnedItemLoader.itemData.isRunning ?? false
-                                isActivated: pinnedItemLoader.itemData.isActivated ?? false
-                                appId: pinnedItemLoader.itemData.appId ?? ""
-                                isWindowItem: false
-                                isPinnedItem: true
-                                editMode: container.isEditing
-                                isDragging: reorderDrag.active || pinnedItemLoader.settling
-                                onRequestEdit: container.editMode = true
-                                onRequestEditExit: container.editMode = false
-                                onActivate: {
-                                    // DockIcon also guards this, but keeping the
-                                    // action boundary defensive ensures pinned
-                                    // apps can never launch while sorting.
-                                    if (!container.isEditing)
-                                        DockModelService.activateApp(appId)
-                                }
-                            }
+                    DockIcon {
+                        targetScreen: container.targetScreen
+                        surfaceOriginX: container.surfaceOriginX
+                        surfaceOriginY: container.surfaceOriginY
+                        vertical: container.vertical
+                        dockEdge: ConfigService.position
+                        iconSize: container.iconSize
+                        activeBackgroundGap: container.activeBackgroundGap
+                        iconSource: pinnedItemLoader.itemData.icon ?? ""
+                        displayName: pinnedItemLoader.itemData.name ?? ""
+                        isRunning: pinnedItemLoader.itemData.isRunning ?? false
+                        isActivated: pinnedItemLoader.itemData.isActivated ?? false
+                        appId: pinnedItemLoader.itemData.appId ?? ""
+                        isWindowItem: false
+                        isPinnedItem: true
+                        editMode: container.isEditing
+                        isDragging: reorderDrag.active || pinnedItemLoader.settling
+                        onRequestEdit: container.editMode = true
+                        onRequestEditExit: container.editMode = false
+                        onActivate: {
+                            // DockIcon also guards this, but keeping the
+                            // action boundary defensive ensures pinned
+                            // apps can never launch while sorting.
+                            if (!container.isEditing)
+                                DockModelService.activateApp(appId)
+                        }
+                    }
 
-                            Repeater {
-                                model: pinnedItemLoader.itemData.extraWindows ?? []
-                                delegate: DockIcon {
-                                    required property var modelData
-                                    targetScreen: container.targetScreen
-                                    surfaceOriginX: container.surfaceOriginX
-                                    surfaceOriginY: container.surfaceOriginY
-                                    vertical: container.vertical
-                                    dockEdge: ConfigService.position
-                                    iconSize: container.iconSize
-                                    activeBackgroundGap: container.activeBackgroundGap
-                                    iconSource: modelData.iconSource
-                                        ?? modelData.identity.iconSource ?? ""
-                                    displayName: modelData.title ?? ""
-                                    isRunning: true
-                                    isActivated: modelData.toplevel.activated ?? false
-                                    isUrgent: modelData.isUrgent ?? false
-                                    appId: modelData.identity.desktopId ?? ""
-                                    windowId: modelData.windowId ?? ""
-                                    animationWindowId: modelData.provider === "kwin"
-                                        ? String(modelData.handleId ?? "") : ""
-                                    isWindowItem: true
-                                    isPinnedItem: false
-                                    onActivate: {
-                                        container.editMode = false
-                                        DockModelService.toggleWindow(windowId)
-                                    }
-                                }
+                    Repeater {
+                        model: pinnedItemLoader.itemData.extraWindows ?? []
+                        delegate: DockIcon {
+                            required property var modelData
+                            targetScreen: container.targetScreen
+                            surfaceOriginX: container.surfaceOriginX
+                            surfaceOriginY: container.surfaceOriginY
+                            vertical: container.vertical
+                            dockEdge: ConfigService.position
+                            iconSize: container.iconSize
+                            activeBackgroundGap: container.activeBackgroundGap
+                            iconSource: modelData.iconSource
+                                ?? modelData.identity.iconSource ?? ""
+                            displayName: modelData.title ?? ""
+                            isRunning: true
+                            isActivated: modelData.toplevel.activated ?? false
+                            isUrgent: modelData.isUrgent ?? false
+                            appId: modelData.identity.desktopId ?? ""
+                            windowId: modelData.windowId ?? ""
+                            animationWindowId: modelData.provider === "kwin"
+                                ? String(modelData.handleId ?? "") : ""
+                            isWindowItem: true
+                            isPinnedItem: false
+                            onActivate: {
+                                container.editMode = false
+                                DockModelService.toggleWindow(windowId)
                             }
                         }
                     }

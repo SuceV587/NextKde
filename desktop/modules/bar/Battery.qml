@@ -3,6 +3,7 @@ import Quickshell.Services.UPower
 import QtQuick
 import QtQuick.Effects
 import qs.desktop.modules.dock
+import qs.desktop.modules.common
 
 // Compact battery indicator with charging-state colours and hover details.
 Item {
@@ -95,6 +96,14 @@ Item {
         implicitWidth: tooltipText.implicitWidth + 16
         implicitHeight: tooltipText.implicitHeight + 10
         color: "transparent"
+
+        Connections {
+            target: ScreenLifecycle
+            function onOutputAvailableChanged() {
+                if (!ScreenLifecycle.outputAvailable)
+                    tooltip.visible = false
+            }
+        }
         anchor {
             item: root
             edges: !root.dockHosted ? Edges.Bottom

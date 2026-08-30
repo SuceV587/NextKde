@@ -67,6 +67,14 @@ PopupWindow {
         visible = false
     }
 
+    Connections {
+        target: ScreenLifecycle
+        function onOutputAvailableChanged() {
+            if (!ScreenLifecycle.outputAvailable)
+                panel.close()
+        }
+    }
+
     function openBluetoothSettings() {
         close()
         bluetoothSettingsProcess.running = true

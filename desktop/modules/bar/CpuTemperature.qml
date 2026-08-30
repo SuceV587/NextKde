@@ -80,10 +80,19 @@ Item {
     }
 
     PopupWindow {
+        id: temperatureTooltip
         visible: hoverArea.containsMouse && root.available && !detailsPopup.visible
         implicitWidth: tooltipText.implicitWidth + 16
         implicitHeight: tooltipText.implicitHeight + 10
         color: "transparent"
+
+        Connections {
+            target: ScreenLifecycle
+            function onOutputAvailableChanged() {
+                if (!ScreenLifecycle.outputAvailable)
+                    temperatureTooltip.visible = false
+            }
+        }
         anchor {
             item: root
             edges: root.dockHosted ? Edges.Top : Edges.Bottom
@@ -120,6 +129,14 @@ Item {
         implicitWidth: 360
         implicitHeight: 670
         color: "transparent"
+
+        Connections {
+            target: ScreenLifecycle
+            function onOutputAvailableChanged() {
+                if (!ScreenLifecycle.outputAvailable)
+                    detailsPopup.visible = false
+            }
+        }
         anchor {
             item: root
             edges: root.dockHosted ? Edges.Top : Edges.Bottom
