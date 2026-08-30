@@ -25,6 +25,25 @@ cleanup()
 }
 trap cleanup EXIT HUP INT TERM
 
+if [ -n "${KOS_TEST_MPRIS_OPEN_URI:-}" ]; then
+    attempt=0
+    until gdbus introspect --session \
+        --dest org.mpris.MediaPlayer2.kosmusic \
+        --object-path /org/mpris/MediaPlayer2 >/dev/null 2>&1; do
+        attempt=$((attempt + 1))
+        if [ "$attempt" -ge 30 ]; then
+            echo "KOS Music did not publish MPRIS in time" >&2
+            exit 3
+        fi
+        sleep 0.1
+    done
+    gdbus call --session \
+        --dest org.mpris.MediaPlayer2.kosmusic \
+        --object-path /org/mpris/MediaPlayer2 \
+        --method org.mpris.MediaPlayer2.Player.OpenUri \
+        "$KOS_TEST_MPRIS_OPEN_URI" >/dev/null
+fi
+
 sleep "${KOS_TEST_CAPTURE_DELAY:-2}"
 if ! kill -0 "$app_pid" 2>/dev/null; then
     wait "$app_pid"
