@@ -247,6 +247,26 @@ PanelWindow {
         precision: SystemClock.Seconds
     }
 
+    // Global desktop background click handler: catches clicks on any empty area of the desktop
+    // (left widget columns, margins, empty spaces between widgets, and background wallpaper).
+    MouseArea {
+        id: globalDesktopBackgroundArea
+        anchors.fill: parent
+        z: 0
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+        onPressed: function(mouse) {
+            if (mouse.button === Qt.RightButton) {
+                desktopFileGrid.setSelectedPaths([])
+                desktopFileGrid.contextEntry = null
+                desktopFileGrid.showMenu(null,
+                    Qt.point(mouse.x - desktopFileGrid.x, mouse.y - desktopFileGrid.y))
+                return
+            }
+            desktopFileGrid.clearDesktopSelection()
+        }
+    }
+
     Repeater {
         model: root.widgetDefinitions
 
@@ -2257,6 +2277,7 @@ PanelWindow {
         }
 
         function showMenu(entry, windowPoint) {
+            contextEntry = entry || null
             // Build and show immediately - never block the right click on the
             // async gio open-with query (a slow/failed query must not make a
             // right click appear to do nothing).

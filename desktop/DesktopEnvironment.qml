@@ -8,6 +8,7 @@ import qs.desktop.modules.quicksearch
 import qs.desktop.modules.notifications
 import qs.desktop.modules.applauncher
 import qs.desktop.modules.deskcenter
+import qs.desktop.modules.overview
 import qs.desktop.modules.common
 
 Item {
@@ -288,6 +289,12 @@ Item {
         id: quickSearch
     }
     AppLauncher {}
+    Overview {}
+    IpcHandler {
+        target: "desktop"
+        function toggle(): void { WindowService.toggleShowDesktop() }
+        function show(): void { WindowService.toggleShowDesktop() }
+    }
     NotificationCenter {}
     DeskCenter {}
     Bar { enabled: !shell.barIntegratedWithDock }

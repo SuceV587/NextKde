@@ -521,6 +521,44 @@ QtObject {
         try { record.toplevel.close(); } catch (e) {}
     }
 
+    property var _minimizedByShowDesktop: []
+
+    function toggleShowDesktop() {
+        const currentId = svc.currentDesktopId;
+        const records = svc.records || [];
+        const currentDeskWindows = [];
+
+        for (let i = 0; i < records.length; i++) {
+            const r = records[i];
+            const onDesktop = r.toplevel?.onAllDesktops
+                || (Array.isArray(r.toplevel?.desktopIds) && r.toplevel.desktopIds.indexOf(currentId) >= 0)
+                || (Array.isArray(r.desktopIds) && r.desktopIds.indexOf(currentId) >= 0);
+            if (onDesktop) {
+                currentDeskWindows.push(r);
+            }
+        }
+
+        const unminimized = currentDeskWindows.filter(r => !r.toplevel?.minimized);
+
+        if (unminimized.length > 0) {
+            // There are visible open windows on current desktop: minimize all of them
+            _minimizedByShowDesktop = unminimized.map(r => r.windowId);
+            for (let i = 0; i < unminimized.length; i++) {
+                minimizeWindow(unminimized[i].windowId, true);
+            }
+        } else {
+            // All windows on current desktop are minimized: restore previously minimized or all
+            const toRestore = _minimizedByShowDesktop.length > 0
+                ? _minimizedByShowDesktop
+                : currentDeskWindows.map(r => r.windowId);
+
+            for (let i = 0; i < toRestore.length; i++) {
+                minimizeWindow(toRestore[i], false);
+            }
+            _minimizedByShowDesktop = [];
+        }
+    }
+
     function _consumeKwinBridgeLine(line) {
         const message = String(line ?? "");
         if (message === "READY") {

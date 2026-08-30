@@ -248,14 +248,30 @@ PanelWindow {
         }
     }
 
+    property bool clipboardSettingsOpen: false
+
     function reset() {
         query = "";
+        clipboardSettingsOpen = false;
         // Window mode opens with the most recently used window selected (the
         // first MRU result); Alt+Tab proposes the previous window immediately.
         selectedIndex = 0;
         focusTimer.restart();
-        if (mode === "clipboard")
-            clipboardTopTimer.restart();
+        if (mode === "clipboard") {
+            if (viewMode === "grid")
+                gridView.positionViewAtBeginning();
+            else
+                resultView.positionViewAtBeginning();
+        }
+    }
+
+    function deleteCurrentSelection() {
+        if (root.mode !== "clipboard" || root.selectedIndex < 0 || root.selectedIndex >= root.resultCount)
+            return;
+        const result = root.results[root.selectedIndex];
+        if (result && result.selectionRecord) {
+            ClipboardService.deleteEntry(result.selectionRecord);
+        }
     }
 
     function moveSelection(delta) {
@@ -306,23 +322,6 @@ PanelWindow {
         onTriggered: searchInput.forceActiveFocus()
     }
 
-    // ListView/GridView retain their previous content position when their
-    // model stays alive. Clipboard mode should always reveal the newest entry
-    // as soon as it is opened or selected with Tab.
-    Timer {
-        id: clipboardTopTimer
-        interval: 1
-        repeat: false
-        onTriggered: {
-            if (root.mode !== "clipboard")
-                return;
-            if (root.viewMode === "grid")
-                gridView.positionViewAtBeginning();
-            else
-                resultView.positionViewAtBeginning();
-        }
-    }
-
     // A copy can arrive while the palette is already open. Refreshing the
     // light-weight cliphist index here makes it appear without reopening.
     Timer {
@@ -338,19 +337,27 @@ PanelWindow {
     MouseArea {
         anchors.fill: parent
         z: -1
-        onClicked: root.closeRequested()
+        onClicked: {
+            if (root.clipboardSettingsOpen) {
+                root.clipboardSettingsOpen = false;
+                return;
+            }
+            root.closeRequested();
+        }
     }
 
     Rectangle {
         id: dialog
         width: 580
         height: root.resultCount > 0
-            ? 14 + (root.viewMode === "grid" ? gridView.height : resultView.height) + 8
-            : searchHeader.height + 46
-        // Shared readability outline so white/foreground text stays legible on
-        // light wallpapers where KWin tint alone isn't enough. Mirrors the
-        // notification card's textOutlineColor convention.
-        readonly property color textOutlineColor: Qt.rgba(0.05, 0.08, 0.12, 0.38)
+            ? (searchHeader.height + 6 + 6 + (root.viewMode === "grid" ? gridView.height : resultView.height) + 10)
+            : (searchHeader.height + 6 + 50)
+        // Shared readability outline so foreground text stays legible on
+        // varying wallpapers. Dark themes use a dark outline for light text;
+        // light themes use a light outline for dark text.
+        readonly property color textOutlineColor: ThemeService.isDark
+            ? Qt.rgba(0.05, 0.08, 0.12, 0.38)
+            : Qt.rgba(1, 1, 1, 0.50)
         anchors {
             horizontalCenter: parent.horizontalCenter
             top: parent.top
@@ -360,62 +367,49 @@ PanelWindow {
         color: "transparent"
         opacity: root.revealProgress
 
-        // LiquidGlassSurface temporarily disabled to isolate KWin effect rendering.
-        // LiquidGlassSurface {
-        //     anchors.fill: parent
-        //     radius: dialog.radius
-        //     baseColor: ThemeService.backgroundColor
-        //     surfaceOpacity: 1.0
-        //     ambientPrimary: WallpaperPaletteService.primary
-        //     ambientSecondary: WallpaperPaletteService.secondary
-        //     ambientStrength: 0.82
-        //     materialDepth: 0.0
-        // }
-
-        // Rectangle {
-        //     anchors.fill: parent
-        //     radius: dialog.radius
-        //     color: "transparent"
-        //     border.width: 0
-        //     border.color: Qt.rgba(1, 1, 1, 0.36)
-        // }
+        LiquidGlassSurface {
+            anchors.fill: parent
+            radius: dialog.radius
+            baseColor: ThemeService.isDark
+                ? Qt.rgba(0.08, 0.09, 0.12, 0.35)
+                : Qt.rgba(0.95, 0.95, 0.98, 0.50)
+            blurStrength: AppearanceConfigService.effectiveLauncherBlur
+            liquidStrength: AppearanceConfigService.effectiveLauncherLiquid
+            ambientPrimary: WallpaperPaletteService.primary
+            ambientSecondary: WallpaperPaletteService.secondary
+            ambientStrength: 0.40 * AppearanceTokens.glass.ambientMultiplier
+            border.width: 1
+            border.color: ThemeService.isDark
+                ? Qt.rgba(1, 1, 1, 0.12)
+                : Qt.rgba(1, 1, 1, 0.60)
+        }
 
         Item {
             id: searchHeader
-            width: parent.width
-            height: 49
-            // Float above the result views so the liquid band frosts over them
-            // instead of pushing them down in the layout.
+            anchors {
+                top: parent.top
+                left: parent.left
+                right: parent.right
+                topMargin: 6
+            }
+            height: 44
             z: 1
 
-            // The liquid band is the header's background: it blurs whatever
-            // result content scrolls beneath it.
-            LiquidSearchBand {
-                id: searchBand
-                anchors.fill: parent
-                sourceView: root.viewMode === "grid" ? gridView : resultView
-            }
-
-            // The editable search field: a liquid-glass capsule resting in the
-            // flowing band. The base stays faint so the band's own blur shows
-            // through the body, keeping the capsule translucent and in tune
-            // with the flowing strip instead of reading as a solid dark plate.
-            // The bottom shade is dropped (it is what made the pill look
-            // heavy); the specular top reflection and wallpaper tint keep the
-            // liquid finish. A faint focus ring marks it as editable.
+            // The editable search field: a liquid-glass capsule
             LiquidGlassSurface {
                 id: fieldPill
                 anchors {
                     left: parent.left
                     right: parent.right
-                    leftMargin: 14
-                    rightMargin: 14
+                    leftMargin: 12
+                    rightMargin: 12
                     top: parent.top
-                    topMargin: 9
+                    bottom: parent.bottom
                 }
-                height: 35
                 radius: height / 2
-                baseColor: Qt.rgba(1, 1, 1, 0.07)
+                baseColor: ThemeService.isDark
+                    ? Qt.rgba(1, 1, 1, 0.07)
+                    : Qt.rgba(0, 0, 0, 0.06)
                 surfaceOpacity: 1.0
                 materialDepth: 1.0
                 bottomShadeVisible: false
@@ -451,7 +445,9 @@ PanelWindow {
                     radius: fieldPill.radius
                     color: "transparent"
                     border.width: searchInput.activeFocus ? 1 : 0
-                    border.color: Qt.rgba(1, 1, 1, 0.4)
+                    border.color: ThemeService.isDark
+                        ? Qt.rgba(1, 1, 1, 0.40)
+                        : Qt.rgba(0, 0, 0, 0.25)
                 }
             }
 
@@ -462,9 +458,9 @@ PanelWindow {
                     verticalCenter: fieldPill.verticalCenter
                 }
                 text: "⌕"
-                color: Qt.rgba(1, 1, 1, 0.72)
+                color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.72) : Qt.rgba(0, 0, 0, 0.65)
                 font.pixelSize: 20
-                style: Text.Outline
+                style: ThemeService.isDark ? Text.Outline : Text.Normal
                 styleColor: dialog.textOutlineColor
             }
 
@@ -474,10 +470,10 @@ PanelWindow {
                     left: fieldPill.left
                     leftMargin: 44
                     right: fieldPill.right
-                    rightMargin: 130
+                    rightMargin: root.mode === "clipboard" ? 180 : 130
                     verticalCenter: fieldPill.verticalCenter
                 }
-                color: "white"
+                color: ThemeService.foregroundColor
                 font {
                     family: "Noto Sans CJK SC"
                     pixelSize: 15
@@ -501,11 +497,21 @@ PanelWindow {
                         root.activateSelection();
                         event.accepted = true;
                     } else if (event.key === Qt.Key_Escape) {
-                        root.closeRequested();
-                        event.accepted = true;
+                        if (root.clipboardSettingsOpen) {
+                            root.clipboardSettingsOpen = false;
+                            event.accepted = true;
+                        } else {
+                            root.closeRequested();
+                            event.accepted = true;
+                        }
                     } else if (event.key === Qt.Key_Tab) {
                         root.modeCycleRequested();
                         event.accepted = true;
+                    } else if (event.key === Qt.Key_Delete) {
+                        if (root.mode === "clipboard") {
+                            root.deleteCurrentSelection();
+                            event.accepted = true;
+                        }
                     }
                 }
 
@@ -513,10 +519,10 @@ PanelWindow {
                     anchors.fill: parent
                     visible: !searchInput.text
                     text: root.placeholder
-                    color: Qt.rgba(1, 1, 1, 0.54)
+                    color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.54) : Qt.rgba(0, 0, 0, 0.45)
                     font: searchInput.font
                     verticalAlignment: Text.AlignVCenter
-                    style: Text.Outline
+                    style: ThemeService.isDark ? Text.Outline : Text.Normal
                     styleColor: dialog.textOutlineColor
                 }
             }
@@ -524,37 +530,109 @@ PanelWindow {
             Row {
                 anchors {
                     right: fieldPill.right
-                    rightMargin: 12
+                    rightMargin: 10
                     verticalCenter: fieldPill.verticalCenter
                 }
-                spacing: 8
+                spacing: 6
 
                 Text {
                     text: root.modeTitle + (root.mode === "clipboard" ? " · 最新优先" : "") + " · Tab"
-                    color: Qt.rgba(1, 1, 1, 0.46)
+                    color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.46) : Qt.rgba(0, 0, 0, 0.48)
                     font.pixelSize: 11
                     anchors.verticalCenter: parent.verticalCenter
-                    style: Text.Outline
+                    style: ThemeService.isDark ? Text.Outline : Text.Normal
                     styleColor: dialog.textOutlineColor
                 }
 
+                // Clear all clipboard history button
                 Item {
-                    width: 24
-                    height: 24
+                    visible: root.mode === "clipboard" && root.resultCount > 0
+                    width: clearText.implicitWidth + 12
+                    height: 22
+                    anchors.verticalCenter: parent.verticalCenter
 
                     Rectangle {
                         anchors.fill: parent
-                        radius: 7
-                        color: viewToggle.containsMouse ? Qt.rgba(1, 1, 1, 0.14) : "transparent"
+                        radius: 6
+                        color: clearMouse.containsMouse
+                            ? (ThemeService.isDark ? Qt.rgba(1, 0.3, 0.3, 0.22) : Qt.rgba(0.9, 0.1, 0.1, 0.12))
+                            : "transparent"
+                    }
+
+                    Text {
+                        id: clearText
+                        anchors.centerIn: parent
+                        text: "清空"
+                        color: clearMouse.containsMouse
+                            ? "#ff453a"
+                            : (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.60) : Qt.rgba(0, 0, 0, 0.50))
+                        font.pixelSize: 11
+                        style: ThemeService.isDark ? Text.Outline : Text.Normal
+                        styleColor: dialog.textOutlineColor
+                    }
+
+                    MouseArea {
+                        id: clearMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: ClipboardService.clearAll()
+                    }
+                }
+
+                // Settings button (toggles clipboard settings popover)
+                Item {
+                    visible: root.mode === "clipboard"
+                    width: 22
+                    height: 22
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 6
+                        color: (settingsMouse.containsMouse || root.clipboardSettingsOpen)
+                            ? (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.10))
+                            : "transparent"
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⚙"
+                        color: root.clipboardSettingsOpen
+                            ? (ThemeService.isDark ? "#64b5ff" : "#0066cc")
+                            : (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.70) : Qt.rgba(0, 0, 0, 0.65))
+                        font.pixelSize: 13
+                        style: ThemeService.isDark ? Text.Outline : Text.Normal
+                        styleColor: dialog.textOutlineColor
+                    }
+
+                    MouseArea {
+                        id: settingsMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.clipboardSettingsOpen = !root.clipboardSettingsOpen
+                    }
+                }
+
+                Item {
+                    width: 22
+                    height: 22
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 6
+                        color: viewToggle.containsMouse ? (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
                     }
 
                     Text {
                         anchors.centerIn: parent
                         // The button advertises the layout selected by a click.
                         text: root.viewMode === "list" ? "▦" : "☷"
-                        color: Qt.rgba(1, 1, 1, 0.76)
-                        font.pixelSize: 18
-                        style: Text.Outline
+                        color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.76) : Qt.rgba(0, 0, 0, 0.70)
+                        font.pixelSize: 16
+                        style: ThemeService.isDark ? Text.Outline : Text.Normal
                         styleColor: dialog.textOutlineColor
                     }
 
@@ -569,25 +647,253 @@ PanelWindow {
             }
         }
 
+        // Settings popover panel
+        Rectangle {
+            id: settingsPopover
+            visible: root.mode === "clipboard" && root.clipboardSettingsOpen
+            z: 20
+            width: 320
+            height: settingsContent.implicitHeight + 24
+            radius: 18
+            color: "transparent"
+            anchors {
+                top: searchHeader.bottom
+                topMargin: 4
+                right: parent.right
+                rightMargin: 12
+            }
+
+            LiquidGlassSurface {
+                anchors.fill: parent
+                radius: settingsPopover.radius
+                baseColor: ThemeService.isDark
+                    ? Qt.rgba(0.12, 0.13, 0.16, 0.95)
+                    : Qt.rgba(0.96, 0.96, 0.98, 0.95)
+                blurStrength: AppearanceConfigService.effectiveLauncherBlur
+                liquidStrength: AppearanceConfigService.effectiveLauncherLiquid
+                ambientPrimary: WallpaperPaletteService.primary
+                ambientSecondary: WallpaperPaletteService.secondary
+                ambientStrength: 0.35 * AppearanceTokens.glass.ambientMultiplier
+                border.width: 1
+                border.color: ThemeService.isDark
+                    ? Qt.rgba(1, 1, 1, 0.18)
+                    : Qt.rgba(0, 0, 0, 0.12)
+            }
+
+            Column {
+                id: settingsContent
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                    margins: 12
+                }
+                spacing: 10
+
+                // Header
+                Row {
+                    width: parent.width
+                    Text {
+                        width: parent.width - 24
+                        text: "剪贴板偏好设置"
+                        font { pixelSize: 13; bold: true; family: "Noto Sans CJK SC" }
+                        color: ThemeService.foregroundColor
+                        style: ThemeService.isDark ? Text.Outline : Text.Normal
+                        styleColor: dialog.textOutlineColor
+                    }
+                    Text {
+                        width: 24
+                        horizontalAlignment: Text.AlignRight
+                        text: "×"
+                        font.pixelSize: 18
+                        color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.60) : Qt.rgba(0, 0, 0, 0.50)
+                        style: ThemeService.isDark ? Text.Outline : Text.Normal
+                        styleColor: dialog.textOutlineColor
+                        MouseArea {
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.clipboardSettingsOpen = false
+                        }
+                    }
+                }
+
+                // Divider
+                Rectangle {
+                    width: parent.width
+                    height: 1
+                    color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.08)
+                }
+
+                // Watch Images row
+                Row {
+                    width: parent.width
+                    Column {
+                        width: parent.width - 46
+                        spacing: 2
+                        Text {
+                            text: "监控图片内容"
+                            font { pixelSize: 12; weight: Font.Medium; family: "Noto Sans CJK SC" }
+                            color: ThemeService.foregroundColor
+                            style: ThemeService.isDark ? Text.Outline : Text.Normal
+                            styleColor: dialog.textOutlineColor
+                        }
+                        Text {
+                            text: "自动记录截图与复制的图片"
+                            font.pixelSize: 10
+                            color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.55) : Qt.rgba(0, 0, 0, 0.50)
+                            style: ThemeService.isDark ? Text.Outline : Text.Normal
+                            styleColor: dialog.textOutlineColor
+                        }
+                    }
+                    // iOS switch pill
+                    Rectangle {
+                        width: 40
+                        height: 22
+                        radius: 11
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: ClipboardService.watchImages
+                            ? "#34c759"
+                            : (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.15))
+                        Behavior on color { ColorAnimation { duration: 150 } }
+
+                        Rectangle {
+                            width: 18
+                            height: 18
+                            radius: 9
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: ClipboardService.watchImages ? parent.width - width - 2 : 2
+                            Behavior on x { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                            color: "#ffffff"
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: ClipboardService.setWatchImages(!ClipboardService.watchImages)
+                        }
+                    }
+                }
+
+                // Max history limit row
+                Column {
+                    width: parent.width
+                    spacing: 6
+
+                    Text {
+                        text: "历史保留数量"
+                        font { pixelSize: 12; weight: Font.Medium; family: "Noto Sans CJK SC" }
+                        color: ThemeService.foregroundColor
+                        style: ThemeService.isDark ? Text.Outline : Text.Normal
+                        styleColor: dialog.textOutlineColor
+                    }
+
+                    Row {
+                        spacing: 6
+                        Repeater {
+                            model: [50, 100, 200, 500]
+                            Rectangle {
+                                width: (settingsContent.width - 18) / 4
+                                height: 26
+                                radius: 6
+                                color: ClipboardService.maxItems === modelData
+                                    ? (ThemeService.isDark ? Qt.rgba(0.20, 0.50, 0.95, 0.40) : Qt.rgba(0.0, 0.45, 0.85, 0.20))
+                                    : (itemMouse.containsMouse
+                                        ? (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08))
+                                        : (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.04)))
+                                border.width: 1
+                                border.color: ClipboardService.maxItems === modelData
+                                    ? (ThemeService.isDark ? Qt.rgba(0.40, 0.70, 1, 0.60) : Qt.rgba(0.0, 0.45, 0.85, 0.50))
+                                    : "transparent"
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData + " 条"
+                                    font.pixelSize: 11
+                                    color: ClipboardService.maxItems === modelData
+                                        ? (ThemeService.isDark ? "#64b5ff" : "#0066cc")
+                                        : ThemeService.foregroundColor
+                                    style: ThemeService.isDark ? Text.Outline : Text.Normal
+                                    styleColor: dialog.textOutlineColor
+                                }
+
+                                MouseArea {
+                                    id: itemMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: ClipboardService.setMaxItems(modelData)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Divider
+                Rectangle {
+                    width: parent.width
+                    height: 1
+                    color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.08)
+                }
+
+                // Global Shortcuts entry
+                Rectangle {
+                    width: parent.width
+                    height: 32
+                    radius: 8
+                    color: shortcutMouse.containsMouse
+                        ? (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08))
+                        : (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.04))
+
+                    Row {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        Text {
+                            width: parent.width - 20
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "⌨ 配置系统全局快捷键 (Meta+V)"
+                            font { pixelSize: 11; family: "Noto Sans CJK SC" }
+                            color: ThemeService.foregroundColor
+                            style: ThemeService.isDark ? Text.Outline : Text.Normal
+                            styleColor: dialog.textOutlineColor
+                        }
+                        Text {
+                            width: 20
+                            horizontalAlignment: Text.AlignRight
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "›"
+                            font.pixelSize: 16
+                            color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.40) : Qt.rgba(0, 0, 0, 0.40)
+                        }
+                    }
+
+                    MouseArea {
+                        id: shortcutMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            ClipboardService.openShortcutSettings()
+                            root.clipboardSettingsOpen = false
+                        }
+                    }
+                }
+            }
+        }
+
         ListView {
             id: resultView
             visible: root.viewMode === "list"
-            // Align the view's top with the liquid band's top so the band's
-            // capture rect (y = 0) always lands inside the view's bounds - a
-            // stable, flicker-free lens. The Flickable topMargin offsets the
-            // first entry to just below the band (the same on-screen spot it
-            // had before), so the band frosts the empty margin at rest and
-            // frosts entries as they scroll up under it.
             anchors {
-                top: parent.top
+                top: searchHeader.bottom
                 left: parent.left
                 right: parent.right
-                topMargin: 14
+                topMargin: 4
                 leftMargin: 8
                 rightMargin: 8
             }
-            topMargin: 49
-            height: 49 + root.visibleResultCount * 52
+            height: root.visibleResultCount * 52
             clip: true
             model: root.results
             currentIndex: root.selectedIndex
@@ -602,7 +908,7 @@ PanelWindow {
                 Rectangle {
                     anchors.fill: parent
                     radius: 20
-                    color: resultItem.index === root.selectedIndex ? Qt.rgba(1, 1, 1, 0.16) : "transparent"
+                    color: resultItem.index === root.selectedIndex ? (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
                 }
 
                 Rectangle {
@@ -636,7 +942,7 @@ PanelWindow {
                         left: parent.left
                         leftMargin: 54
                         right: parent.right
-                        rightMargin: root.mode === "clipboard" && resultItem.index === 0 ? 62 : 12
+                        rightMargin: root.mode === "clipboard" ? 72 : 12
                         verticalCenter: parent.verticalCenter
                     }
                     spacing: 1
@@ -644,53 +950,99 @@ PanelWindow {
                     Text {
                         width: parent.width
                         text: resultItem.modelData.title
-                        color: "white"
+                        color: ThemeService.foregroundColor
                         elide: Text.ElideRight
                         font {
                             pixelSize: 14
                             weight: Font.DemiBold
                         }
-                        style: Text.Outline
+                        style: ThemeService.isDark ? Text.Outline : Text.Normal
                         styleColor: dialog.textOutlineColor
                     }
 
                     Text {
                         width: parent.width
                         text: resultItem.modelData.subtitle
-                        color: Qt.rgba(1, 1, 1, 0.68)
+                        color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.68) : Qt.rgba(0, 0, 0, 0.58)
                         elide: Text.ElideRight
                         font.pixelSize: 11
-                        style: Text.Outline
+                        style: ThemeService.isDark ? Text.Outline : Text.Normal
                         styleColor: dialog.textOutlineColor
                     }
                 }
 
-                Rectangle {
-                    visible: root.mode === "clipboard" && resultItem.index === 0
-                    width: 38
-                    height: 18
-                    radius: 9
+                // Right action badges
+                Row {
                     anchors {
                         right: parent.right
                         rightMargin: 12
                         verticalCenter: parent.verticalCenter
                     }
-                    color: Qt.rgba(0.30, 0.56, 0.94, 0.32)
-                    border.width: 1
-                    border.color: Qt.rgba(0.66, 0.82, 1, 0.40)
+                    spacing: 6
 
-                    Text {
-                        anchors.centerIn: parent
-                        text: "最新"
-                        color: Qt.rgba(0.84, 0.93, 1, 0.94)
-                        font.pixelSize: 9
-                        font.weight: Font.DemiBold
-                        style: Text.Outline
-                        styleColor: dialog.textOutlineColor
+                    // Latest badge
+                    Rectangle {
+                        visible: root.mode === "clipboard" && resultItem.index === 0
+                        width: 38
+                        height: 18
+                        radius: 9
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: ThemeService.isDark ? Qt.rgba(0.30, 0.56, 0.94, 0.32) : Qt.rgba(0.0, 0.50, 0.90, 0.18)
+                        border.width: 1
+                        border.color: ThemeService.isDark ? Qt.rgba(0.66, 0.82, 1, 0.40) : Qt.rgba(0.0, 0.50, 0.90, 0.30)
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "最新"
+                            color: ThemeService.isDark ? Qt.rgba(0.84, 0.93, 1, 0.94) : Qt.rgba(0.0, 0.45, 0.85, 1.0)
+                            font.pixelSize: 9
+                            font.weight: Font.DemiBold
+                            style: ThemeService.isDark ? Text.Outline : Text.Normal
+                            styleColor: dialog.textOutlineColor
+                        }
+                    }
+
+                    // Delete single clipboard item button
+                    Item {
+                        visible: root.mode === "clipboard"
+                        width: 22
+                        height: 22
+                        anchors.verticalCenter: parent.verticalCenter
+                        opacity: (resultMouse.containsMouse || resultItem.index === root.selectedIndex) ? 1.0 : 0.0
+                        Behavior on opacity { NumberAnimation { duration: 100 } }
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 11
+                            color: deleteBtnMouse.containsMouse
+                                ? (ThemeService.isDark ? Qt.rgba(1, 0.3, 0.3, 0.30) : Qt.rgba(1, 0.2, 0.2, 0.15))
+                                : "transparent"
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "×"
+                            color: deleteBtnMouse.containsMouse ? "#ff453a" : (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.60) : Qt.rgba(0, 0, 0, 0.50))
+                            font.pixelSize: 16
+                            style: ThemeService.isDark ? Text.Outline : Text.Normal
+                            styleColor: dialog.textOutlineColor
+                        }
+
+                        MouseArea {
+                            id: deleteBtnMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (resultItem.modelData.selectionRecord)
+                                    ClipboardService.deleteEntry(resultItem.modelData.selectionRecord);
+                            }
+                        }
                     }
                 }
 
                 MouseArea {
+                    id: resultMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     onEntered: root.selectedIndex = resultItem.index
@@ -705,19 +1057,15 @@ PanelWindow {
         GridView {
             id: gridView
             visible: root.viewMode === "grid"
-            // Same alignment as the list view: the view's top matches the
-            // liquid band's top, and the Flickable topMargin offsets the first
-            // row just below the band so the lens is stable and flicker-free.
             anchors {
-                top: parent.top
+                top: searchHeader.bottom
                 left: parent.left
                 right: parent.right
-                topMargin: 14
+                topMargin: 4
                 leftMargin: 8
                 rightMargin: 8
             }
-            topMargin: 49
-            height: 49 + root.visibleGridRowCount * 94
+            height: root.visibleGridRowCount * 94
             cellWidth: width / root.gridColumnCount
             cellHeight: 94
             clip: true
@@ -737,7 +1085,7 @@ PanelWindow {
                         margins: 3
                     }
                     radius: 11
-                    color: gridResultItem.index === root.selectedIndex ? Qt.rgba(1, 1, 1, 0.16) : "transparent"
+                    color: gridResultItem.index === root.selectedIndex ? (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
                 }
 
                 Rectangle {
@@ -751,16 +1099,58 @@ PanelWindow {
                         top: parent.top
                         topMargin: 7
                     }
-                    color: Qt.rgba(0.30, 0.56, 0.94, 0.36)
+                    color: ThemeService.isDark ? Qt.rgba(0.30, 0.56, 0.94, 0.36) : Qt.rgba(0.0, 0.50, 0.90, 0.18)
 
                     Text {
                         anchors.centerIn: parent
                         text: "最新"
-                        color: Qt.rgba(0.84, 0.93, 1, 0.96)
+                        color: ThemeService.isDark ? Qt.rgba(0.84, 0.93, 1, 0.96) : Qt.rgba(0.0, 0.45, 0.85, 1.0)
                         font.pixelSize: 8
                         font.weight: Font.DemiBold
-                        style: Text.Outline
+                        style: ThemeService.isDark ? Text.Outline : Text.Normal
                         styleColor: dialog.textOutlineColor
+                    }
+                }
+
+                // Delete button on grid item
+                Item {
+                    visible: root.mode === "clipboard" && (gridMouse.containsMouse || gridResultItem.index === root.selectedIndex)
+                    width: 20
+                    height: 20
+                    anchors {
+                        left: parent.left
+                        leftMargin: 6
+                        top: parent.top
+                        topMargin: 6
+                    }
+                    z: 2
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 10
+                        color: gridDeleteMouse.containsMouse
+                            ? (ThemeService.isDark ? Qt.rgba(1, 0.3, 0.3, 0.35) : Qt.rgba(1, 0.2, 0.2, 0.20))
+                            : (ThemeService.isDark ? Qt.rgba(0, 0, 0, 0.35) : Qt.rgba(1, 1, 1, 0.60))
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "×"
+                        color: gridDeleteMouse.containsMouse ? "#ff453a" : (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.80) : Qt.rgba(0, 0, 0, 0.60))
+                        font.pixelSize: 14
+                        style: ThemeService.isDark ? Text.Outline : Text.Normal
+                        styleColor: dialog.textOutlineColor
+                    }
+
+                    MouseArea {
+                        id: gridDeleteMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (gridResultItem.modelData.selectionRecord)
+                                ClipboardService.deleteEntry(gridResultItem.modelData.selectionRecord);
+                        }
                     }
                 }
 
@@ -800,14 +1190,14 @@ PanelWindow {
                         topMargin: 56
                     }
                     text: gridResultItem.modelData.title
-                    color: "white"
+                    color: ThemeService.foregroundColor
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                     font {
                         pixelSize: 11
                         weight: Font.DemiBold
                     }
-                    style: Text.Outline
+                    style: ThemeService.isDark ? Text.Outline : Text.Normal
                     styleColor: dialog.textOutlineColor
                 }
 
@@ -822,15 +1212,16 @@ PanelWindow {
                         topMargin: 71
                     }
                     text: gridResultItem.modelData.subtitle.replace("图片剪贴板 · ", "")
-                    color: Qt.rgba(1, 1, 1, 0.54)
+                    color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.54) : Qt.rgba(0, 0, 0, 0.52)
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                     font.pixelSize: 9
-                    style: Text.Outline
+                    style: ThemeService.isDark ? Text.Outline : Text.Normal
                     styleColor: dialog.textOutlineColor
                 }
 
                 MouseArea {
+                    id: gridMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     onEntered: root.selectedIndex = gridResultItem.index
@@ -845,8 +1236,8 @@ PanelWindow {
         Text {
             visible: root.resultCount === 0
             anchors {
-                top: parent.top
-                topMargin: 49
+                top: searchHeader.bottom
+                topMargin: 8
                 left: parent.left
                 right: parent.right
             }
@@ -854,9 +1245,9 @@ PanelWindow {
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             text: root.mode === "app" ? "未找到匹配的应用" : (root.mode === "clipboard" ? "剪贴板历史为空" : "未找到匹配的窗口")
-            color: Qt.rgba(1, 1, 1, 0.52)
+            color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.52) : Qt.rgba(0, 0, 0, 0.50)
             font.pixelSize: 13
-            style: Text.Outline
+            style: ThemeService.isDark ? Text.Outline : Text.Normal
             styleColor: dialog.textOutlineColor
         }
     }

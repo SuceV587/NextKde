@@ -24,12 +24,13 @@ Scope {
     }
 
     Variants {
-        model: root.targetScreen ? [root.targetScreen] : []
+        model: Quickshell.screens
 
         OverviewWindow {
             required property var modelData
             screen: modelData
             open: root.open
+            onCloseRequested: root.hide()
         }
     }
 }
