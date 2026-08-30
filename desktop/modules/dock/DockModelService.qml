@@ -77,6 +77,7 @@ QtObject {
     }
 
     function _refreshPinned() {
+        const isGrouped = ConfigService.windowGrouping === "grouped";
         const dockItems = ConfigService.dockItems || [];
         const items = [];
         for (let i = 0; i < dockItems.length; i++) {
@@ -85,11 +86,10 @@ QtObject {
             if (dockItem.type === "app") {
                 const identity = AppIdentityService.resolve(dockItem.appId);
                 const windows = WindowService.windowsForApp(identity.desktopId);
-                // A running pinned application is represented by its live
-                // window tasks in the right-hand section. Keep this launcher
-                // slot only while it has no windows; it returns here in its
-                // persisted position after the final window closes.
-                if (windows.length > 0)
+                // In separate mode: a running pinned application is represented by its live
+                // window tasks in the right-hand section.
+                // In grouped mode: pinned apps stay in place with running dot & window count.
+                if (!isGrouped && windows.length > 0)
                     continue;
                 items.push({
                     type: "app",
@@ -99,6 +99,7 @@ QtObject {
                     icon: windows[0]?.iconSource ?? identity.iconSource,
                     isRunning: windows.length > 0,
                     isActivated: windows.some(window => window.toplevel.activated),
+                    windowCount: windows.length,
                 });
                 continue;
             }
@@ -109,9 +110,13 @@ QtObject {
         // delegate, and _refreshPinned runs on every window revision (every
         // window open/close), so an unchanged list must not churn the Repeater.
         const same = items.length === svc.pinnedItems.length
-            && items.every((item, i) => item.appId === svc.pinnedItems[i].appId
-                && item.isRunning === svc.pinnedItems[i].isRunning
-                && item.isActivated === svc.pinnedItems[i].isActivated)
+            && items.every((item, i) => {
+                const prev = svc.pinnedItems[i];
+                return prev && item.appId === prev.appId
+                    && item.isRunning === prev.isRunning
+                    && item.isActivated === prev.isActivated
+                    && item.windowCount === prev.windowCount;
+            });
         if (!same) {
             svc.pinnedItems = items;
             svc.pinnedCount = items.length;
@@ -119,34 +124,90 @@ QtObject {
     }
 
     function _refreshWindowItems() {
+        const isGrouped = ConfigService.windowGrouping === "grouped";
         const records = WindowService.records || [];
         const nextItems = [];
         // §5.8: only non-fullscreen urgents trigger the temporary dock reveal;
         // a fullscreen video/game must not have the full dock forced over it.
         const nowUrgent = [];
 
-        for (let i = 0; i < records.length; i++) {
-            const record = records[i];
-            if (!!record.isUrgent && !record.toplevel.fullscreen)
-                nowUrgent.push(record.windowId);
-            nextItems.push({
-                windowId: record.windowId,
-                // The animation effect must address the compositor window,
-                // not WindowService's provider-neutral synthetic id.
-                effectWindowId: record.provider === "kwin"
-                    ? String(record.handleId ?? "") : "",
-                desktopId: record.identity.desktopId,
-                appId: record.identity.desktopId,
-                rawAppId: record.identity.rawAppId,
-                title: record.title,
-                icon: record.iconSource ?? record.identity.iconSource,
-                isActivated: !!record.toplevel.activated,
-                isMinimized: !!record.toplevel.minimized,
-                isUrgent: !!record.isUrgent,
-                isFullscreen: !!record.toplevel.fullscreen,
-                pid: Number(record.pid || 0),
-                isWindowItem: true,
-            });
+        if (isGrouped) {
+            // Grouped mode: Aggregate unpinned windows by canonical desktopId
+            const unpinnedGroups = {};
+            const groupOrder = [];
+
+            for (let i = 0; i < records.length; i++) {
+                const record = records[i];
+                if (!!record.isUrgent && !record.toplevel.fullscreen)
+                    nowUrgent.push(record.windowId);
+
+                const desktopId = record.identity.desktopId;
+                if (svc.isAppPinned(desktopId))
+                    continue; // Pinned apps are rendered in the pinned section
+
+                if (!unpinnedGroups[desktopId]) {
+                    unpinnedGroups[desktopId] = {
+                        desktopId: desktopId,
+                        appId: desktopId,
+                        rawAppId: record.identity.rawAppId,
+                        title: record.identity.name || record.title,
+                        icon: record.iconSource ?? record.identity.iconSource,
+                        isActivated: false,
+                        isMinimized: true,
+                        isUrgent: false,
+                        isFullscreen: false,
+                        pid: Number(record.pid || 0),
+                        isWindowItem: false,
+                        windowId: record.windowId,
+                        effectWindowId: record.provider === "kwin"
+                            ? String(record.handleId ?? "") : "",
+                        windowCount: 0,
+                    };
+                    groupOrder.push(desktopId);
+                }
+                const group = unpinnedGroups[desktopId];
+                group.windowCount++;
+                if (record.toplevel.activated)
+                    group.isActivated = true;
+                if (!record.toplevel.minimized)
+                    group.isMinimized = false;
+                if (record.isUrgent)
+                    group.isUrgent = true;
+                if (record.toplevel.fullscreen)
+                    group.isFullscreen = true;
+            }
+
+            for (let i = 0; i < groupOrder.length; i++) {
+                nextItems.push(unpinnedGroups[groupOrder[i]]);
+            }
+        } else {
+            // Separate mode (legacy flat list)
+            for (let i = 0; i < records.length; i++) {
+                const record = records[i];
+                if (!!record.isUrgent && !record.toplevel.fullscreen)
+                    nowUrgent.push(record.windowId);
+                nextItems.push({
+                    windowId: record.windowId,
+                    // The animation effect must address the compositor window,
+                    // not WindowService's provider-neutral synthetic id.
+                    effectWindowId: record.provider === "kwin"
+                        ? String(record.handleId ?? "") : "",
+                    desktopId: record.identity.desktopId,
+                    appId: record.identity.desktopId,
+                    rawAppId: record.identity.rawAppId,
+                    title: record.title,
+                    icon: record.iconSource ?? record.identity.iconSource,
+                    isActivated: !!record.toplevel.activated,
+                    isMinimized: !!record.toplevel.minimized,
+                    isUrgent: !!record.isUrgent,
+                    isFullscreen: !!record.toplevel.fullscreen,
+                    pid: Number(record.pid || 0),
+                    isWindowItem: true,
+                    windowCount: 1,
+                });
+            }
+            nextItems.sort((left, right) => left.pid - right.pid
+                           || left.windowId.localeCompare(right.windowId));
         }
 
         // Detect false->true urgent transitions since the last rebuild. The
@@ -162,8 +223,6 @@ QtObject {
         svc._lastUrgentIds = nowUrgent;
         svc._urgentInitDone = true;
 
-        nextItems.sort((left, right) => left.pid - right.pid
-                       || left.windowId.localeCompare(right.windowId));
         svc._setWindowItems(nextItems);
     }
 
@@ -207,6 +266,9 @@ QtObject {
         function onPinnedAppIdsChanged() {
             svc._refreshPresentation();
         }
+        function onWindowGroupingChanged() {
+            svc._refreshPresentation();
+        }
     }
 
     property Connections _identityConnections: Connections {
@@ -231,23 +293,45 @@ QtObject {
             return;
         }
 
-        let active = null;
+        if (windows.length === 1) {
+            const singleWin = windows[0];
+            if (singleWin.toplevel.activated && !singleWin.toplevel.minimized) {
+                console.log("[DockModel] minimize single window app=" + identity.desktopId);
+                WindowService.minimizeWindow(singleWin.windowId, true);
+            } else {
+                console.log("[DockModel] activate single window app=" + identity.desktopId);
+                activateWindow(singleWin.windowId);
+            }
+            return;
+        }
+
+        // Multiple windows (macOS logic):
+        // Find if any window of this app is currently activated
+        let activeIdx = -1;
         for (let i = 0; i < windows.length; i++) {
             if (windows[i].toplevel.activated) {
-                active = windows[i];
+                activeIdx = i;
                 break;
             }
         }
 
-        if (active) {
-            console.log("[DockModel] minimize app=" + identity.desktopId
-                        + " windows=" + windows.length);
-            for (let i = 0; i < windows.length; i++)
-                WindowService.minimizeWindow(windows[i].windowId, true);
-        } else {
-            console.log("[DockModel] activate app=" + identity.desktopId);
+        if (activeIdx === -1) {
+            // App not currently in foreground: activate MRU window
+            console.log("[DockModel] activate app MRU window=" + windows[0].windowId);
             activateWindow(windows[0].windowId);
+        } else {
+            // App already active: cycle to next window in group
+            const nextIdx = (activeIdx + 1) % windows.length;
+            console.log("[DockModel] cycle app window from=" + windows[activeIdx].windowId
+                        + " to=" + windows[nextIdx].windowId);
+            activateWindow(windows[nextIdx].windowId);
         }
+    }
+
+    function launchNewWindow(appId) {
+        const identity = AppIdentityService.resolve(appId);
+        console.log("[DockModel] launch new window instance app=" + identity.desktopId);
+        AppActionService.launch(identity);
     }
 
     function activateWindow(windowId) {

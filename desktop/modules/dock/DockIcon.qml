@@ -274,15 +274,18 @@ Item {
 
     // ── Hover animation ──
     property bool _hovering: false
-    readonly property string _previewWindowId: {
-        // Pinned items may represent several windows. Start with the first;
-        // standalone window items already carry the exact ID.
+    readonly property var _appWindows: {
         WindowService.revision
-        if (icon.windowId)
-            return icon.windowId
-        const windows = WindowService.windowsForApp(icon.appId)
-        return windows.length > 0 ? windows[0].windowId : ""
+        if (icon.windowId) {
+            const win = WindowService.windowById(icon.windowId)
+            return win ? [win] : []
+        }
+        if (icon.appId)
+            return WindowService.windowsForApp(icon.appId)
+        return []
     }
+    readonly property bool _hasWindows: _appWindows.length > 0
+    readonly property string _previewWindowId: _hasWindows ? _appWindows[0].windowId : (icon.windowId || "")
     Behavior on scale {
         NumberAnimation {
             duration: DockAnimation.iconHoverDuration
@@ -300,13 +303,15 @@ Item {
             // A context menu owns the interaction for its icon. Do not let a
             // hover timer replace it with a preview while the pointer moves
             // between Dock icons to open another menu.
-            if (icon._hovering && icon._previewWindowId && !icon.editMode
+            if (icon._hovering && icon._hasWindows && !icon.editMode
                     && !DockModelService.activeContextMenu) {
                 console.log("[DockIcon] preview request app=" + icon.appId
-                    + " window=" + icon._previewWindowId);
+                    + " windowCount=" + icon._appWindows.length);
+                preview.appId = icon.appId
                 preview.windowId = icon._previewWindowId
                 preview.title = WindowService.windowById(icon._previewWindowId)?.title
                     ?? icon.displayName
+                preview.windows = icon._appWindows
                 // A thumbnail takes precedence over the context menu. Keeping
                 // both surfaces open would make their pointer/focus behavior
                 // ambiguous, especially when moving upward from the Dock.
@@ -617,10 +622,14 @@ Item {
                     contextMenu.addItem("", "激活窗口", "activate")
                     contextMenu.addItem("", "最小化", "minimize")
                     contextMenu.addItem("", "关闭窗口", "close")
+                    contextMenu.addItem("", "新建窗口", "new_window")
                     contextMenu.addItem(pinned ? "" : "",
                         pinned ? "取消固定" : "固定此应用", pinned ? "unpin" : "pin")
                 } else {
                     contextMenu.addItem("", "打开", "open")
+                    contextMenu.addItem("", "新建窗口", "new_window")
+                    if (icon.isRunning)
+                        contextMenu.addItem("", "关闭所有窗口", "close_all")
                     contextMenu.addItem(pinned ? "" : "",
                         pinned ? "取消固定" : "固定此应用", pinned ? "unpin" : "pin")
                 }
@@ -663,6 +672,14 @@ Item {
             switch (name) {
             case "open":
                 DockModelService.activateApp(icon.appId)
+                break
+            case "new_window":
+                DockModelService.launchNewWindow(icon.appId)
+                break
+            case "close_all":
+                const wins = WindowService.windowsForApp(icon.appId)
+                for (let i = 0; i < wins.length; i++)
+                    WindowService.closeWindow(wins[i].windowId)
                 break
             case "unpin":
                 AppActionService.unpin(icon.appId)

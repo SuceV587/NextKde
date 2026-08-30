@@ -736,13 +736,16 @@ Item {
                 isActivated: model.isActivated ?? false
                 isUrgent: model.isUrgent ?? false
                 appId: model.appId ?? ""
-                windowId: model.windowId ?? ""
+                windowId: model.isWindowItem ? (model.windowId ?? "") : ""
                 animationWindowId: model.effectWindowId ?? ""
-                isWindowItem: true
+                isWindowItem: model.isWindowItem ?? false
                 isPinnedItem: false
                 onActivate: {
                     container.editMode = false
-                    DockModelService.toggleWindow(windowId)
+                    if (model.isWindowItem)
+                        DockModelService.toggleWindow(model.windowId)
+                    else
+                        DockModelService.activateApp(model.appId)
                 }
             }
         }
