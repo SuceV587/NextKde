@@ -24,7 +24,7 @@ add_custom_command(
     VERBATIM
 )
 
-add_custom_target(kos-shell-data-service ALL
+add_custom_target(kos-shell-data-service-build ALL
     DEPENDS ${KOS_SHELL_DATA_SERVICE_EXECUTABLE}
 )
 
