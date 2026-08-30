@@ -973,6 +973,15 @@ func (s *Service) addInterval(start, end float64, appID string) {
 	if end <= start {
 		return
 	}
+	// State files from early service versions may omit either map. Keep this
+	// write path defensive so migrations and partial test fixtures cannot turn
+	// an otherwise valid snapshot update into a process panic.
+	if s.state.Activity.UptimeByDay == nil {
+		s.state.Activity.UptimeByDay = map[string]float64{}
+	}
+	if s.state.Activity.TodayApps == nil {
+		s.state.Activity.TodayApps = map[string]AppUsage{}
+	}
 	for cursor := start; cursor < end; {
 		date := time.UnixMilli(int64(cursor))
 		tomorrow := time.Date(date.Year(), date.Month(), date.Day()+1, 0, 0, 0, 0, time.Local)

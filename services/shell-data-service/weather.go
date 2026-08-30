@@ -52,14 +52,14 @@ type WeatherCurrent struct {
 }
 
 type WeatherHourlyPoint struct {
-	Time                 string  `json:"time"`
-	Temperature          float64 `json:"temperature"`
-	ApparentTemp         float64 `json:"apparentTemperature"`
-	RelativeHumidity     float64 `json:"relativeHumidity"`
-	PrecipitationChance  float64 `json:"precipitationProbability"`
-	WeatherCode          int     `json:"weatherCode"`
-	IsDay                bool    `json:"isDay"`
-	WindSpeed            float64 `json:"windSpeed"`
+	Time                string  `json:"time"`
+	Temperature         float64 `json:"temperature"`
+	ApparentTemp        float64 `json:"apparentTemperature"`
+	RelativeHumidity    float64 `json:"relativeHumidity"`
+	PrecipitationChance float64 `json:"precipitationProbability"`
+	WeatherCode         int     `json:"weatherCode"`
+	IsDay               bool    `json:"isDay"`
+	WindSpeed           float64 `json:"windSpeed"`
 }
 
 type WeatherDay struct {
@@ -105,9 +105,9 @@ type WeatherProvider interface {
 }
 
 type OpenMeteoProvider struct {
-	client        *http.Client
-	forecastURL   string
-	geocodingURL  string
+	client       *http.Client
+	forecastURL  string
+	geocodingURL string
 }
 
 func defaultWeatherState() WeatherState {
@@ -202,7 +202,7 @@ func normalizeWeatherLocation(location WeatherLocation) (WeatherLocation, error)
 
 func newOpenMeteoProvider() *OpenMeteoProvider {
 	return &OpenMeteoProvider{
-		client: &http.Client{Timeout: weatherRequestTimeout},
+		client:       &http.Client{Timeout: weatherRequestTimeout},
 		forecastURL:  "https://api.open-meteo.com/v1/forecast",
 		geocodingURL: "https://geocoding-api.open-meteo.com/v1/search",
 	}
