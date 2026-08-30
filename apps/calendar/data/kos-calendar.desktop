@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=KOS Calendar
+Name[zh_CN]=KOS 日历
+Comment=Plan events and review your schedule
+Comment[zh_CN]=规划事件并查看日程
+Exec=kos-calendar
+Icon=office-calendar
+Categories=Office;Calendar;Qt;
+Keywords=calendar;event;schedule;agenda;
+Keywords[zh_CN]=日历;事件;日程;议程;
+StartupNotify=true

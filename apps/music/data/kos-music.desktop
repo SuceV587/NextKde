@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=KOS Music
+Name[zh_CN]=KOS 音乐
+Comment=Play and organize your local music library
+Comment[zh_CN]=播放和整理本地音乐库
+Exec=kos-music %U
+Icon=multimedia-audio-player
+Categories=AudioVideo;Audio;Player;Qt;
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/opus;audio/x-wav;audio/mp4;
+Keywords=music;audio;player;playlist;album;
+Keywords[zh_CN]=音乐;音频;播放器;播放列表;专辑;
+StartupNotify=true
