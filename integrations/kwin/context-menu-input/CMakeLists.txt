@@ -34,4 +34,5 @@ target_link_libraries(kos_context_menu_input PRIVATE
 )
 
 install(TARGETS kos_context_menu_input
-    DESTINATION ${KDE_INSTALL_PLUGINDIR}/kwin/effects/plugins)
+    DESTINATION ${KDE_INSTALL_PLUGINDIR}/kwin/effects/plugins
+    COMPONENT kwin_plugins)

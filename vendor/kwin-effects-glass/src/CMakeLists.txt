@@ -53,6 +53,7 @@ if(GLASS_WAYLAND)
         KDecoration3::KDecoration
         KF6::ConfigGui
         KWin::kwin
+        XCB::XCB
     )
     if(GLASS_KWIN_67)
         target_compile_definitions(glass PRIVATE GLASS_KWIN_67)

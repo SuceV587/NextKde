@@ -31,4 +31,5 @@ target_link_libraries(kos_dock_window_animation PRIVATE
 )
 
 install(TARGETS kos_dock_window_animation
-    DESTINATION ${KDE_INSTALL_PLUGINDIR}/kwin/effects/plugins)
+    DESTINATION ${KDE_INSTALL_PLUGINDIR}/kwin/effects/plugins
+    COMPONENT kwin_plugins)
