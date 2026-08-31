@@ -3,9 +3,12 @@
 // publishes snapshots to the local bridge and receives requested operations
 // through its short D-Bus polling loop.
 
-const service = "org.quickshell.KWinWindowBridge";
-const path = "/WindowBridge";
-const iface = "org.quickshell.KWinWindowBridge";
+// The resident kos-platform process owns the private bridge endpoint. Shell
+// clients never call this object directly; they subscribe through the
+// platform JSONL socket instead.
+const service = "org.kos.Platform";
+const path = "/Platform";
+const iface = "org.kos.Platform";
 
 function normalizeId(value) {
     return String(value || "").replace(/[{}]/g, "");
