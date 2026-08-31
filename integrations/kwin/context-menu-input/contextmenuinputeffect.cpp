@@ -90,9 +90,9 @@ void ContextMenuInputEffect::publish(const QJsonObject &eventData)
     // no-reply, non-blocking D-Bus delivery and therefore cannot stall KWin's
     // input thread when Quickshell is restarting.
     QDBusMessage message = QDBusMessage::createMethodCall(
-        QStringLiteral("org.quickshell.KWinWindowBridge"),
-        QStringLiteral("/WindowBridge"),
-        QStringLiteral("org.quickshell.KWinWindowBridge"),
+        QStringLiteral("org.kos.Platform"),
+        QStringLiteral("/Platform"),
+        QStringLiteral("org.kos.Platform"),
         QStringLiteral("Publish"));
     message.setArguments({payload});
     QDBusConnection bus = QDBusConnection::sessionBus();

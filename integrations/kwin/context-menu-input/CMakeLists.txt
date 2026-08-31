@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(quickshell_context_menu_input LANGUAGES CXX)
+project(kos_context_menu_input LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,16 +22,16 @@ include(KDECompilerSettings NO_POLICY_SCOPE)
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core DBus Gui Widgets OpenGL Network Xml)
 find_package(KWin REQUIRED COMPONENTS kwineffects)
 
-add_library(quickshell_context_menu_input MODULE
+add_library(kos_context_menu_input MODULE
     contextmenuinputeffect.cpp
     main.cpp
 )
 
-target_link_libraries(quickshell_context_menu_input PRIVATE
+target_link_libraries(kos_context_menu_input PRIVATE
     Qt6::Core
     Qt6::DBus
     KWin::kwin
 )
 
-install(TARGETS quickshell_context_menu_input
+install(TARGETS kos_context_menu_input
     DESTINATION ${KDE_INSTALL_PLUGINDIR}/kwin/effects/plugins)
