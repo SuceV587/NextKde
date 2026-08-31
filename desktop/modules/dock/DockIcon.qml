@@ -455,6 +455,10 @@ Item {
         height: icon.iconSize
         anchors.centerIn: parent
         source: icon.iconSource || ""
+        // A newly opened window has no previous Dock texture to retain. Decode
+        // this small themed icon before its first frame instead of exposing an
+        // empty Image/ShaderEffect while several windows arrive together.
+        asynchronous: false
         visible: !icon.glyph
         rotation: icon.vertical ? -90 : 0
         transformOrigin: Item.Center
@@ -500,10 +504,9 @@ Item {
         radius: width / 2
         color: icon.dotIndicator ? Qt.rgba(1, 1, 1, 0.95)
             : ThemeService.accentColor
-        border {
-            width: icon.dotIndicator ? 1 : 0
-            color: Qt.rgba(0, 0, 0, 0.40)
-        }
+        // macOS running dots are clean solid marks; a dark outline makes the
+        // small white dot read as a ring against the Dock glass.
+        border.width: 0
         opacity: icon.isRunning ? 1 : 0
         visible: opacity > 0.01
         z: 2

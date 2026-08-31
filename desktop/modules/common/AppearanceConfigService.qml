@@ -21,11 +21,16 @@ QtObject {
     // so upgrading an existing installation does not unexpectedly reshape it.
     property string shellStyle: "macos"
     property bool barIntegratedWithDock: false
+    property string dockWindowAnimationStyle: "scale"
     property bool ready: false
 
     function isValidShellStyle(value) {
         return value === "windows12" || value === "macos"
             || value === "material"
+    }
+
+    function isValidDockWindowAnimationStyle(value) {
+        return value === "scale" || value === "genie"
     }
 
     function _normalized(value) {
@@ -75,6 +80,17 @@ QtObject {
         return true
     }
 
+    function updateDockWindowAnimationStyle(rawStyle) {
+        const style = String(rawStyle)
+        if (!isValidDockWindowAnimationStyle(style)
+                || dockWindowAnimationStyle === style)
+            return false
+        dockWindowAnimationStyle = style
+        saveTimer.restart()
+        dockAnimationEffectSyncTimer.restart()
+        return true
+    }
+
     function resetStrengths() {
         const blurChanged = Math.abs(blurStrength - 0.42) > 0.001
         const liquidChanged = Math.abs(liquidStrength - 1.0) > 0.001
@@ -104,6 +120,12 @@ QtObject {
         onTriggered: service._syncGlassEffect()
     }
 
+    property Timer dockAnimationEffectSyncTimer: Timer {
+        interval: 80
+        repeat: false
+        onTriggered: service._syncDockWindowAnimationEffect()
+    }
+
     property Component processFactory: Component {
         Process {
             stdout: StdioCollector {}
@@ -122,11 +144,12 @@ QtObject {
 
     function _save() {
         const payload = JSON.stringify({
-            version: 3,
+            version: 4,
             blurStrength: service.blurStrength,
             liquidStrength: service.liquidStrength,
             shellStyle: service.shellStyle,
             barIntegratedWithDock: service.barIntegratedWithDock,
+            dockWindowAnimationStyle: service.dockWindowAnimationStyle,
         }, null, 2)
         const process = _makeProcess([
             "sh", "-c",
@@ -175,6 +198,31 @@ QtObject {
         process.running = true
     }
 
+    function _syncDockWindowAnimationEffect() {
+        const process = _makeProcess([
+            "sh", "-c",
+            "kwriteconfig6 --file kwinrc --group Effect-kos_dock_window_animation "
+                + "--key AnimationStyle \"$1\" && "
+                + "qdbus6 org.kde.KWin /Effects "
+                + "org.kde.kwin.Effects.reconfigureEffect kos_dock_window_animation",
+            "appearance-dock-animation-sync",
+            service.dockWindowAnimationStyle,
+        ])
+        if (!process)
+            return
+        process.exited.connect(function(code) {
+            if (code !== 0) {
+                console.warn("[AppearanceConfig] Dock animation sync failed code="
+                    + code + " stderr=" + (process.stderr?.text ?? ""))
+            } else {
+                console.log("[AppearanceConfig] Dock window animation="
+                    + service.dockWindowAnimationStyle)
+            }
+            process.destroy()
+        })
+        process.running = true
+    }
+
     function _load() {
         const process = _makeProcess([
             "sh", "-c", "cat \"$1\"", "appearance-config-load",
@@ -193,6 +241,7 @@ QtObject {
                     const style = String(object.shellStyle ?? "")
                     const hasBarIntegration = typeof object.barIntegratedWithDock
                         === "boolean"
+                    const animationStyle = String(object.dockWindowAnimationStyle ?? "")
                     if (Number.isFinite(blur))
                         service.blurStrength = blur
                     if (Number.isFinite(liquid))
@@ -201,12 +250,15 @@ QtObject {
                         service.shellStyle = style
                     if (hasBarIntegration)
                         service.barIntegratedWithDock = object.barIntegratedWithDock
+                    if (service.isValidDockWindowAnimationStyle(animationStyle))
+                        service.dockWindowAnimationStyle = animationStyle
                     // Schema 1 had no shellStyle; schema 2 had no Bar
                     // integration flag. Preserve compatible defaults and
-                    // persist once so later readers always see schema 3.
-                    if (Number(object.version) !== 3
+                    // persist once so later readers always see schema 4.
+                    if (Number(object.version) !== 4
                             || !service.isValidShellStyle(style)
-                            || !hasBarIntegration)
+                            || !hasBarIntegration
+                            || !service.isValidDockWindowAnimationStyle(animationStyle))
                         service.saveTimer.restart()
                 } catch (error) {
                     console.warn("[AppearanceConfig] parse error: " + error)
@@ -214,6 +266,7 @@ QtObject {
             }
             service.ready = true
             service.effectSyncTimer.restart()
+            service.dockAnimationEffectSyncTimer.restart()
             process.destroy()
         })
         process.running = true

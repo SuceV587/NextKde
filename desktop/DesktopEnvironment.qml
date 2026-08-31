@@ -24,11 +24,6 @@ Item {
         }
     }
 
-    Component {
-        id: integratedSideClock
-        SideDockClockStatus {}
-    }
-
     // Theme watching is non-visual and only loads a tiny FileView. The
     // AppLauncher and its icon grid remain lazy.
     Component.onCompleted: IconThemeReloadService.initialize()
@@ -111,6 +106,8 @@ Item {
                 shellStyle: AppearanceConfigService.shellStyle,
                 barIntegratedWithDock:
                     AppearanceConfigService.barIntegratedWithDock,
+                dockWindowAnimationStyle:
+                    AppearanceConfigService.dockWindowAnimationStyle,
                 tokenVersion: AppearanceTokens.version,
             })
         }
@@ -132,6 +129,11 @@ Item {
 
         function updateBarIntegratedWithDock(enabled: bool): string {
             AppearanceConfigService.updateBarIntegratedWithDock(enabled)
+            return snapshot()
+        }
+
+        function updateDockWindowAnimationStyle(style: string): string {
+            AppearanceConfigService.updateDockWindowAnimationStyle(style)
             return snapshot()
         }
 
@@ -162,9 +164,6 @@ Item {
     Dock {
         clockInInfoCarousel: shell.barIntegratedWithDock
             && ConfigService.position === "bottom"
-        leadingAccessory: shell.barIntegratedWithDock
-            && ConfigService.position !== "bottom"
-            ? integratedSideClock : null
         trailingAccessory: shell.barIntegratedWithDock
             ? integratedBarStatus : null
     }

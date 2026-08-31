@@ -3,7 +3,7 @@ import Quickshell.Wayland
 import QtQuick
 import qs.desktop.modules.common
 
-// A single control-center card as an independent PanelWindow.
+// A single control-center card as an independent PopupWindow.
 //
 // Each card owns a full-window RoundedBlurRegion, so KWin's per-window blur
 // applies to this card alone (the compositor samples whatever is actually
@@ -12,11 +12,10 @@ import qs.desktop.modules.common
 // scanline aliasing), and the gaps between card windows show the real
 // desktop underneath - the iOS "hollow" control center look.
 //
-// Positioning: the card anchors to the top-right of the target screen and
-// derives its exact position from the ControlCenterCoordinator's panel
-// origin plus its own grid offset. This keeps all nine cards locked together
-// when the bar moves.
-PanelWindow {
+// Positioning: every card anchors to the same transparent positioning popup.
+// Quickshell therefore chooses the correct output from the original clicked
+// item, while the card offsets remain in one stable local grid.
+PopupWindow {
     id: root
 
     // ── Grid position (relative to coordinator.panelTop / panelRight) ──
@@ -30,9 +29,9 @@ PanelWindow {
     // Visual card fill (above the blur).
     property color cardColor: Qt.rgba(1, 1, 1, 0.10)
     property color cardBorderColor: Qt.rgba(1, 1, 1, 0.20)
-    // PanelWindow has no opacity; this applies to the card body instead.
+    // Window opacity would also fade compositor effects; fade the body only.
     property real cardOpacity: 1.0
-    // PanelWindow has no scale; this applies to the card content.
+    // Keep window geometry stable while scaling only the card content.
     property real cardScale: 1.0
 
     // ── Wire-up (set by the bar) ──
@@ -40,48 +39,22 @@ PanelWindow {
     // Cards managed by the coordinator open/close together. Set false for
     // overlays that manage their own visibility (e.g. logout confirmation).
     property bool managedByCoordinator: true
-    // Which output this card lives on (the same screen as the bar).
-    property var targetScreen: Quickshell.screens.length > 1 ? Quickshell.screens[1] : Quickshell.screens[0]
-
-    // Control-center cards get the same highlight family as the bar (cards
-    // float over the bar's screen area).
-    WlrLayershell.namespace: "quickshell-controlcenter"
-
-    // Visible-state via position, NOT the window's `visible` flag.
-    //
-    // Quickshell submits the blur region when the window surface is created.
-    // Toggling `visible` destroys/recreates the surface, so the first frame
-    // after showing a card has NO region yet - KWin falls back to a full-window
-    // rectangle, topInset=0 disables the smooth card path, and the card draws
-    // a square slab for one frame before the region arrives. The dock avoids
-    // this because it is always visible.
-    //
-    // Keeping the window always mapped and hiding/showing it by sliding its
-    // top margin off/onto the screen keeps the blur region continuously
-    // submitted, so every frame - including the first - rounds the corners.
     property bool cardShown: false
 
-    screen: root.targetScreen
     color: "transparent"
-    exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.layer: WlrLayer.Top
+    grabFocus: false
+    visible: root.cardShown && root.coordinator.cardAnchor !== null
 
-    anchors {
-        top: true
-        left: root.coordinator?.anchorLeft ?? false
-        right: !(root.coordinator?.anchorLeft ?? false)
-    }
-    margins {
-        // Off-screen (well above the display) while hidden; the real position
-        // (panel origin + this card's grid offset) when shown.
-        top: root.cardShown
-            ? (root.coordinator ? root.coordinator.panelTop + root.offsetTop : 60 + root.offsetTop)
-            : -2000
-        // panelRight is the distance from the control center's right edge to
-        // the screen's right edge (positive px). offsetRight is this card's
-        // right edge to the control center's right edge. Sum = screen inset.
-        right: Math.max(0, (root.coordinator ? root.coordinator.panelRight : 20) + root.offsetRight)
-        left: Math.max(0, (root.coordinator ? root.coordinator.panelRight : 20) + root.offsetRight)
+    anchor {
+        item: root.coordinator.cardAnchor
+        // Treat the card's top-left as a point inside the positioning popup.
+        rect.x: root.coordinator.gridWidth - root.offsetRight
+            - root.cardWidth + root.coordinator.cardOffsetX
+        rect.y: root.offsetTop + root.coordinator.cardOffsetY
+        rect.width: 0
+        rect.height: 0
+        edges: Edges.Top | Edges.Left
+        gravity: Edges.Bottom | Edges.Right
     }
 
     implicitWidth: root.cardWidth
@@ -141,9 +114,6 @@ PanelWindow {
     }
 
     Component.onCompleted: {
-        // Window stays mapped (visible: true) so the blur region is always
-        // submitted; the coordinator shows/hides it via cardShown position.
-        root.visible = true
         if (root.managedByCoordinator) {
             if (root.coordinator)
                 root.coordinator.register(root)

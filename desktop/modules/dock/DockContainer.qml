@@ -27,7 +27,6 @@ Item {
     property var targetScreen: null
     property real surfaceOriginX: 0
     property real surfaceOriginY: 0
-    property Component leadingAccessory: null
     property Component trailingAccessory: null
     property bool clockInInfoCarousel: false
 
@@ -41,11 +40,14 @@ Item {
     readonly property int windowCount: DockModelService.windowCount
     readonly property bool hasPlayingMusic: DockMprisService.hasPlayingPlayer
     readonly property bool hasWeather: WeatherService.available
-    readonly property bool hasClock: clockInInfoCarousel && !vertical
+    // Side Docks have no readable top-bar clock counterpart, so keep their
+    // compact carousel useful even when the bottom-only Bar integration flag
+    // is off.
+    readonly property bool hasClock: clockInInfoCarousel || vertical
     // Temperature is a permanent horizontal Dock page. MetricsService may
     // still be loading its first snapshot; the card remains and shows "--".
-    readonly property bool hasTemperature: !vertical
-    readonly property bool hasInfo: hasPlayingMusic || hasWeather || hasClock
+    readonly property bool hasTemperature: true
+    readonly property bool hasAvailableInfo: hasPlayingMusic || hasWeather || hasClock
         || hasTemperature
     readonly property int screenWidth: targetScreen?.width
         ?? Quickshell.screens[0]?.width ?? 1920
@@ -74,19 +76,12 @@ Item {
     readonly property bool vertical: ConfigService.position === "left"
         || ConfigService.position === "right"
     readonly property int accessoryCount:
-        (leadingAccessoryLoader.active ? 1 : 0)
-        + (trailingAccessoryLoader.active ? 1 : 0)
-    readonly property real accessoryContentWidth:
-        leadingAccessoryLoader.width + trailingAccessoryLoader.width
+        trailingAccessoryLoader.active ? 1 : 0
+    readonly property real accessoryContentWidth: trailingAccessoryLoader.width
     // Some accessories fold their content vertically when enough Dock height
     // is available. Feed their stable maximum width into the height solver so
     // that changing row count cannot create a width/height binding loop; the
     // final Dock width below still uses the accessory's actual folded width.
-    readonly property real leadingAccessoryReserveWidth:
-        leadingAccessoryLoader.active && leadingAccessoryLoader.item
-        ? (leadingAccessoryLoader.item.layoutMaximumWidth !== undefined
-            ? leadingAccessoryLoader.item.layoutMaximumWidth
-            : leadingAccessoryLoader.width) : 0
     readonly property real trailingAccessoryReserveWidth:
         trailingAccessoryLoader.active && trailingAccessoryLoader.item
         ? (trailingAccessoryLoader.item.layoutMaximumWidth !== undefined
@@ -96,8 +91,27 @@ Item {
     // covers one separator and two Row gaps per accessory; the exact value is
     // added back after AdaptiveMath returns its scale-dependent margins.
     readonly property real estimatedAccessoryWidth:
-        leadingAccessoryReserveWidth + trailingAccessoryReserveWidth
+        trailingAccessoryReserveWidth
         + accessoryCount * baseHeight * 0.60
+    // Probe the crowded layout with the carousel included before deciding
+    // whether it is safe to show. This avoids a feedback loop where hiding the
+    // carousel makes icons larger and immediately makes it reappear.
+    readonly property var _infoProbeLayout: AdaptiveMath.computeLayout(
+        baseHeight, pinnedCount, windowCount,
+        hasAvailableInfo && !vertical,
+        Math.max(baseHeight, availableLength - estimatedAccessoryWidth),
+        proportions,
+        vertical ? AdaptiveMath.MAX_HEIGHT_RATIO : AdaptiveMath.MAX_WIDTH_RATIO
+    )
+    // At the 18px absolute icon floor, the cards cannot keep even compact
+    // glyphs legible. Remove the carousel and its divider as one unit, which
+    // also returns its four icon-widths to application tasks.
+    readonly property bool hideInfoCarousel: !vertical && hasAvailableInfo
+        && _infoProbeLayout.iconSize <= AdaptiveMath.MIN_ICON_SIZE
+    readonly property bool hasInfo: hasAvailableInfo && !hideInfoCarousel
+    // A side Dock rotates its content row. Its dedicated compact carousel
+    // needs only two icon lengths, while the bottom carousel keeps four.
+    readonly property int infoSlotUnits: vertical ? 2 : 4
 
     // ═══════════════════════════════════════════════════════════
     // Computed layout (re-evaluates on any input change)
@@ -107,12 +121,11 @@ Item {
     // height or spacing locally, otherwise width fitting can be bypassed.
     readonly property var _layout: AdaptiveMath.computeLayout(
         baseHeight, pinnedCount, windowCount,
-        // The info carousel is hidden on side docks (vertical Phase 2); its
-        // invisible units must not shrink the icon column.
-        hasInfo && !vertical,
+        hasInfo,
         Math.max(baseHeight, availableLength - estimatedAccessoryWidth),
         proportions,
-        vertical ? AdaptiveMath.MAX_HEIGHT_RATIO : AdaptiveMath.MAX_WIDTH_RATIO
+        vertical ? AdaptiveMath.MAX_HEIGHT_RATIO : AdaptiveMath.MAX_WIDTH_RATIO,
+        infoSlotUnits
     )
 
     readonly property int computedDockHeight: _layout.dockHeight
@@ -130,7 +143,7 @@ Item {
     // keeps the Row width stable while the active background appears/disappears.
     readonly property real activeBackgroundGap: _layout.activeBackgroundGap
     readonly property int iconUnits: _layout.iconUnits
-    readonly property int infoUnits: _layout.infoUnits
+    readonly property real infoUnits: _layout.infoUnits
     // Long press enters the persistent iPadOS-like edit state. Starting a
     // real drag also enters that same state, and only an explicit tap-away or
     // external window focus change ends it.
@@ -232,20 +245,6 @@ Item {
     width: implicitWidth
     height: implicitHeight
 
-    // ── Smooth resize transitions ──
-    Behavior on height {
-        NumberAnimation {
-            duration: DockAnimation.dockResizeDuration
-            easing.type: DockAnimation.dockResizeEasing
-        }
-    }
-    Behavior on width {
-        NumberAnimation {
-            duration: DockAnimation.dockResizeDuration
-            easing.type: DockAnimation.dockResizeEasing
-        }
-    }
-
     // ═══════════════════════════════════════════════════════════
     // Content row
     // ═══════════════════════════════════════════════════════════
@@ -322,22 +321,6 @@ Item {
         leftPadding: container.hPadding
         rightPadding: container.hPadding
         height: container.computedDockHeight
-
-        Loader {
-            id: leadingAccessoryLoader
-            active: container.leadingAccessory !== null
-            sourceComponent: container.leadingAccessory
-            width: active && item ? item.implicitWidth : 0
-            height: container.computedDockHeight
-            visible: active
-        }
-
-        DockDivider {
-            dockHeight: container.computedDockHeight
-            dividerWidth: 2
-            sideMargin: container.dividerMargin
-            visible: leadingAccessoryLoader.active
-        }
 
         // ── Pinned apps ──
         // Fixed launcher slot. This project-owned image avoids icon-theme
@@ -676,8 +659,7 @@ Item {
             dockHeight: container.computedDockHeight
             dividerWidth: 2
             sideMargin: container.dividerMargin
-            // Hidden together with the information slot on side docks.
-            visible: container.hasInfo && !container.vertical
+            visible: container.hasInfo
         }
 
         // ── Shared music / weather / clock / temperature information slot ──
@@ -687,9 +669,19 @@ Item {
             widthUnits: container.infoUnits
             showClock: container.hasClock
             showTemperature: container.hasTemperature
-            // The carousel's internal pages assume a horizontal slot; hide it
-            // on side docks until it gains a vertical layout (Phase 2).
             visible: container.hasInfo && !container.vertical
+        }
+
+        // Counter-rotated, one-line counterpart for side Docks. The parent
+        // Row rotates 90 degrees, so this component keeps text upright while
+        // reserving only two icon lengths along the edge.
+        DockSideInfoCarousel {
+            iconSize: container.iconSize
+            dockHeight: container.computedDockHeight
+            widthUnits: container.infoUnits
+            showClock: container.hasClock
+            showTemperature: container.hasTemperature
+            visible: container.hasInfo && container.vertical
         }
 
         DockDivider {
