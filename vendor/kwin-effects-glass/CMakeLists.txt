@@ -60,6 +60,10 @@ if(GLASS_WAYLAND)
     )
     if (${KWin_FOUND})
         find_package(KWinDBusInterface CONFIG REQUIRED)
+        # Wayland KWin can still be built with XWayland support. Its public
+        # xcbutils helpers are then referenced by Glass and require libxcb at
+        # link time even though the separate X11 effect is disabled.
+        find_package(XCB REQUIRED COMPONENTS XCB)
     else()
         set(GLASS_WAYLAND OFF)
     endif()
