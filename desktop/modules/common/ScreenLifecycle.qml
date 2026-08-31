@@ -43,9 +43,10 @@ QtObject {
 
     function refreshAndSettle() {
         // Hide all output-bound surfaces before Qt tears down/recreates its
-        // QScreen objects. Rebinding during that transition can destroy a
-        // QQuickWindow while child items are still attached to it.
+        // QScreen objects, then drop the wrapper before its QObject destructor
+        // can notify bindings that still reach into a QQuickWindow item tree.
         outputAvailable = false
+        activeScreen = null
         settleTimer.restart()
     }
 
@@ -55,7 +56,7 @@ QtObject {
     }
 
     property Timer settleTimer: Timer {
-        interval: 150
+        interval: 300
         repeat: false
         onTriggered: service.refresh()
     }

@@ -95,7 +95,10 @@ QtObject {
     // thus smart-hide geometry) dead for every later launch. Heal by reaping a
     // genuinely orphaned owner and retrying our bridge a few times (concurrent
     // live shells are never touched; see _retryBridge).
-    property int _bridgeRetryRemaining: 0
+    // Process.running may launch the child before Component.onCompleted. Keep
+    // retries available from object construction so an immediate D-Bus-name
+    // collision after a crash cannot permanently leave the window model empty.
+    property int _bridgeRetryRemaining: 3
     property Timer _bridgeRetryTimer: Timer {
         interval: 350
         repeat: false
@@ -562,6 +565,7 @@ QtObject {
     function _consumeKwinBridgeLine(line) {
         const message = String(line ?? "");
         if (message === "READY") {
+            console.info("[WindowService] KWin bridge ready")
             svc._startKwinScript();
         } else if (message.startsWith("EVENT ")) {
             try {
@@ -584,6 +588,8 @@ QtObject {
                         svc._kwinWindows = event.windows;
                         if (!svc._kwinReceivedInitialSnapshot) {
                             svc._kwinReceivedInitialSnapshot = true;
+                            console.info("[WindowService] initial KWin snapshot windows="
+                                + event.windows.length)
                         }
                         // KWin already coalesces metadata bursts and throttles
                         // live geometry. Apply its authoritative snapshot now;
@@ -678,7 +684,6 @@ QtObject {
     }
 
     Component.onCompleted: {
-        svc._bridgeRetryRemaining = 3
         if (svc._kwinBridgeEnabled)
             _scheduleUpdate()
     }
