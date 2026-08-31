@@ -17,6 +17,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <numbers>
 
 Q_LOGGING_CATEGORY(KWIN_KOS_DOCK_ANIMATION, "kwin_effect_kos_dock_animation")
 
@@ -43,6 +45,39 @@ qreal smootherStep(qreal value)
     const qreal clamped = std::clamp(value, 0.0, 1.0);
     return clamped * clamped * clamped
         * (clamped * (clamped * 6.0 - 15.0) + 10.0);
+}
+
+// Maps each horizontal mesh row between the two circular sides of an
+// asymmetric rounded rectangle. Keeping every row horizontal and its X
+// coordinates monotonic prevents the corner geometry from twisting quads.
+QPointF roundedRectCoordinate(qreal u, qreal v, const QSizeF &size,
+                              qreal topRadiusRatio,
+                              qreal bottomRadiusRatio)
+{
+    const qreal width = std::max(1.0, size.width());
+    const qreal height = std::max(1.0, size.height());
+    const qreal shortSide = std::min(width, height);
+    const qreal topRadius = shortSide
+        * std::clamp(topRadiusRatio, 0.0, 0.5);
+    const qreal bottomRadius = shortSide
+        * std::clamp(bottomRadiusRatio, 0.0, 0.5);
+    const qreal normalizedU = std::clamp(u, 0.0, 1.0);
+    const qreal normalizedV = std::clamp(v, 0.0, 1.0);
+    const qreal y = normalizedV * height;
+
+    qreal inset = 0.0;
+    if (topRadius > 0.0 && y < topRadius) {
+        const qreal dy = topRadius - y;
+        inset = topRadius - std::sqrt(std::max(
+            0.0, topRadius * topRadius - dy * dy));
+    } else if (bottomRadius > 0.0 && y > height - bottomRadius) {
+        const qreal dy = y - (height - bottomRadius);
+        inset = bottomRadius - std::sqrt(std::max(
+            0.0, bottomRadius * bottomRadius - dy * dy));
+    }
+
+    const qreal rowWidth = std::max(0.0, width - inset * 2.0);
+    return QPointF((inset + normalizedU * rowWidth) / width, normalizedV);
 }
 
 }
@@ -96,6 +131,8 @@ void DockWindowAnimationEffect::reconfigure(ReconfigureFlags flags)
     // Keep the Dock animation independent from KWin's legacy scale duration.
     m_minimizeDuration = std::clamp(group.readEntry("GenieDuration", 300), 160, 1200);
     m_restoreDuration = std::clamp(group.readEntry("RestoreDuration", 200), 80, 1200);
+    m_morphStyle = group.readEntry("AnimationStyle", QStringLiteral("scale"))
+        == QLatin1String("genie") ? MorphStyle::Genie : MorphStyle::Scale;
 }
 
 QString DockWindowAnimationEffect::normalizedId(const QString &value) const
@@ -215,7 +252,9 @@ QString DockWindowAnimationEffect::status() const
         {QStringLiteral("openDuration"), m_openDuration},
         {QStringLiteral("minimizeDuration"), m_minimizeDuration},
         {QStringLiteral("restoreDuration"), m_restoreDuration},
-        {QStringLiteral("deformation"), QStringLiteral("direct-scale-and-fade")},
+        {QStringLiteral("deformation"), m_morphStyle == MorphStyle::Genie
+            ? QStringLiteral("water-drop-mesh-and-fade")
+            : QStringLiteral("direct-scale-and-fade")},
         {QStringLiteral("textureHandoff"), QStringLiteral("disabled")},
         {QStringLiteral("openAnimationCount"), static_cast<qint64>(m_openAnimationCount)},
         {QStringLiteral("minimizeAnimationCount"), static_cast<qint64>(m_minimizeAnimationCount)},
@@ -510,6 +549,77 @@ void DockWindowAnimationEffect::applyDockMorph(
     }
 }
 
+void DockWindowAnimationEffect::applyBottomGenie(
+    EffectWindow *window, const WindowAnimation &animation,
+    WindowQuadList &quads) const
+{
+    const QRectF geometry = window->frameGeometry();
+    const QRectF icon = animation.target.geometry;
+    const qreal timelineProgress = std::clamp(
+        animation.timeLine.value(), 0.0, 1.0);
+    const qreal motionProgress = std::pow(timelineProgress, 1.65);
+
+    // KWin's redirected window texture can include client decoration or
+    // shadow margins. Measure the actual quad bounds before making the grid,
+    // so position normalization is identical for CSD Electron windows and
+    // standard KDE-decorated windows.
+    QRectF sourceBounds;
+    for (const WindowQuad &quad : std::as_const(quads))
+        sourceBounds = sourceBounds.isNull()
+            ? QRectF(quad.bounds()) : sourceBounds.united(QRectF(quad.bounds()));
+    if (sourceBounds.width() <= 0.0 || sourceBounds.height() <= 0.0)
+        return;
+
+    // Lower rows arrive first while upper rows lag. The endpoint uses a 30%
+    // top radius and a 20% bottom radius, both measured from the shorter side.
+    quads = quads.makeGrid(40);
+    for (WindowQuad &quad : quads) {
+        for (int index = 0; index < 4; ++index) {
+            const qreal originalX = quad[index].x();
+            const qreal originalY = quad[index].y();
+            // WindowVertex::u/v are texture coordinates, not a reliable
+            // normalized location in the window. Derive mesh coordinates from
+            // positions so shadow/CSD quads and high-DPI textures cannot clamp
+            // whole rows or columns to one edge.
+            const qreal u = std::clamp(
+                (originalX - sourceBounds.left()) / sourceBounds.width(),
+                0.0, 1.0);
+            const qreal v = std::clamp(
+                (originalY - sourceBounds.top()) / sourceBounds.height(),
+                0.0, 1.0);
+            const qreal delay = (1.0 - v) * 0.36;
+            const qreal phase = std::clamp(
+                (motionProgress - delay) / std::max(0.001, 1.0 - delay),
+                0.0, 1.0);
+            const qreal verticalProgress = smoothStep(phase);
+            const qreal horizontalProgress = 1.0
+                - std::pow(1.0 - verticalProgress, 2.05);
+            const QPointF rounded = roundedRectCoordinate(
+                u, v, icon.size(), 0.30, 0.20);
+            const qreal targetX = icon.x() - geometry.x()
+                + icon.width() * rounded.x();
+            const qreal targetY = icon.y() - geometry.y()
+                + icon.height() * rounded.y();
+            qreal currentX = std::lerp(originalX, targetX,
+                                       horizontalProgress);
+
+            // Give the middle of the drop a small outward belly. Scaling each
+            // complete row around its moving centre preserves vertex ordering
+            // and cannot flip the mesh triangles.
+            const qreal rowCenterX = std::lerp(sourceBounds.center().x(),
+                icon.center().x() - geometry.x(), horizontalProgress);
+            const qreal outwardBulge = 0.12 * std::sin(
+                std::numbers::pi_v<qreal> * verticalProgress)
+                * std::sin(std::numbers::pi_v<qreal> * v);
+            currentX = rowCenterX
+                + (currentX - rowCenterX) * (1.0 + outwardBulge);
+            quad[index].setX(currentX);
+            quad[index].setY(std::lerp(originalY, targetY,
+                                       verticalProgress));
+        }
+    }
+}
+
 void DockWindowAnimationEffect::apply(EffectWindow *window, int mask,
                                        WindowPaintData &data,
                                        WindowQuadList &quads)
@@ -523,7 +633,11 @@ void DockWindowAnimationEffect::apply(EffectWindow *window, int mask,
     const qreal fadeProgress = smoothStep(
         (it->timeLine.value() - 0.80) / 0.20);
     data.multiplyOpacity(1.0 - fadeProgress);
-    applyDockMorph(window, *it, quads);
+    if (m_morphStyle == MorphStyle::Genie
+            && it->transition != Transition::Open)
+        applyBottomGenie(window, *it, quads);
+    else
+        applyDockMorph(window, *it, quads);
 }
 
 void DockWindowAnimationEffect::prePaintScreen(ScreenPrePaintData &data)

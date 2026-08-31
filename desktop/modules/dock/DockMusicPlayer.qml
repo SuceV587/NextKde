@@ -311,6 +311,77 @@ Item {
                 }
             }
         }
+
+        // ── Compact mode: cover + track metadata ───────────────────
+        // Keep the artwork's play/pause overlay as the direct control, while
+        // using the remaining width for a deliberately small now-playing
+        // readout. A long title scrolls by itself because the compact card
+        // has no room for the full-mode hover interaction.
+        Item {
+            id: compactTrackInfo
+            visible: widget.isCompact
+            width: Math.max(0, widget.contentWidth - widget.artSize
+                - musicRow.spacing)
+            height: widget.artSize
+            anchors.verticalCenter: parent.verticalCenter
+
+            Item {
+                id: compactTrackViewport
+                anchors.fill: parent
+                clip: true
+
+                property real scrollOffset: 0
+                readonly property string metadata: {
+                    const title = widget.player?.trackTitle ?? "No Track"
+                    const artist = widget.player?.trackArtist ?? ""
+                    const album = widget.player?.trackAlbum ?? ""
+                    return [title, artist, album].filter(function(part) {
+                        return part.length > 0
+                    }).join(" · ")
+                }
+
+                Text {
+                    id: compactTrackTitle
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: compactTrackViewport.metadata
+                    color: "white"
+                    font {
+                        pixelSize: Math.max(8,
+                            Math.round(widget.iconSize * 0.25))
+                        weight: Font.Bold
+                    }
+                    // The Row's spacing supplies the breathing room from the
+                    // cover. Keep short metadata naturally left-aligned there.
+                    x: width <= compactTrackViewport.width
+                        ? 0 : compactTrackViewport.scrollOffset
+                }
+
+                SequentialAnimation on scrollOffset {
+                    id: compactTrackScroll
+                    running: widget.isCompact
+                        && compactTrackTitle.width > compactTrackViewport.width
+                    loops: Animation.Infinite
+
+                    PauseAnimation { duration: 900 }
+                    NumberAnimation {
+                        from: 0
+                        to: -(compactTrackTitle.width
+                            - compactTrackViewport.width)
+                        duration: Math.max(800,
+                            (compactTrackTitle.width
+                                - compactTrackViewport.width) * 32)
+                        easing.type: Easing.Linear
+                    }
+                    PauseAnimation { duration: 650 }
+                    PropertyAction { value: 0 }
+
+                    onRunningChanged: {
+                        if (!running)
+                            compactTrackViewport.scrollOffset = 0
+                    }
+                }
+            }
+        }
     }
 
     // ═══════════════════════════════════════════════════════════

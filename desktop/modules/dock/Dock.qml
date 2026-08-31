@@ -7,7 +7,6 @@ import QtQuick
 Scope {
     id: root
 
-    property Component leadingAccessory: null
     property Component trailingAccessory: null
     property bool clockInInfoCarousel: false
 
@@ -26,7 +25,6 @@ Scope {
             property var modelData: null
             position: "bottom"
             screen: modelData
-            leadingAccessory: root.leadingAccessory
             trailingAccessory: root.trailingAccessory
             clockInInfoCarousel: root.clockInInfoCarousel
         }
@@ -37,7 +35,6 @@ Scope {
             property var modelData: null
             position: "left"
             screen: modelData
-            leadingAccessory: root.leadingAccessory
             trailingAccessory: root.trailingAccessory
             clockInInfoCarousel: root.clockInInfoCarousel
         }
@@ -48,7 +45,6 @@ Scope {
             property var modelData: null
             position: "right"
             screen: modelData
-            leadingAccessory: root.leadingAccessory
             trailingAccessory: root.trailingAccessory
             clockInInfoCarousel: root.clockInInfoCarousel
         }
