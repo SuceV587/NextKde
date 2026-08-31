@@ -1,6 +1,6 @@
 {
   "_comment": "Quickshell global shortcut table. Each entry becomes a KDE Command Shortcut: a .desktop file with X-KDE-GlobalAccel-CommandShortcut=true whose Exec runs `qs ipc call` against this configuration. KGlobalAccel owns the key grab, so conflicts are detected at install time against kglobalshortcutsrc and reported by the KDE shortcut settings UI.",
-  "command": "qs -p {config} ipc call {target} {action}",
+  "command": "{qs} -p {config} ipc call {target} {action}",
   "shortcuts": [
     {
       "id": "net.local.quickshell-launcher",
@@ -29,6 +29,20 @@
       "target": "overview",
       "action": "toggle",
       "default": "Meta+Tab"
+    },
+    {
+      "id": "net.local.quickshell-clipboard",
+      "description": "剪贴板历史",
+      "target": "quicksearch",
+      "action": "toggle clipboard",
+      "default": "Meta+V"
+    },
+    {
+      "id": "net.local.quickshell-show-desktop",
+      "description": "显示/返回桌面",
+      "target": "desktop",
+      "action": "toggle",
+      "default": "Meta+D"
     }
   ]
 }

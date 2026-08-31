@@ -1,9 +1,10 @@
 import Quickshell
 import Quickshell.Io
 import qs.desktop.modules.bar
+import qs.desktop.modules.common
 
-// Recreate the layer-shell window whenever KWin removes and re-adds outputs,
-// which is exactly what happens around a sleep/resume cycle on some systems.
+// Keep the layer-shell window on ScreenLifecycle's last real output while
+// KWin removes and re-adds outputs around a sleep/resume cycle.
 Scope {
     id: root
 
@@ -12,9 +13,7 @@ Scope {
     // Bridge system tray attention signals into desktop notifications.
     TrayNotificationBridge {}
 
-    readonly property var targetScreen: Quickshell.screens.length > 1
-        ? Quickshell.screens[1]
-        : (Quickshell.screens[0] ?? null)
+    readonly property var targetScreen: ScreenLifecycle.activeScreen
 
     // The global shortcut layer runs `qs ipc call control-center toggle`
     // (registered as a KDE Command Shortcut); the panel lives in BarWindow,
@@ -24,15 +23,10 @@ Scope {
         function toggle(): void { ControlCenterService.toggleRequested() }
     }
 
-    Variants {
-        // Keep the surface object alive so it can explicitly commit an
-        // exclusiveZone of zero before it is unmapped in integrated mode.
-        model: root.targetScreen ? [root.targetScreen] : []
-
-        BarWindow {
-            required property var modelData
-            screen: modelData
-            barEnabled: root.enabled
-        }
+    BarWindow {
+        screen: root.targetScreen
+        visible: root.enabled && ScreenLifecycle.outputAvailable
+            && root.targetScreen !== null
+        barEnabled: root.enabled
     }
 }

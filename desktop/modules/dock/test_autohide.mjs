@@ -19,7 +19,13 @@ function nearly(a, b, eps = 1e-6) {
 const S = { x: 0, y: 0, width: 1920, height: 1080, name: "DP-1" };
 const DIM = 260; // dock width for side, height for bottom — any plausible value
 
-// ── visibleDockRect: bottom / left / right ──
+// ── visibleDockRect: top / bottom / left / right ──
+{
+    const r = visibleDockRect(S, "top", 1920 - 30, 35, 15);
+    ok(nearly(r.x, 15), "top x = edgeMargin");
+    ok(nearly(r.y, 0), "top y = screen top");
+    ok(nearly(r.width, 1920 - 30) && nearly(r.height, 35), "top size");
+}
 {
     const r = visibleDockRect(S, "bottom", DIM, 60, 5);
     ok(nearly(r.x, (1920 - DIM) / 2), "bottom centred x");
@@ -119,6 +125,17 @@ const rel = releaseRect(base);
     ok(!hasConflict([edge], S, av, rel, false, "d1"), "release-ring not a fresh conflict");
     ok(hasConflict([edge], S, av, rel, true, "d1"), "hysteresis keeps active conflict in release ring");
 }
+// Top avoidance and conflict test
+{
+    const topBase = visibleDockRect(S, "top", 1920 - 30, 35, 15);
+    const topAv = avoidanceRect(topBase);
+    const topRel = releaseRect(topBase);
+    const winNearTop = win({ geometry: { x: 100, y: 10, width: 400, height: 300 } });
+    ok(hasConflict([winNearTop], S, topAv, topRel, false, "d1"), "window near top conflicts with top bar");
+    const winFarBottom = win({ geometry: { x: 100, y: 300, width: 400, height: 300 } });
+    ok(!hasConflict([winFarBottom], S, topAv, topRel, false, "d1"), "window at bottom does not conflict with top bar");
+}
+
 // A far-away window never conflicts.
 {
     const far = win({ geometry: { x: 100, y: 100, width: 300, height: 300 } });

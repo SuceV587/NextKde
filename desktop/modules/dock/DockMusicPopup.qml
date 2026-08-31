@@ -281,11 +281,11 @@ PopupWindow {
                 height: 11
                 radius: width / 2
                 color: ThemeService.foregroundColor
-                visible: popup.player?.canSeek && popup.safeLength > 0
+                visible: !!popup.player?.canSeek && popup.safeLength > 0
             }
             MouseArea {
                 anchors.fill: parent
-                enabled: popup.player?.canSeek && popup.safeLength > 0
+                enabled: !!popup.player?.canSeek && popup.safeLength > 0
                 cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onClicked: popup.seekAt(mouse.x)
                 onPositionChanged: {
@@ -405,8 +405,13 @@ PopupWindow {
         acceptedButtons: Qt.NoButton
     }
 
-    BackgroundEffect.blurRegion: RoundedBlurRegion {
-        item: surface
-        radius: surface.radius
+    BackgroundEffect.blurRegion: popup.visible ? musicPopupBlurHolder : null
+
+    Region {
+        id: musicPopupBlurHolder
+        RoundedBlurRegion {
+            item: surface
+            radius: surface.radius
+        }
     }
 }

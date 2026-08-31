@@ -409,11 +409,20 @@ int main(int argc, char *argv[])
     if (input.open(STDIN_FILENO, QIODevice::ReadOnly | QIODevice::Text)) {
         QSocketNotifier inputNotifier(STDIN_FILENO, QSocketNotifier::Read);
         QObject::connect(&inputNotifier, &QSocketNotifier::activated,
-                         [&input, &bridge]() {
+                         [&application, &input, &inputNotifier, &bridge]() {
             // QFile::canReadLine() does not fill its buffer for a pipe, so it
             // can stay false even after QSocketNotifier reported readable
             // data. The notifier guarantees this read will not block.
-            const QString command = QString::fromUtf8(input.readLine()).trimmed();
+            const QByteArray line = input.readLine();
+            if (line.isEmpty()) {
+                // The owning Quickshell instance closed its stdin pipe. Exit
+                // immediately so a crash-relaunched instance can claim the
+                // D-Bus service and rebuild its window model.
+                inputNotifier.setEnabled(false);
+                application.quit();
+                return;
+            }
+            const QString command = QString::fromUtf8(line).trimmed();
             if (!command.isEmpty())
                 bridge.Enqueue(command);
         });

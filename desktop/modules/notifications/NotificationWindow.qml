@@ -82,9 +82,14 @@ PanelWindow {
             }
         }
     }
-    BackgroundEffect.blurRegion: RoundedBlurRegion {
-        item: blurTrack
-        radius: 28
+    BackgroundEffect.blurRegion: (root.visible && blurTrackHeight.value > 0) ? notifBlurRegionHolder : null
+
+    Region {
+        id: notifBlurRegionHolder
+        RoundedBlurRegion {
+            item: blurTrack
+            radius: 28
+        }
     }
 
     ListView {
@@ -173,8 +178,11 @@ PanelWindow {
             readonly property bool isLow: (card.notification
                 ? card.notification.urgency : card._lastUrgency) === NotificationUrgency.Low
             readonly property bool expanded: !card.groupCollapsed && card.groupCount > 1
-            readonly property color foregroundColor: Qt.rgba(1, 1, 1, 0.96)
-            readonly property color textOutlineColor: Qt.rgba(0.05, 0.08, 0.12, 0.38)
+            readonly property color foregroundColor: ThemeService.foregroundColor
+            readonly property color textOutlineColor: ThemeService.isDark
+                ? Qt.rgba(0.05, 0.08, 0.12, 0.38)
+                : Qt.rgba(1, 1, 1, 0.50)
+            readonly property int textStyle: ThemeService.isDark ? Text.Outline : Text.Normal
             readonly property string iconSource: card.displayIconSource
 
             width: notificationList.width
@@ -186,10 +194,23 @@ PanelWindow {
             color: "transparent"
 
             // ---- backgrounds ----
-            // The card body is now rendered by KWin's glass effect (real
-            // liquid-glass blur + tint + edge lighting via blurRegion). We only
-            // keep a faint urgency tint so critical cards still read as red,
-            // plus the left accent bar and a hairline top edge for crispness.
+            // Frosted liquid glass backdrop adapting to theme
+            LiquidGlassSurface {
+                anchors.fill: parent
+                radius: card.radius
+                baseColor: ThemeService.isDark
+                    ? Qt.rgba(0.08, 0.09, 0.12, 0.38)
+                    : Qt.rgba(0.95, 0.95, 0.98, 0.55)
+                blurStrength: AppearanceTokens.glass.launcherBlur
+                liquidStrength: AppearanceTokens.glass.launcherLiquid
+                ambientPrimary: WallpaperPaletteService.primary
+                ambientSecondary: WallpaperPaletteService.secondary
+                ambientStrength: 0.35 * AppearanceTokens.glass.ambientMultiplier
+                border.width: 1
+                border.color: ThemeService.isDark
+                    ? Qt.rgba(1, 1, 1, 0.12)
+                    : Qt.rgba(0, 0, 0, 0.08)
+            }
 
             Rectangle {
                 anchors.fill: parent
@@ -201,7 +222,9 @@ PanelWindow {
                 anchors.fill: parent
                 radius: parent.radius
                 visible: card.isLow
-                color: Qt.rgba(0.04, 0.05, 0.08, 0.12)
+                color: ThemeService.isDark
+                    ? Qt.rgba(0.04, 0.05, 0.08, 0.12)
+                    : Qt.rgba(0, 0, 0, 0.04)
             }
             Rectangle {
                 visible: card.isCritical
@@ -215,7 +238,7 @@ PanelWindow {
                 y: 0.6
                 width: Math.max(0, parent.width - x * 2)
                 height: 1
-                color: Qt.rgba(1, 1, 1, 0.10)
+                color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.06)
             }
 
             // ---- close + auto-expire ----
@@ -261,7 +284,7 @@ PanelWindow {
                         ? card.displayAppName.slice(0, 1).toUpperCase()
                         : "•"
                     color: card.foregroundColor
-                    style: Text.Outline
+                    style: card.textStyle
                     styleColor: card.textOutlineColor
                     font { pixelSize: 16; bold: true }
                 }
@@ -300,7 +323,7 @@ PanelWindow {
                 width: badgeText.implicitWidth + 12
                 height: 18; radius: 9
                 anchors { right: closeButton.left; rightMargin: 8; top: parent.top; topMargin: 15 }
-                color: Qt.rgba(1, 1, 1, 0.16)
+                color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.08)
                 Text {
                     id: badgeText
                     anchors.centerIn: parent
@@ -339,7 +362,7 @@ PanelWindow {
                         ? (modelData.appName.length > 0 ? modelData.appName : "Notifications")
                         : card.displaySummary
                     color: card.foregroundColor
-                    style: Text.Outline
+                    style: card.textStyle
                     styleColor: card.textOutlineColor
                     font { pixelSize: 14; bold: true }
                     elide: Text.ElideRight
@@ -351,7 +374,7 @@ PanelWindow {
                     visible: !card.expanded && text.length > 0
                     text: card.displayBody
                     color: card.foregroundColor
-                    style: Text.Outline
+                    style: card.textStyle
                     styleColor: card.textOutlineColor
                     opacity: 0.78
                     font.pixelSize: 13
@@ -385,7 +408,7 @@ PanelWindow {
                                 ? modelData.summary
                                 : (modelData.appName || "")
                             color: card.foregroundColor
-                            style: Text.Outline
+                            style: card.textStyle
                             styleColor: card.textOutlineColor
                             font { pixelSize: 13; bold: true }
                             elide: Text.ElideRight
@@ -395,7 +418,7 @@ PanelWindow {
                             id: notifRowClose
                             text: "×"
                             color: card.foregroundColor
-                            style: Text.Outline
+                            style: card.textStyle
                             styleColor: card.textOutlineColor
                             opacity: notifRowCloseArea.containsMouse ? 0.9 : 0.45
                             font.pixelSize: 16
@@ -428,8 +451,8 @@ PanelWindow {
                             width: actionLabel.implicitWidth + 24
                             radius: 14
                             color: actionMouse.containsMouse
-                                ? Qt.rgba(1, 1, 1, 0.20)
-                                : Qt.rgba(1, 1, 1, 0.10)
+                                ? (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.20) : Qt.rgba(0, 0, 0, 0.10))
+                                : (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.05))
                             Text {
                                 id: actionLabel
                                 anchors.centerIn: parent
@@ -477,7 +500,7 @@ PanelWindow {
                     radius: 8
                     visible: !card.expanded
                         && card.notification && card.notification.hasInlineReply
-                    color: Qt.rgba(1, 1, 1, 0.08)
+                    color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.05)
                     TextInput {
                         id: replyInput
                         anchors { fill: parent; margins: 6 }
@@ -490,7 +513,7 @@ PanelWindow {
                             text: card.notification
                                 ? (card.notification.inlineReplyPlaceholder || "Reply…")
                                 : "Reply…"
-                            color: Qt.rgba(1, 1, 1, 0.40)
+                            color: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.40) : Qt.rgba(0, 0, 0, 0.40)
                             font.pixelSize: 13
                             anchors.fill: parent
                             verticalAlignment: Text.AlignVCenter
@@ -513,7 +536,7 @@ PanelWindow {
                 id: closeButton
                 text: "×"
                 color: card.foregroundColor
-                style: Text.Outline
+                style: card.textStyle
                 styleColor: card.textOutlineColor
                 opacity: 0.55
                 font.pixelSize: 22

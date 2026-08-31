@@ -29,7 +29,28 @@ PanelWindow {
     // to 1.0 so the transition reliably plays every time the window shows.
     property real contentRevealProgress: 0.0
     property bool gridEntranceActive: false
-    readonly property bool panelVisible: open && AppLauncherService.dockWidth > 0
+    readonly property bool panelVisible: open && (AppLauncherService.dockWidth > 0 || isFullscreenMode || isCenterMode)
+
+    readonly property string displayMode: AppLauncherConfigService.displayMode
+    readonly property real configIconSize: AppLauncherConfigService.iconSize
+    readonly property real configIconSpacing: AppLauncherConfigService.iconSpacing
+    readonly property real configFontSize: AppLauncherConfigService.fontSize
+    readonly property int resolvedFontWeight: {
+        const w = AppLauncherConfigService.fontWeight
+        if (w === "bold") return Font.Bold
+        if (w === "medium") return Font.Medium
+        return Font.Normal
+    }
+
+    readonly property bool isFullscreenMode: displayMode === "fullscreen"
+    readonly property bool isCenterMode: displayMode === "center"
+    readonly property bool isBottomMode: displayMode === "bottom"
+
+    // Automatically determine whether dark or light mode is active based on foreground color
+    readonly property bool isDark: {
+        const c = AppLauncherService.dockForegroundColor
+        return (c.r * 0.299 + c.g * 0.587 + c.b * 0.114) > 0.5
+    }
 
     // The card follows the Dock edge: bottom dock floats centered above the
     // dock, side docks float vertically centered beside it.
@@ -62,18 +83,23 @@ PanelWindow {
     readonly property real minimumLauncherWidth: screen ? Math.round(screen.width * 0.50) : 600
     readonly property real minimumLauncherHeight: 500
     readonly property bool usesMinimumSize: AppLauncherService.dockWidth < minimumLauncherWidth
-    // A fresh Dock can be narrow before windows/pinned apps appear. Do not let
-    // that transient Dock state make the independent app launcher unusable.
-    readonly property real launcherWidth: usesMinimumSize ? minimumLauncherWidth : AppLauncherService.dockWidth
-    // Bottom dock mirrors the dock width; side docks mirror the dock's
-    // vertical length instead (dockWidth carries the length along the dock's
-    // main axis), always keeping a usable minimum and never overflowing the
-    // output's vertical room.
-    readonly property real launcherHeight: !dockAtBottom
-        ? Math.min(Math.max(minimumLauncherHeight, AppLauncherService.dockWidth),
-            Math.round(screen.height * 0.85))
-        : (usesMinimumSize ? minimumLauncherHeight
-            : Math.round(screen.height * 0.50))
+    // Sizing depends on display mode: fullscreen fills screen, center floats
+    // with comfortable dialogue dimensions, bottom follows the Dock.
+    readonly property real launcherWidth: isFullscreenMode
+        ? (screen ? screen.width : 1920)
+        : (isCenterMode
+            ? (screen ? Math.min(Math.max(680, Math.round(screen.width * 0.65)), 1040) : 760)
+            : (usesMinimumSize ? minimumLauncherWidth : AppLauncherService.dockWidth))
+
+    readonly property real launcherHeight: isFullscreenMode
+        ? (screen ? screen.height : 1080)
+        : (isCenterMode
+            ? (screen ? Math.min(Math.max(520, Math.round(screen.height * 0.68)), 760) : 560)
+            : (!dockAtBottom
+                ? Math.min(Math.max(minimumLauncherHeight, AppLauncherService.dockWidth),
+                    Math.round(screen.height * 0.85))
+                : (usesMinimumSize ? minimumLauncherHeight
+                    : Math.round(screen.height * 0.50))))
     readonly property var applications: {
         // This window stays instantiated while hidden. Do not enumerate every
         // desktop entry or resolve its icon until the launcher is actually
@@ -730,9 +756,11 @@ PanelWindow {
             width: Math.min(460, Math.max(300, searchBar.width * 0.46))
             height: 35
             radius: height / 2
-            baseColor: Qt.rgba(0, 0, 0, 0.22)
+            baseColor: root.isDark ? Qt.rgba(0, 0, 0, 0.22) : Qt.rgba(1, 1, 1, 0.35)
             surfaceOpacity: 1.0
             materialDepth: 1.0
+            blurStrength: AppearanceConfigService.effectiveLauncherBlur
+            liquidStrength: AppearanceConfigService.effectiveLauncherLiquid
             ambientPrimary: WallpaperPaletteService.primary
             ambientSecondary: WallpaperPaletteService.secondary
             ambientStrength: 0.8
@@ -743,7 +771,7 @@ PanelWindow {
                 radius: fieldPill.radius
                 color: "transparent"
                 border.width: searchInput.activeFocus ? 1 : 0
-                border.color: Qt.rgba(1, 1, 1, 0.4)
+                border.color: root.isDark ? Qt.rgba(1, 1, 1, 0.4) : Qt.rgba(0, 0, 0, 0.25)
             }
         }
 
@@ -1044,10 +1072,10 @@ PanelWindow {
     // The same margin is applied at the top to clear the top bar; this also
     // makes the launcher's vertical centre line up with the Dock's centre
     // (the Dock lives in the bar-cleared area).
-    margins.top: AppLauncherService.barHeight
-    margins.bottom: root.dockAtBottom ? AppLauncherService.dockHeight + 15 : 0
-    margins.left: root.dockAtLeft ? AppLauncherService.dockHeight + 15 : 0
-    margins.right: root.dockAtRight ? AppLauncherService.dockHeight + 15 : 0
+    margins.top: root.isFullscreenMode ? 0 : AppLauncherService.barHeight
+    margins.bottom: root.isFullscreenMode ? 0 : (root.dockAtBottom ? AppLauncherService.dockHeight + 15 : 0)
+    margins.left: root.isFullscreenMode ? 0 : (root.dockAtLeft ? AppLauncherService.dockHeight + 15 : 0)
+    margins.right: root.isFullscreenMode ? 0 : (root.dockAtRight ? AppLauncherService.dockHeight + 15 : 0)
     implicitHeight: launcherHeight
 
     // The layer-shell surface spans the output so this catcher can dismiss
@@ -1061,6 +1089,10 @@ PanelWindow {
         enabled: root.open && !root.externalDialogOpen
         acceptedButtons: Qt.LeftButton
         onClicked: function (mouse) {
+            if (root.isFullscreenMode) {
+                AppLauncherService.hide();
+                return;
+            }
             const insideCard = mouse.x >= launcherRevealClip.x && mouse.x <= launcherRevealClip.x + launcherRevealClip.width && mouse.y >= launcherRevealClip.y && mouse.y <= launcherRevealClip.y + launcherRevealClip.height;
             if (!insideCard)
                 AppLauncherService.hide();
@@ -1071,32 +1103,47 @@ PanelWindow {
     // this clip every frame is precisely what used to exercise the artefact.
     Item {
         id: launcherRevealClip
-        anchors.horizontalCenter: root.dockAtBottom
+        anchors.fill: root.isFullscreenMode ? parent : undefined
+        anchors.centerIn: root.isCenterMode ? parent : undefined
+        anchors.horizontalCenter: (root.isBottomMode && root.dockAtBottom)
             ? parent.horizontalCenter : undefined
-        anchors.bottom: root.dockAtBottom ? parent.bottom : undefined
-        anchors.verticalCenter: root.dockAtBottom
-            ? undefined : parent.verticalCenter
-        anchors.left: root.dockAtLeft ? parent.left : undefined
-        anchors.right: root.dockAtRight ? parent.right : undefined
-        width: root.launcherWidth
-        height: root.launcherHeight
+        anchors.bottom: (root.isBottomMode && root.dockAtBottom) ? parent.bottom : undefined
+        anchors.verticalCenter: (root.isBottomMode && !root.dockAtBottom)
+            ? parent.verticalCenter : undefined
+        anchors.left: (root.isBottomMode && root.dockAtLeft) ? parent.left : undefined
+        anchors.right: (root.isBottomMode && root.dockAtRight) ? parent.right : undefined
+        width: root.isFullscreenMode ? parent.width : root.launcherWidth
+        height: root.isFullscreenMode ? parent.height : root.launcherHeight
         clip: true
 
         Item {
             id: launcherCard
-            width: root.launcherWidth
-            height: root.launcherHeight
-            anchors {
-                horizontalCenter: parent.horizontalCenter
-                bottom: parent.bottom
-            }
+            anchors.fill: parent
             enabled: root.open
             opacity: 1.0
 
             Item {
                 id: background
                 anchors.fill: parent
-                property real radius: 28
+                property real radius: root.isFullscreenMode ? 0 : 28
+
+                // Frosted liquid glass backdrop for the launcher card
+                LiquidGlassSurface {
+                    anchors.fill: parent
+                    radius: background.radius
+                    baseColor: root.isDark
+                        ? Qt.rgba(0.08, 0.09, 0.12, 0.35)
+                        : Qt.rgba(0.95, 0.95, 0.98, 0.45)
+                    blurStrength: AppearanceConfigService.effectiveLauncherBlur
+                    liquidStrength: AppearanceConfigService.effectiveLauncherLiquid
+                    ambientPrimary: WallpaperPaletteService.primary
+                    ambientSecondary: WallpaperPaletteService.secondary
+                    ambientStrength: 0.40 * AppearanceTokens.glass.ambientMultiplier
+                    border.width: root.isFullscreenMode ? 0 : 1
+                    border.color: root.isDark
+                        ? Qt.rgba(1, 1, 1, 0.12)
+                        : Qt.rgba(1, 1, 1, 0.60)
+                }
 
                 // This foreground layer deliberately excludes the backdrop
                 // material. Its animation cannot change the Wayland blur region.
@@ -1116,115 +1163,114 @@ PanelWindow {
                             yScale: 0.96 + 0.04 * root.contentRevealProgress
                         },
                         Translate {
-                            y: Math.round(200 * (1.0 - root.contentRevealProgress))
+                            y: Math.round((root.isFullscreenMode ? 60 : 200) * (1.0 - root.contentRevealProgress))
                         }
                     ]
 
-                    Item {
-                        id: header
-                        enabled: root.editingApplication === null
-                        // Float above the grid: the grid now fills the whole card and
-                        // scrolls beneath this header, so the header must stack over it
-                        // instead of pushing it down in the layout.
-                        z: 1
-                        anchors {
-                            top: parent.top
-                            left: parent.left
-                            right: parent.right
-                            topMargin: 14
-                            leftMargin: 22
-                            rightMargin: 22
-                        }
-                        height: 49
-
-                        // One continuous liquid band across the whole top: the search
-                        // field is centered inside it, and the flanking glass flows
-                        // with the same scrolling content, so there is no seam.
-                        LiquidSearchBar {
-                            id: searchBar
-                            sourceGrid: appGrid
-                            anchors {
-                                left: parent.left
-                                right: parent.right
-                                verticalCenter: parent.verticalCenter
-                            }
-                        }
-
-                        Rectangle {
-                            id: rootEditDoneButton
-                            width: 48
-                            height: 26
-                            radius: height / 2
-                            anchors {
-                                right: parent.right
-                                verticalCenter: parent.verticalCenter
-                            }
-                            // Keep this chrome independent from layout and animate
-                            // only its presentation. Edit-mode mechanics stay
-                            // instantaneous, while the visual state feels deliberate.
-                            visible: opacity > 0.01
-                            opacity: root.editMode ? 1.0 : 0.0
-                            scale: root.editMode ? 1.0 : 0.82
-                            Behavior on opacity {
-                                NumberAnimation {
-                                    duration: 140
-                                    easing.type: Easing.OutCubic
-                                }
-                            }
-                            Behavior on scale {
-                                NumberAnimation {
-                                    duration: 140
-                                    easing.type: Easing.OutCubic
-                                }
-                            }
-                            // WeChat's recognisable action green makes the persistent
-                            // editing state easy to spot on the translucent launcher.
-                            color: Qt.rgba(0.027, 0.753, 0.376, 1.0) // #07C160
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "完成"
-                                color: "white"
-                                font {
-                                    pixelSize: 13
-                                    weight: Font.Bold
-                                }
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: root.editMode
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.editMode = false
-                            }
-                        }
+                    MouseArea {
+                        id: fullscreenBgDismiss
+                        anchors.fill: parent
+                        z: 0
+                        enabled: root.isFullscreenMode && root.open && !root.externalDialogOpen
+                        acceptedButtons: Qt.LeftButton
+                        onClicked: AppLauncherService.hide()
                     }
 
-                    GridView {
-                        id: appGrid
-                        enabled: root.editingApplication === null
-                        // Align the grid's top with the liquid band's top so the
-                        // band's capture rect (y = 0) always lands inside the grid's
-                        // bounds - a stable, flicker-free lens. The Flickable
-                        // topMargin offsets the first row to just below the band (the
-                        // same on-screen spot it had before), so the band frosts the
-                        // empty margin at rest and frosts icons as they scroll up.
-                        anchors {
-                            top: parent.top
-                            left: parent.left
-                            right: parent.right
-                            bottom: parent.bottom
-                            margins: 18
-                            topMargin: 14
+                    Item {
+                        id: launcherContentArea
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: root.isFullscreenMode
+                            ? Math.min(1280, Math.max(680, parent.width - 96))
+                            : parent.width
+
+                        Item {
+                            id: header
+                            enabled: root.editingApplication === null
+                            z: 1
+                            anchors {
+                                top: parent.top
+                                left: parent.left
+                                right: parent.right
+                                topMargin: root.isFullscreenMode ? 32 : 14
+                                leftMargin: 22
+                                rightMargin: 22
+                            }
+                            height: 49
+
+                            LiquidSearchBar {
+                                id: searchBar
+                                sourceGrid: appGrid
+                                anchors {
+                                    left: parent.left
+                                    right: parent.right
+                                    verticalCenter: parent.verticalCenter
+                                }
+                            }
+
+                            Rectangle {
+                                id: rootEditDoneButton
+                                width: 48
+                                height: 26
+                                radius: height / 2
+                                anchors {
+                                    right: parent.right
+                                    verticalCenter: parent.verticalCenter
+                                }
+                                visible: opacity > 0.01
+                                opacity: root.editMode ? 1.0 : 0.0
+                                scale: root.editMode ? 1.0 : 0.82
+                                Behavior on opacity {
+                                    NumberAnimation {
+                                        duration: 140
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
+                                Behavior on scale {
+                                    NumberAnimation {
+                                        duration: 140
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
+                                color: Qt.rgba(0.027, 0.753, 0.376, 1.0)
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "完成"
+                                    color: "white"
+                                    font {
+                                        pixelSize: 13
+                                        weight: Font.Bold
+                                    }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: root.editMode
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.editMode = false
+                                }
+                            }
                         }
-                        topMargin: 57
-                        clip: true
-                        // Fill the launcher width with equal columns instead of
-                        // leaving a fixed-cell remainder at the right edge. The
-                        // minimum keeps the 60%-of-screen launcher five-wide.
-                        readonly property int columnCount: Math.max(5, Math.floor(width / 96))
-                        cellWidth: width > 0 ? width / columnCount : 96
-                        cellHeight: Math.max(106, Math.round(cellWidth * 1.06))
-                        model: root.open ? root.filteredApplications : []
+
+                        GridView {
+                            id: appGrid
+                            enabled: root.editingApplication === null
+                            anchors {
+                                top: parent.top
+                                left: parent.left
+                                right: parent.right
+                                bottom: parent.bottom
+                                margins: 18
+                                topMargin: root.isFullscreenMode ? 32 : 14
+                            }
+                            topMargin: root.isFullscreenMode ? 75 : 57
+                            clip: true
+                            readonly property real targetCellWidth: root.configIconSize + root.configIconSpacing * 2
+                            readonly property int columnCount: Math.max(4, Math.floor(width / Math.max(68, targetCellWidth)))
+                            cellWidth: width > 0 ? width / columnCount : targetCellWidth
+                            cellHeight: Math.max(88, Math.round(root.configIconSize + root.configFontSize * 2 + 24))
+                            model: root.open ? root.filteredApplications : []
 
                         delegate: Item {
                             id: appDelegate
@@ -1304,9 +1350,9 @@ PanelWindow {
                             Rectangle {
                                 id: appCard
                                 anchors.centerIn: parent
-                                width: 82
-                                height: 96
-                                radius: 13
+                                width: Math.round(root.configIconSize + 30)
+                                height: Math.round(root.configIconSize + 44)
+                                radius: Math.max(10, Math.round(root.configIconSize * 0.25))
                                 color: root.folderMergeArmed && root.folderMergeTargetKey === root._itemKey(modelData) ? Qt.rgba(0.36, 0.68, 1, 0.30) : (root.folderMergeTargetKey === root._itemKey(modelData) ? Qt.rgba(0.36, 0.68, 1, 0.14) : (root.keyboardSelectionActive && index === root.selectedIndex ? Qt.rgba(1, 1, 1, 0.18) : (appMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent")))
                                 border.width: root.folderMergeTargetKey === root._itemKey(modelData) ? 1 : 0
                                 border.color: Qt.rgba(0.36, 0.68, 1, root.folderMergeTargetKey === root._itemKey(modelData) ? 0.20 + root.folderMergeProgress * 0.42 : 0)
@@ -1357,8 +1403,8 @@ PanelWindow {
 
                                 AppIcon {
                                     visible: modelData.type === "app"
-                                    width: 52
-                                    height: 52
+                                    width: root.configIconSize
+                                    height: root.configIconSize
                                     anchors {
                                         top: parent.top
                                         horizontalCenter: parent.horizontalCenter
@@ -1379,21 +1425,15 @@ PanelWindow {
                                 // matching the folder dialog material language.
                                 LiquidGlassSurface {
                                     visible: modelData.type === "folder"
-                                    width: 52
-                                    height: 52
+                                    width: root.configIconSize
+                                    height: root.configIconSize
                                     anchors {
                                         top: parent.top
                                         horizontalCenter: parent.horizontalCenter
                                         topMargin: 8
                                     }
-                                    radius: 12
-                                    // Translucent glass absorbing the wallpaper hue,
-                                    // like the iOS folder tile: the material's top
-                                    // reflection and edge lines stay, but the body
-                                    // picks up ambient colour so it reads as a liquid
-                                    // lens over the blurred backdrop rather than a
-                                    // flat dark plate.
-                                    baseColor: Qt.rgba(0, 0, 0, 0.20)
+                                    radius: Math.max(8, Math.round(root.configIconSize * 0.23))
+                                    baseColor: root.isDark ? Qt.rgba(0, 0, 0, 0.20) : Qt.rgba(1, 1, 1, 0.35)
                                     surfaceOpacity: 1.0
                                     materialDepth: 1.0
                                     ambientPrimary: WallpaperPaletteService.primary
@@ -1403,20 +1443,17 @@ PanelWindow {
                                     Grid {
                                         anchors {
                                             top: parent.top
-                                            topMargin: 6
+                                            topMargin: Math.max(3, Math.round(root.configIconSize * 0.115))
                                             horizontalCenter: parent.horizontalCenter
                                         }
                                         columns: 3
-                                        // Always fill top-to-bottom by rows. With all
-                                        // nine apps, 12×3 + 2×2 leaves an even 6px
-                                        // inset inside the 52px folder tile.
-                                        spacing: 2
+                                        spacing: Math.max(1, Math.round(root.configIconSize * 0.04))
                                         Repeater {
                                             model: modelData.type === "folder" ? modelData.apps.slice(0, 9) : []
                                             delegate: AppIcon {
                                                 required property var modelData
-                                                width: 12
-                                                height: 12
+                                                width: Math.max(8, Math.round(root.configIconSize * 0.23))
+                                                height: width
                                                 source: modelData.icon
                                                 opacityMultiplier: ConfigService.iconMode === "color" ? 1.0 : ConfigService.iconOpacity
                                                 saturation: ConfigService.iconSaturation
@@ -1427,28 +1464,26 @@ PanelWindow {
                                     }
                                 }
 
-                                // Preserve the uninterrupted glass surface. A subtle
-                                // dark outline gives the white label contrast over
-                                // changing wallpaper colours without a visible plate.
+                                // Clean, crisp typography without muddy outlines.
                                 Text {
                                     id: appName
                                     anchors {
                                         top: parent.top
-                                        topMargin: 65
+                                        topMargin: root.configIconSize + 13
                                         horizontalCenter: parent.horizontalCenter
                                     }
-                                    width: Math.min(72, implicitWidth)
+                                    width: Math.min(Math.round(root.configIconSize + Math.max(24, root.configFontSize * 3)), implicitWidth)
                                     text: modelData.type === "folder" ? modelData.name : modelData.app.name
                                     color: AppLauncherService.dockForegroundColor
-                                    style: Text.Outline
-                                    styleColor: Qt.rgba(0, 0, 0, 0.38)
+                                    style: Text.Normal
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                     elide: Text.ElideRight
                                     wrapMode: Text.NoWrap
                                     font {
-                                        pixelSize: 11
-                                        weight: Font.Bold
+                                        pixelSize: root.configFontSize
+                                        weight: root.resolvedFontWeight
+                                        letterSpacing: 0.3
                                     }
                                 }
 
@@ -1574,6 +1609,7 @@ PanelWindow {
                         opacity: 0.55
                         font.pixelSize: 14
                     }
+                }
 
                     // Folder contents live in a centered modal rather than replacing
                     // the root grid. This preserves spatial context and keeps its
@@ -1606,9 +1642,10 @@ PanelWindow {
                         LiquidGlassSurface {
                             id: folderDialog
                             // The dialog is a true square whose side follows 80% of
-                            // launcher height. Launcher width is always >= 60% of
-                            // screen width, so this remains safely inside the surface.
-                            width: root.launcherHeight * 0.80
+                            // launcher height (or capped in fullscreen).
+                            width: root.isFullscreenMode
+                                ? Math.min(560, root.launcherHeight * 0.72)
+                                : root.launcherHeight * 0.80
                             height: width
                             anchors.centerIn: parent
                             opacity: root.folderDialogOpen ? 1 : 0
@@ -1617,7 +1654,7 @@ PanelWindow {
                             // Translucent over the launcher's blur region: the folder
                             // reads as liquid glass rising out of the wallpaper, with
                             // the material's top reflection and inset edge lines.
-                            baseColor: Qt.rgba(0.06, 0.07, 0.10, 0.55)
+                            baseColor: root.isDark ? Qt.rgba(0.06, 0.07, 0.10, 0.55) : Qt.rgba(0.95, 0.95, 0.97, 0.65)
                             surfaceOpacity: 0.98
                             materialDepth: 1.2
 
@@ -1779,9 +1816,10 @@ PanelWindow {
                                     margins: 18
                                 }
                                 clip: true
-                                readonly property int columnCount: Math.max(3, Math.floor(width / 96))
-                                cellWidth: width > 0 ? width / columnCount : 96
-                                cellHeight: Math.max(100, Math.round(cellWidth * 1.08))
+                                readonly property real folderTargetCellWidth: root.configIconSize + root.configIconSpacing * 2
+                                readonly property int columnCount: Math.max(3, Math.floor(width / Math.max(68, folderTargetCellWidth)))
+                                cellWidth: width > 0 ? width / columnCount : folderTargetCellWidth
+                                cellHeight: Math.max(88, Math.round(root.configIconSize + root.configFontSize * 2 + 24))
                                 model: root.displayedFolder ? root.displayedFolder.apps : []
 
                                 delegate: Item {
@@ -1842,44 +1880,41 @@ PanelWindow {
                                     Rectangle {
                                         id: folderAppCard
                                         anchors.centerIn: parent
-                                        width: 82
-                                        height: 92
+                                        width: Math.round(root.configIconSize + 30)
+                                        height: Math.round(root.configIconSize + root.configFontSize * 2 + 14)
                                         // Keep the remove button above the delegate's
                                         // full-card MouseArea, otherwise that area
                                         // consumes its click before the button sees it.
                                         z: 1
-                                        radius: 13
+                                        radius: Math.max(10, Math.round(root.configIconSize * 0.25))
                                         color: folderAppMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
                                         rotation: 0
                                         SequentialAnimation {
-                                            id: folderEditWiggle
+                                            id: folderWiggleAnimation
                                             running: root.folderEditMode && !folderAppDelegate.manipulating
                                             loops: Animation.Infinite
+                                            alwaysRunToEnd: false
                                             NumberAnimation {
                                                 target: folderAppCard
                                                 property: "rotation"
-                                                from: -2.2
-                                                to: 2.2
-                                                duration: 110
+                                                from: (index % 2 === 0) ? -1.8 : 1.8
+                                                to: (index % 2 === 0) ? 1.8 : -1.8
+                                                duration: (index % 3 === 0) ? 140 : 160
                                                 easing.type: Easing.InOutSine
                                             }
                                             NumberAnimation {
                                                 target: folderAppCard
                                                 property: "rotation"
-                                                from: 2.2
-                                                to: -2.2
-                                                duration: 110
+                                                from: (index % 2 === 0) ? 1.8 : -1.8
+                                                to: (index % 2 === 0) ? -1.8 : 1.8
+                                                duration: (index % 3 === 0) ? 140 : 160
                                                 easing.type: Easing.InOutSine
-                                            }
-                                            onRunningChanged: {
-                                                if (!running)
-                                                    folderAppCard.rotation = 0;
                                             }
                                         }
 
                                         AppIcon {
-                                            width: 52
-                                            height: 52
+                                            width: root.configIconSize
+                                            height: root.configIconSize
                                             anchors {
                                                 top: parent.top
                                                 horizontalCenter: parent.horizontalCenter
@@ -1895,20 +1930,20 @@ PanelWindow {
                                         Text {
                                             anchors {
                                                 top: parent.top
-                                                topMargin: 65
+                                                topMargin: root.configIconSize + 13
                                                 horizontalCenter: parent.horizontalCenter
                                             }
-                                            width: Math.min(72, implicitWidth)
+                                            width: Math.min(Math.round(root.configIconSize + Math.max(24, root.configFontSize * 3)), implicitWidth)
                                             text: modelData.name
                                             color: AppLauncherService.dockForegroundColor
-                                            style: Text.Outline
-                                            styleColor: Qt.rgba(0, 0, 0, 0.38)
+                                            style: Text.Normal
                                             horizontalAlignment: Text.AlignHCenter
                                             elide: Text.ElideRight
                                             wrapMode: Text.NoWrap
                                             font {
-                                                pixelSize: 11
-                                                weight: Font.Bold
+                                                pixelSize: root.configFontSize
+                                                weight: root.resolvedFontWeight
+                                                letterSpacing: 0.3
                                             }
                                         }
 
@@ -2330,7 +2365,14 @@ PanelWindow {
     // BackgroundEffect is a Wayland window attachment, so it belongs to this
     // PanelWindow root. The blur region is fixed at full card size. It never
     // scales or fades — only the foreground content animates on open.
-    BackgroundEffect.blurRegion: RoundedBlurRegion {
+    BackgroundEffect.blurRegion: (root.visible
+        && (AppearanceConfigService.effectiveLauncherBlur > 0.005
+            || AppearanceConfigService.effectiveLauncherLiquid > 0.005))
+        ? launcherBlurRegion
+        : null
+
+    RoundedBlurRegion {
+        id: launcherBlurRegion
         item: launcherRevealClip
         radius: background.radius
     }

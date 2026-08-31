@@ -3,7 +3,7 @@ import QtQuick
 
 // Shared owner for the per-card control-center windows.
 //
-// The control center is nine independent PopupWindows (one per card) so each
+// The control center is nine independent popup surfaces (one per card) so each
 // card gets its own compositor-level blur (see ControlCenterCard.qml). Without
 // one shared owner those windows fight over placement and focus - the same
 // problem the dock solved with DockModelService.activeDockPopup. This object
@@ -17,12 +17,10 @@ import QtQuick
 QtObject {
     id: coordinator
 
-    // ── Shared popup-anchor coordinate space ──
     property Item cardAnchor: null
     property int gridWidth: 336
-    // Shift the visible card grid inside the transparent positioning popup.
-    // The original layout has 20px outer padding on every side; the host edge
-    // shift removes only the padding facing the Dock.
+    // Shift the card grid away from the Dock edge while preserving the
+    // original anchor's output selection and compositor clamping.
     property int cardOffsetX: 0
     property int cardOffsetY: 0
 
@@ -44,6 +42,7 @@ QtObject {
     // the compositor doesn't have to map nine surfaces in one frame (which
     // causes churn/flicker) and the entrance reads as a subtle cascade.
     property bool open: false
+    property bool suspended: false
     property int _openingIndex: -1
 
     function openAll() {
@@ -58,6 +57,7 @@ QtObject {
 
     function closeAll() {
         open = false
+        suspended = false
         _openingIndex = -1
         for (const card of cards)
             card.cardShown = false

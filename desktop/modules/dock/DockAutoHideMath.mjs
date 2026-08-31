@@ -10,9 +10,17 @@ export function round(value) {
     return Math.round(value);
 }
 
-// ── §7.1 Static fully-visible dock rectangle ──
+// ── §7.1 Static fully-visible dock/bar rectangle ──
 // Logical coordinates throughout; never multiply by devicePixelRatio.
 export function visibleDockRect(screenRect, position, dockWidth, dockHeight, edgeMargin) {
+    if (position === "top") {
+        return {
+            x: screenRect.x + edgeMargin,
+            y: screenRect.y,
+            width: dockWidth,
+            height: dockHeight
+        };
+    }
     if (position === "bottom") {
         return {
             x: screenRect.x + (screenRect.width - dockWidth) / 2,

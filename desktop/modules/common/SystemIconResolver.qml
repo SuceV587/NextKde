@@ -82,6 +82,23 @@ QtObject {
             return variant === "checked"
                 ? ["radio-checked-symbolic", "radio-checked"]
                 : ["radio-symbolic", "radio"]
+        case "lock":
+            return ["system-lock-screen-symbolic", "system-lock-screen", "lock-symbolic", "lock"]
+        case "suspend":
+        case "sleep":
+            return ["system-suspend-symbolic", "system-suspend", "system-suspend-hibernate", "sleep"]
+        case "hibernate":
+            return ["system-suspend-hibernate-symbolic", "system-suspend-hibernate", "system-hibernate"]
+        case "reboot":
+        case "restart":
+            return ["system-reboot-symbolic", "system-reboot", "system-restart-symbolic", "system-restart"]
+        case "powerOff":
+        case "shutdown":
+            return ["system-shutdown-symbolic", "system-shutdown", "system-log-out-symbolic", "system-log-out"]
+        case "switchUser":
+            return ["system-switch-user-symbolic", "system-switch-user", "user-switch-symbolic", "user-switch", "user-identity", "system-users"]
+        case "logout":
+            return ["system-log-out-symbolic", "system-log-out", "application-exit"]
         default:
             // A caller may pass a standard icon name as its role while a new
             // semantic role is being introduced. It still goes through the

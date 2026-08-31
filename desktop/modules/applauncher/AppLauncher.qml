@@ -1,9 +1,10 @@
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import qs.desktop.modules.common
 
-// Independent module root. It follows the same output-recreation pattern as
-// Dock and QuickSearch, but has no import back into qs.desktop.modules.dock.
+// Independent module root. Its lazy window follows the shared real-output
+// lifecycle without importing back into qs.desktop.modules.dock.
 Scope {
     id: root
 
@@ -26,9 +27,7 @@ Scope {
     // of those resources. Instantiate it when opened and release it shortly
     // after close, once the compositor has processed the visibility change.
     property bool windowLoaded: root.open
-    readonly property var targetScreen: Quickshell.screens.length > 1
-        ? Quickshell.screens[1]
-        : (Quickshell.screens[0] ?? null)
+    readonly property var targetScreen: ScreenLifecycle.activeScreen
     onOpenChanged: {
         console.log("[AppLauncher] root open=" + open)
         if (open) {
@@ -58,22 +57,16 @@ Scope {
         }
     }
 
-    Variants {
-        id: launcherVariants
-        model: root.targetScreen ? [root.targetScreen] : []
-        onModelChanged: console.log("[AppLauncher] variants model changed"
-            + " target=" + !!root.targetScreen)
-
-        Loader {
-            id: launcherWindowLoader
-            required property var modelData
-
-            active: root.windowLoaded
-            sourceComponent: Component {
-                AppLauncherWindow {
-                    screen: launcherWindowLoader.modelData
-                    open: root.open
-                }
+    Loader {
+        id: launcherWindowLoader
+        // Keep an already-open launcher instantiated while outputs disappear.
+        // Only its mapped state is suppressed; destroying the Loader here
+        // would reintroduce the suspend-time QQuickItem cleanup path.
+        active: root.windowLoaded && root.targetScreen !== null
+        sourceComponent: Component {
+            AppLauncherWindow {
+                screen: root.targetScreen
+                open: root.open && ScreenLifecycle.outputAvailable
             }
         }
     }

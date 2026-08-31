@@ -35,8 +35,17 @@ Item {
         onClicked: root.panelToggleRequested()
     }
     PopupWindow {
+        id: controlCenterTooltip
         visible: hoverArea.containsMouse && !root.panelOpen
         implicitWidth: 92; implicitHeight: 26; color: "transparent"
+
+        Connections {
+            target: ScreenLifecycle
+            function onOutputAvailableChanged() {
+                if (!ScreenLifecycle.outputAvailable)
+                    controlCenterTooltip.visible = false
+            }
+        }
         anchor {
             item: root
             edges: !root.dockHosted ? Edges.Bottom

@@ -8,6 +8,7 @@ import qs.desktop.modules.quicksearch
 import qs.desktop.modules.notifications
 import qs.desktop.modules.applauncher
 import qs.desktop.modules.deskcenter
+import qs.desktop.modules.overview
 import qs.desktop.modules.common
 
 Item {
@@ -22,6 +23,11 @@ Item {
             dockHosted: true
             dockEdge: ConfigService.position
         }
+    }
+
+    Component {
+        id: integratedSideClock
+        SideDockClockStatus {}
     }
 
     // Theme watching is non-visual and only loads a tiny FileView. The
@@ -101,24 +107,46 @@ Item {
 
         function snapshot(): string {
             return JSON.stringify({
-                blurStrength: AppearanceConfigService.blurStrength,
-                liquidStrength: AppearanceConfigService.liquidStrength,
+                globalBlurStrength: AppearanceConfigService.globalBlurStrength,
+                globalLiquidStrength: AppearanceConfigService.globalLiquidStrength,
+                effectiveDockBlur: AppearanceConfigService.effectiveDockBlur,
+                effectiveDockLiquid: AppearanceConfigService.effectiveDockLiquid,
+                effectiveBarBlur: AppearanceConfigService.effectiveBarBlur,
+                effectiveBarLiquid: AppearanceConfigService.effectiveBarLiquid,
+                effectiveLauncherBlur:
+                    AppearanceConfigService.effectiveLauncherBlur,
+                effectiveLauncherLiquid:
+                    AppearanceConfigService.effectiveLauncherLiquid,
+                blurStrength: AppearanceConfigService.globalBlurStrength,
+                liquidStrength: AppearanceConfigService.globalLiquidStrength,
                 shellStyle: AppearanceConfigService.shellStyle,
                 barIntegratedWithDock:
                     AppearanceConfigService.barIntegratedWithDock,
+                barVisibilityMode: AppearanceConfigService.barVisibilityMode,
+                barLayoutMode: AppearanceConfigService.barLayoutMode,
                 dockWindowAnimationStyle:
                     AppearanceConfigService.dockWindowAnimationStyle,
                 tokenVersion: AppearanceTokens.version,
             })
         }
 
+        function updateGlobalBlurStrength(value: real): string {
+            AppearanceConfigService.updateGlobalBlurStrength(value)
+            return snapshot()
+        }
+
+        function updateGlobalLiquidStrength(value: real): string {
+            AppearanceConfigService.updateGlobalLiquidStrength(value)
+            return snapshot()
+        }
+
         function updateBlurStrength(value: real): string {
-            AppearanceConfigService.updateBlurStrength(value)
+            AppearanceConfigService.updateGlobalBlurStrength(value)
             return snapshot()
         }
 
         function updateLiquidStrength(value: real): string {
-            AppearanceConfigService.updateLiquidStrength(value)
+            AppearanceConfigService.updateGlobalLiquidStrength(value)
             return snapshot()
         }
 
@@ -132,6 +160,16 @@ Item {
             return snapshot()
         }
 
+        function updateBarVisibilityMode(mode: string): string {
+            AppearanceConfigService.updateBarVisibilityMode(mode)
+            return snapshot()
+        }
+
+        function updateBarLayoutMode(mode: string): string {
+            AppearanceConfigService.updateBarLayoutMode(mode)
+            return snapshot()
+        }
+
         function updateDockWindowAnimationStyle(style: string): string {
             AppearanceConfigService.updateDockWindowAnimationStyle(style)
             return snapshot()
@@ -139,6 +177,46 @@ Item {
 
         function resetStrengths(): string {
             AppearanceConfigService.resetStrengths()
+            return snapshot()
+        }
+    }
+
+    // AppLauncher settings endpoint for standalone Settings app and IPC clients.
+    IpcHandler {
+        target: "applauncher-settings"
+
+        function snapshot(): string {
+            return JSON.stringify({
+                displayMode: AppLauncherConfigService.displayMode,
+                iconSize: AppLauncherConfigService.iconSize,
+                iconSpacing: AppLauncherConfigService.iconSpacing,
+                fontSize: AppLauncherConfigService.fontSize,
+                fontWeight: AppLauncherConfigService.fontWeight,
+            })
+        }
+
+        function updateDisplayMode(mode: string): string {
+            AppLauncherConfigService.updateDisplayMode(mode)
+            return snapshot()
+        }
+
+        function updateIconSize(size: real): string {
+            AppLauncherConfigService.updateIconSize(size)
+            return snapshot()
+        }
+
+        function updateIconSpacing(spacing: real): string {
+            AppLauncherConfigService.updateIconSpacing(spacing)
+            return snapshot()
+        }
+
+        function updateFontSize(size: real): string {
+            AppLauncherConfigService.updateFontSize(size)
+            return snapshot()
+        }
+
+        function updateFontWeight(weight: string): string {
+            AppLauncherConfigService.updateFontWeight(weight)
             return snapshot()
         }
     }
@@ -158,12 +236,28 @@ Item {
         id: quickSearch
     }
     AppLauncher {}
+    Overview {}
+    IpcHandler {
+        target: "desktop"
+        function toggle(): void { WindowService.toggleShowDesktop() }
+        function show(): void { WindowService.toggleShowDesktop() }
+    }
     NotificationCenter {}
     DeskCenter {}
-    Bar { enabled: !shell.barIntegratedWithDock }
+    // Do not briefly map the standalone Bar with the default setting and then
+    // hide it while its tray delegates are still being constructed. Qt 6.11
+    // can crash while cleaning that incomplete QQuickWindow scene. Wait for
+    // the persisted integration choice before making the Bar visible.
+    Bar {
+        enabled: AppearanceConfigService.ready
+            && !shell.barIntegratedWithDock
+    }
     Dock {
         clockInInfoCarousel: shell.barIntegratedWithDock
             && ConfigService.position === "bottom"
+        leadingAccessory: shell.barIntegratedWithDock
+            && ConfigService.position !== "bottom"
+            ? integratedSideClock : null
         trailingAccessory: shell.barIntegratedWithDock
             ? integratedBarStatus : null
     }
