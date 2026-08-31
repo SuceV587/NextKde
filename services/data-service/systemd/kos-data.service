@@ -1,0 +1,13 @@
+[Unit]
+Description=KOS shared data service
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/libexec/kos-data-service
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
