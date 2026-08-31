@@ -26,7 +26,7 @@
 
 ## 2. 架构与模块设计
 
-### 2.1 碰撞与数学模型 (`desktop/modules/dock/DockAutoHideMath.mjs` / `desktop/modules/bar/BarAutoHideMath.mjs`)
+### 2.1 碰撞与数学模型 (`shell/desktop/modules/dock/DockAutoHideMath.mjs` / `shell/desktop/modules/bar/BarAutoHideMath.mjs`)
 - **静态完全可见包围盒 (`visibleBarRect`)**：
   ```js
   visibleBarRect(screenRect, barHeight, edgeMargin) = {
@@ -43,7 +43,7 @@
   - 过滤最小化窗口、非当前工作区窗口及尺寸为 0 的异常窗口。
   - 当前屏幕全屏窗口（`isFullscreen`）无条件触发冲突。
 
-### 2.2 状态机控制器 (`desktop/modules/bar/BarAutoHideController.qml`)
+### 2.2 状态机控制器 (`shell/desktop/modules/bar/BarAutoHideController.qml`)
 - **生命周期阶段**：
   - `Bootstrapping` -> `Shown` / `Hidden`（启动静默判断，避免开机闪烁）
   - `Shown` -> `HidePending` (延时 300ms) -> `Hiding` (动画向上平移) -> `Hidden`
@@ -52,7 +52,7 @@
 - **单值动画派生**：
   - 由唯一的 `revealProgress` (0.0 ~ 1.0) 派生 `offsetY = -(1 - revealProgress) * (barHeight + 2)`、`opacity = 0.2 + 0.8 * revealProgress`。
 
-### 2.3 窗口层与输入裁切 (`desktop/modules/bar/BarWindow.qml`)
+### 2.3 窗口层与输入裁切 (`shell/desktop/modules/bar/BarWindow.qml`)
 - **Exclusive Zone**：
   - `exclusiveZone = (mode === "always" && barEnabled) ? barHeight : 0`
 - **触顶隐形热区**：
@@ -60,7 +60,7 @@
 - **Mask 遮罩**：
   - 仅将 `barContentRegion` 与 `topHoverRegion` 纳入 Wayland Mask，透明空白区穿透至底层客户端窗口。
 
-### 2.4 配置持久化与 IPC (`desktop/modules/common/AppearanceConfigService.qml` & `DesktopEnvironment.qml`)
+### 2.4 配置持久化与 IPC (`shell/desktop/modules/common/AppearanceConfigService.qml` & `DesktopEnvironment.qml`)
 - `AppearanceConfigService` 新增 `barVisibilityMode: "always" | "smart" | "persistent"`，默认 `"always"`。
 - 保存至 `$XDG_STATE_HOME/quickshell/appearance/config.json`。
 - `appearance-settings` IPC 新增 `updateBarVisibilityMode(mode: string)` 与快照字段。
@@ -75,7 +75,7 @@
 
 1. **单元测试**：
    - 扩展 `test_autohide.mjs`，增加顶部 Bar 区域碰撞计算、入场/退场回差测试用例。
-   - 运行 `node desktop/modules/dock/test_autohide.mjs` 确保全部用例通过。
+   - 运行 `node shell/desktop/modules/dock/test_autohide.mjs` 确保全部用例通过。
 2. **QML 语法与静态检查**：
    - 运行 `git diff --check` 和 `qmllint` 验证无语法及属性绑定问题。
 3. **集成与运行时验证 (Verify Skill)**：

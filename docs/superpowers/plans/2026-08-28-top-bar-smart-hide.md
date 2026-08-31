@@ -6,7 +6,7 @@
 
 **Architecture:**
 1. 扩展 `DockAutoHideMath.mjs` 算法支持顶部区域碰撞计算与 8px/16px 进退滞后回差。
-2. 新建 `desktop/modules/bar/BarAutoHideController.qml` 状态机控制器，管理生命周期阶段、延迟定时器与单值 `revealProgress` 驱动的位移与渐变。
+2. 新建 `shell/desktop/modules/bar/BarAutoHideController.qml` 状态机控制器，管理生命周期阶段、延迟定时器与单值 `revealProgress` 驱动的位移与渐变。
 3. 重构 `BarWindow.qml`：在智能/持续隐藏模式下动态管理 `exclusiveZone = 0`，加入顶部 2px 触顶感应带与 Wayland input mask 裁切。
 4. 在 `AppearanceConfigService`、`DesktopEnvironment` IPC 与 `kos-settings` 增加 `barVisibilityMode` 配置持久化与界面控制。
 
@@ -24,8 +24,8 @@
 ### Task 1: 扩展碰撞与数学模型并增加测试 (`DockAutoHideMath.mjs` & `test_autohide.mjs`)
 
 **Files:**
-- Modify: `desktop/modules/dock/DockAutoHideMath.mjs:13-39`
-- Modify: `desktop/modules/dock/test_autohide.mjs:20-40`
+- Modify: `shell/desktop/modules/dock/DockAutoHideMath.mjs:13-39`
+- Modify: `shell/desktop/modules/dock/test_autohide.mjs:20-40`
 
 **Interfaces:**
 - Consumes: `screenRect`, `position`, `dockWidth`, `dockHeight`, `edgeMargin`
@@ -55,7 +55,7 @@
 
 - [ ] **Step 2: 运行测试验证失败**
 
-Run: `node desktop/modules/dock/test_autohide.mjs`
+Run: `node shell/desktop/modules/dock/test_autohide.mjs`
 Expected: FAIL on `top position`
 
 - [ ] **Step 3: 在 `DockAutoHideMath.mjs` 中实现 `position === "top"` 逻辑**
@@ -98,13 +98,13 @@ export function visibleDockRect(screenRect, position, dockWidth, dockHeight, edg
 
 - [ ] **Step 4: 运行测试验证通过**
 
-Run: `node desktop/modules/dock/test_autohide.mjs`
+Run: `node shell/desktop/modules/dock/test_autohide.mjs`
 Expected: `ALL PASS`
 
 - [ ] **Step 5: 提交更改**
 
 ```bash
-git -c core.quotepath=false add desktop/modules/dock/DockAutoHideMath.mjs desktop/modules/dock/test_autohide.mjs
+git -c core.quotepath=false add shell/desktop/modules/dock/DockAutoHideMath.mjs shell/desktop/modules/dock/test_autohide.mjs
 git -c core.quotepath=false commit -m "feat(dock): support top edge in DockAutoHideMath and add unit tests"
 ```
 
@@ -113,8 +113,8 @@ git -c core.quotepath=false commit -m "feat(dock): support top edge in DockAutoH
 ### Task 2: 在 `AppearanceConfigService` 与 `DesktopEnvironment` 中扩展配置与 IPC
 
 **Files:**
-- Modify: `desktop/modules/common/AppearanceConfigService.qml`
-- Modify: `desktop/DesktopEnvironment.qml`
+- Modify: `shell/desktop/modules/common/AppearanceConfigService.qml`
+- Modify: `shell/desktop/DesktopEnvironment.qml`
 
 **Interfaces:**
 - Consumes: Config directory path, IPC messages from Settings app
@@ -166,7 +166,7 @@ git -c core.quotepath=false commit -m "feat(dock): support top edge in DockAutoH
 - [ ] **Step 3: 运行语法检查并提交**
 
 ```bash
-git -c core.quotepath=false add desktop/modules/common/AppearanceConfigService.qml desktop/DesktopEnvironment.qml
+git -c core.quotepath=false add shell/desktop/modules/common/AppearanceConfigService.qml shell/desktop/DesktopEnvironment.qml
 git -c core.quotepath=false commit -m "feat(config): add barVisibilityMode to AppearanceConfigService and IPC endpoint"
 ```
 
@@ -175,18 +175,18 @@ git -c core.quotepath=false commit -m "feat(config): add barVisibilityMode to Ap
 ### Task 3: 实现顶栏状态控制器 (`BarAutoHideController.qml`)
 
 **Files:**
-- Create: `desktop/modules/bar/BarAutoHideController.qml`
-- Modify: `desktop/modules/bar/qmldir`
+- Create: `shell/desktop/modules/bar/BarAutoHideController.qml`
+- Modify: `shell/desktop/modules/bar/qmldir`
 
 **Interfaces:**
 - Consumes: `mode`, `configReady`, `windowDataReady`, `targetScreen`, `barHeight`, `edgeMargin`, `pointerInsideBar`, `popupOpen`, `launcherOpen`
 - Produces: `revealProgress`, `hidden`, `offsetY`, `barOpacity`, `handleEntered()`, `handleExited()`, `handleClicked()`, `requestReveal(reason, holdMs)`
 
-- [ ] **Step 1: 创建 `desktop/modules/bar/BarAutoHideController.qml`**
+- [ ] **Step 1: 创建 `shell/desktop/modules/bar/BarAutoHideController.qml`**
 
 实现完整状态机（`Bootstrapping`, `Shown`, `HidePending`, `Hiding`, `Hidden`, `RevealPending`, `Showing`, `Held`），复用 `DockAnimation` 的延迟时长和缓动曲线，单值驱动 `revealProgress`。
 
-- [ ] **Step 2: 在 `desktop/modules/bar/qmldir` 中注册 `BarAutoHideController`**
+- [ ] **Step 2: 在 `shell/desktop/modules/bar/qmldir` 中注册 `BarAutoHideController`**
 
 ```
 BarAutoHideController 1.0 BarAutoHideController.qml
@@ -195,7 +195,7 @@ BarAutoHideController 1.0 BarAutoHideController.qml
 - [ ] **Step 3: 提交控制器组件**
 
 ```bash
-git -c core.quotepath=false add desktop/modules/bar/BarAutoHideController.qml desktop/modules/bar/qmldir
+git -c core.quotepath=false add shell/desktop/modules/bar/BarAutoHideController.qml shell/desktop/modules/bar/qmldir
 git -c core.quotepath=false commit -m "feat(bar): add BarAutoHideController state machine"
 ```
 
@@ -204,8 +204,8 @@ git -c core.quotepath=false commit -m "feat(bar): add BarAutoHideController stat
 ### Task 4: 组装 `BarWindow.qml` 与 `BarStatusArea.qml` 交互集成
 
 **Files:**
-- Modify: `desktop/modules/bar/BarWindow.qml`
-- Modify: `desktop/modules/bar/BarStatusArea.qml`
+- Modify: `shell/desktop/modules/bar/BarWindow.qml`
+- Modify: `shell/desktop/modules/bar/BarStatusArea.qml`
 
 **Interfaces:**
 - Consumes: `BarAutoHideController`, `AppearanceConfigService.barVisibilityMode`
@@ -239,7 +239,7 @@ git -c core.quotepath=false commit -m "feat(bar): add BarAutoHideController stat
 - [ ] **Step 3: 检查语法并提交**
 
 ```bash
-git -c core.quotepath=false add desktop/modules/bar/BarWindow.qml desktop/modules/bar/BarStatusArea.qml
+git -c core.quotepath=false add shell/desktop/modules/bar/BarWindow.qml shell/desktop/modules/bar/BarStatusArea.qml
 git -c core.quotepath=false commit -m "feat(bar): integrate auto-hide controller, touch-top trigger and input masking into BarWindow"
 ```
 
@@ -313,10 +313,10 @@ git -c core.quotepath=false commit -m "feat(settings): add Bar visibility mode s
 ### Task 6: 完整验证与系统测试
 
 **Files:**
-- Test: `desktop/modules/dock/test_autohide.mjs`
+- Test: `shell/desktop/modules/dock/test_autohide.mjs`
 
 - [ ] **Step 1: 运行全量单元测试**
-Run: `node desktop/modules/dock/test_autohide.mjs`
+Run: `node shell/desktop/modules/dock/test_autohide.mjs`
 Expected: `ALL PASS`
 
 - [ ] **Step 2: 运行代码规范与 git 检查**

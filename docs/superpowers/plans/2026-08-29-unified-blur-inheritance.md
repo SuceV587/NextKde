@@ -24,9 +24,9 @@
 ### Task 1: 核心外观配置模型与语义 Token (AppearanceConfigService & AppearanceTokens)
 
 **Files:**
-- Modify: `desktop/modules/common/AppearanceConfigService.qml`
-- Modify: `desktop/modules/common/AppearanceTokens.qml`
-- Test: `desktop/modules/common/test_appearance_config.mjs`
+- Modify: `shell/desktop/modules/common/AppearanceConfigService.qml`
+- Modify: `shell/desktop/modules/common/AppearanceTokens.qml`
+- Test: `shell/desktop/modules/common/test_appearance_config.mjs`
 
 **Interfaces:**
 - Produces:
@@ -54,17 +54,17 @@
   - `AppearanceConfigService.updateLauncherLiquidStrength(real)`
 
 - [ ] **Step 1: 编写测试脚本验证配置升级与计算逻辑**
-  创建 `desktop/modules/common/test_appearance_config.mjs` 测试 schema 升级与 effective 属性计算。
+  创建 `shell/desktop/modules/common/test_appearance_config.mjs` 测试 schema 升级与 effective 属性计算。
 
 - [ ] **Step 2: 运行测试验证失败**
-  `node desktop/modules/common/test_appearance_config.mjs`
+  `node shell/desktop/modules/common/test_appearance_config.mjs`
 
 - [ ] **Step 3: 实现 `AppearanceConfigService.qml` (schema v5) 与 `AppearanceTokens.qml`**
   实现字段持久化、保存、加载、有效值计算方法以及向后兼容映射。
 
 - [ ] **Step 4: 运行测试验证通过**
-  `node desktop/modules/common/test_appearance_config.mjs`
-  `qmllint desktop/modules/common/AppearanceConfigService.qml desktop/modules/common/AppearanceTokens.qml`
+  `node shell/desktop/modules/common/test_appearance_config.mjs`
+  `qmllint shell/desktop/modules/common/AppearanceConfigService.qml shell/desktop/modules/common/AppearanceTokens.qml`
 
 - [ ] **Step 5: 提交代码**
   `git -c core.quotepath=false commit -m "feat(appearance): implement unified blur and inheritance configuration model"`
@@ -74,7 +74,7 @@
 ### Task 2: IPC 协议与 C++ Settings Bridge 扩展
 
 **Files:**
-- Modify: `desktop/DesktopEnvironment.qml`
+- Modify: `shell/desktop/DesktopEnvironment.qml`
 - Modify: `apps/settings/src/main.cpp`
 - Test: `apps/settings/build` (CMake build)
 
@@ -85,7 +85,7 @@
   - C++ `SettingsBridge::appearanceSnapshot()` 包含新字段
   - C++ `SettingsBridge` 提供 `updateDockBlurStrength`, `updateDockLiquidStrength`, `updateBarBlurInherit`, `updateBarBlurStrength`, `updateBarLiquidStrength`, `updateLauncherBlurInherit`, `updateLauncherBlurStrength`, `updateLauncherLiquidStrength`
 
-- [ ] **Step 1: 扩展 `desktop/DesktopEnvironment.qml` 中的 `appearance-settings` IpcHandler**
+- [ ] **Step 1: 扩展 `shell/desktop/DesktopEnvironment.qml` 中的 `appearance-settings` IpcHandler**
   增加全套参数 snapshot 与更新函数。
 
 - [ ] **Step 2: 扩展 `apps/settings/src/main.cpp` C++ 桥接层**
@@ -102,9 +102,9 @@
 ### Task 3: 表面材质与窗口渲染对接 (LiquidGlassSurface, Bar, Launcher)
 
 **Files:**
-- Modify: `desktop/modules/common/LiquidGlassSurface.qml`
-- Modify: `desktop/modules/bar/BarWindow.qml`
-- Modify: `desktop/modules/applauncher/AppLauncherWindow.qml`
+- Modify: `shell/desktop/modules/common/LiquidGlassSurface.qml`
+- Modify: `shell/desktop/modules/bar/BarWindow.qml`
+- Modify: `shell/desktop/modules/applauncher/AppLauncherWindow.qml`
 
 **Interfaces:**
 - Consumes: Task 1 的 `AppearanceConfigService` effective 属性
@@ -123,8 +123,8 @@
   将启动台大卡片背景及搜索框使用 `LiquidGlassSurface` 并绑定 `AppearanceConfigService.effectiveLauncherLiquid`。
 
 - [ ] **Step 4: 静态检查与运行时校验**
-  `qmllint desktop/modules/common/LiquidGlassSurface.qml desktop/modules/bar/BarWindow.qml desktop/modules/applauncher/AppLauncherWindow.qml`
-  `timeout 3 quickshell --path /home/deadalux/Projects/NextKde --no-color`
+  `qmllint shell/desktop/modules/common/LiquidGlassSurface.qml shell/desktop/modules/bar/BarWindow.qml shell/desktop/modules/applauncher/AppLauncherWindow.qml`
+  `timeout 3 qs -p shell --no-color`
 
 - [ ] **Step 5: 提交代码**
   `git -c core.quotepath=false commit -m "feat(surfaces): connect Dock, Bar and AppLauncher to unified blur engine"`
@@ -158,13 +158,13 @@
 ### Task 5: 综合验证与回归测试 (Full Regression & Verification)
 
 - [ ] **Step 1: 运行所有单元测试**
-  `node desktop/modules/dock/test_adaptive.mjs && node desktop/modules/dock/test_autohide.mjs && node desktop/modules/common/test_appearance_config.mjs`
+  `node shell/desktop/modules/dock/test_adaptive.mjs && node shell/desktop/modules/dock/test_autohide.mjs && node shell/desktop/modules/common/test_appearance_config.mjs`
 
 - [ ] **Step 2: 运行所有 QML 文件的语法检查**
-  `qmllint desktop/modules/common/AppearanceConfigService.qml desktop/modules/bar/BarWindow.qml desktop/modules/applauncher/AppLauncherWindow.qml apps/settings/main.qml`
+  `qmllint shell/desktop/modules/common/AppearanceConfigService.qml shell/desktop/modules/bar/BarWindow.qml shell/desktop/modules/applauncher/AppLauncherWindow.qml apps/settings/main.qml`
 
 - [ ] **Step 3: 运行 Quickshell 运行时无崩溃加载测试**
-  `timeout 3 quickshell --path /home/deadalux/Projects/NextKde --no-color`
+  `timeout 3 qs -p shell --no-color`
 
 - [ ] **Step 4: 检查 git 变更完整性**
   `git -c core.quotepath=false status`
