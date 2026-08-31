@@ -168,23 +168,47 @@ QtObject {
     }
 
     function _setWindowItems(nextItems) {
-        while (svc.windowModel.count > nextItems.length)
-            svc.windowModel.remove(svc.windowModel.count - 1);
-
+        // Keep each ListModel row paired with its windowId. A plain index-by-
+        // index overwrite turns a newly inserted low-PID window into a source
+        // change for every following DockIcon; a burst of launches then makes
+        // many icons reload at once and briefly show their empty texture.
         for (let i = 0; i < nextItems.length; i++) {
             const item = nextItems[i];
             if (i >= svc.windowModel.count) {
                 svc.windowModel.append(item);
                 continue;
             }
+
             const row = svc.windowModel.get(i);
+            if (row.windowId !== item.windowId) {
+                let existingIndex = -1;
+                for (let candidate = i + 1;
+                        candidate < svc.windowModel.count; candidate++) {
+                    if (svc.windowModel.get(candidate).windowId === item.windowId) {
+                        existingIndex = candidate;
+                        break;
+                    }
+                }
+
+                if (existingIndex >= 0) {
+                    svc.windowModel.move(existingIndex, i, 1);
+                } else {
+                    svc.windowModel.insert(i, item);
+                    continue;
+                }
+            }
+
+            const stableRow = svc.windowModel.get(i);
             const keys = Object.keys(item);
             for (let j = 0; j < keys.length; j++) {
                 const key = keys[j];
-                if (row[key] !== item[key])
+                if (stableRow[key] !== item[key])
                     svc.windowModel.setProperty(i, key, item[key]);
             }
         }
+
+        while (svc.windowModel.count > nextItems.length)
+            svc.windowModel.remove(svc.windowModel.count - 1);
     }
 
     function _refreshPresentation() {

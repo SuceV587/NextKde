@@ -15,7 +15,7 @@ import qs.shared.qml.controls as LiquidControls
 // preserving the reference's two-column, pill-and-media-card hierarchy.
 //
 // PER-CARD INDEPENDENT GLASS: instead of one PopupWindow with a single blur
-// slab, each card is its own PanelWindow (ControlCenterCard) with its own
+// slab, each card is its own PopupWindow (ControlCenterCard) with its own
 // compositor blur region. KWin's blur is per-window, so each card blurs
 // exactly what is behind it (wallpaper AND open windows) and the gaps
 // between cards show the real desktop - the iOS "hollow" control center.
@@ -38,10 +38,10 @@ Item {
     // Bar reads this for sharedPanelOpen / toggle state.
     readonly property bool isOpen: coordinator.open
 
-    // The target screen (the bar's output). Cards live on the same screen.
-    readonly property var targetScreen: Quickshell.screens.length > 1
-        ? Quickshell.screens[1] : Quickshell.screens[0]
     readonly property int controlCenterHeight: 597
+    // Bounding box of the card grid. These describe the visible extents, not
+    // a separate background window.
+    readonly property int controlCenterWidth: 336
 
     // Compact counterpart to the Dock player's transport controls. It keeps
     // the same circular glass treatment but is sized for this small panel.
@@ -55,19 +55,45 @@ Item {
 
     ControlCenterCoordinator {
         id: coordinator
-        // Aligned with the Wi-Fi panel: the panel's top edge sits at the bar
-        // bottom (35) and its right edge is flushed to the screen right edge
-        // after SlideX clamping. panelRight=0 puts the control center's right
-        // edge at screen right - 20 (the rightmost cards use offsetRight=20),
-        // and panelTop=35 matches the Wi-Fi panel's top.
-        panelTop: panel.dockHosted && panel.targetScreen
-            ? Math.max(12, panel.targetScreen.height
-                - ConfigService.baseHeight
-                - AppearanceTokens.dock.edgeMargin
-                - panel.controlCenterHeight - 8)
-            : 35
-        panelRight: 0
-        anchorLeft: panel.dockHosted && panel.dockEdge === "left"
+        cardAnchor: positioningAnchor
+        gridWidth: panel.controlCenterWidth
+        cardOffsetX: !panel.dockHosted ? 0
+            : panel.dockEdge === "left" ? -20
+            : panel.dockEdge === "right" ? 20 : 0
+        cardOffsetY: panel.dockHosted && panel.dockEdge === "bottom" ? 20 : 0
+    }
+
+    // Invisible geometry oracle: this one popup anchors exactly like Wi-Fi,
+    // so Quickshell owns output selection, side placement and screen clamping.
+    // The real cards are separate popup surfaces anchored inside it.
+    PopupWindow {
+        id: positioningPopup
+        visible: panel.anchorItem !== null
+        implicitWidth: panel.controlCenterWidth
+        implicitHeight: panel.controlCenterHeight
+        color: "transparent"
+        grabFocus: false
+        mask: Region { width: 0; height: 0 }
+
+        anchor {
+            item: panel.anchorItem
+            edges: !panel.dockHosted ? Edges.Bottom
+                : panel.dockEdge === "left" ? Edges.Right
+                : panel.dockEdge === "right" ? Edges.Left : Edges.Top
+            gravity: !panel.dockHosted ? Edges.Bottom
+                : panel.dockEdge === "left" ? Edges.Right
+                : panel.dockEdge === "right" ? Edges.Left : Edges.Top
+            adjustment: PopupAdjustment.Slide
+            margins.top: 0
+            margins.bottom: panel.dockHosted ? 0 : -8
+            margins.left: 0
+            margins.right: 0
+        }
+
+        Item {
+            id: positioningAnchor
+            anchors.fill: parent
+        }
     }
 
     function toggle(item) {
@@ -626,7 +652,7 @@ Item {
         coordinator: coordinator
         managedByCoordinator: false
         offsetTop: 0
-        offsetRight: 20
+        offsetRight: 0
         cardRadius: 0
         cardWidth: 336
         cardHeight: 477

@@ -14,6 +14,8 @@ DockIcon 1.0 DockIcon.qml
 DockDivider 1.0 DockDivider.qml
 DockMusicPlayer 1.0 DockMusicPlayer.qml
 DockInfoCarousel 1.0 DockInfoCarousel.qml
+DockSideInfoCarousel 1.0 DockSideInfoCarousel.qml
+DockMetricGlyph 1.0 DockMetricGlyph.qml
 DockClockWidget 1.0 DockClockWidget.qml
 DockTemperatureWidget 1.0 DockTemperatureWidget.qml
 DockContextMenu 1.0 DockContextMenu.qml

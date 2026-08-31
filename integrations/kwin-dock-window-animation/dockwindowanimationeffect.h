@@ -60,6 +60,11 @@ private:
         Restore,
     };
 
+    enum class MorphStyle {
+        Scale,
+        Genie,
+    };
+
     struct Target {
         QString appId;
         QString windowId;
@@ -93,6 +98,8 @@ private:
                         Transition transition);
     void applyDockMorph(EffectWindow *window, const WindowAnimation &animation,
                         WindowQuadList &quads) const;
+    void applyBottomGenie(EffectWindow *window, const WindowAnimation &animation,
+                          WindowQuadList &quads) const;
     std::optional<Target> targetForWindow(EffectWindow *window) const;
     std::optional<Target> takePendingLaunchForWindow(EffectWindow *window);
     QStringList windowIdentityCandidates(EffectWindow *window) const;
@@ -107,6 +114,7 @@ private:
     int m_openDuration = 300;
     int m_minimizeDuration = 300;
     int m_restoreDuration = 200;
+    MorphStyle m_morphStyle = MorphStyle::Scale;
     quint64 m_openAnimationCount = 0;
     quint64 m_minimizeAnimationCount = 0;
     quint64 m_restoreAnimationCount = 0;
