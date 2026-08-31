@@ -15,6 +15,9 @@ QtObject {
         + "/.config/kdeglobals"
     property string activeTheme: ""
     property bool initialized: false
+    // Changes whenever KDE applies a different icon theme. Consumers use this
+    // to discard resolved icon paths without restarting all shell windows.
+    property int revision: 0
 
     function themeFromConfig(text) {
         const lines = String(text || "").split("\n")
@@ -45,7 +48,7 @@ QtObject {
         if (nextTheme === activeTheme)
             return
         activeTheme = nextTheme
-        reloadDelay.restart()
+        refreshDelay.restart()
     }
 
     // Accessing the singleton from shell.qml instantiates the FileView. Keep
@@ -69,16 +72,17 @@ QtObject {
         onTriggered: kdeGlobals.reload()
     }
 
-    property Timer _reloadDelay: Timer {
-        id: reloadDelay
-        // Let KDE finish applying the new theme before Quickshell resolves
-        // every IconImage against it.
+    property Timer _refreshDelay: Timer {
+        id: refreshDelay
+        // Let KDE finish applying the theme before consumers re-resolve every
+        // icon. A targeted revision avoids a shell-wide soft reload, which
+        // can retain stale Dock delegates while their windows are remapped.
         interval: 650
         repeat: false
         onTriggered: {
             console.log("[IconTheme] changed to " + service.activeTheme
-                + "; soft reloading shell")
-            Quickshell.reload(false)
+                + "; refreshing icon sources")
+            service.revision++
         }
     }
 }

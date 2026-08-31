@@ -1,21 +1,15 @@
 import Quickshell
+import qs.desktop.modules.common
 
 // A desktop surface is intentionally independent from application windows.
-// Variants recreates it when KWin removes or restores an output.
+// ScreenLifecycle temporarily hides it while KWin has no real output.
 Scope {
     id: root
 
-    readonly property var targetScreen: Quickshell.screens.length > 1 ? Quickshell.screens[1] : (Quickshell.screens[0] ?? null)
+    readonly property var targetScreen: ScreenLifecycle.activeScreen
 
-    Variants {
-        model: root.targetScreen ? [root.targetScreen] : []
-
-        DeskCenterWindow {
-            required property var modelData
-
-            screen: modelData
-        }
-
+    DeskCenterWindow {
+        screen: root.targetScreen
+        visible: ScreenLifecycle.outputAvailable && root.targetScreen !== null
     }
-
 }

@@ -67,6 +67,14 @@ Item {
     PopupWindow {
         id: tooltip
         visible: hoverArea.containsMouse && !root.sharedPanelOpen
+
+        Connections {
+            target: ScreenLifecycle
+            function onOutputAvailableChanged() {
+                if (!ScreenLifecycle.outputAvailable)
+                    tooltip.visible = false
+            }
+        }
         implicitWidth: Math.max(150, tooltipColumn.implicitWidth + 18)
         implicitHeight: tooltipColumn.implicitHeight + 14
         color: "transparent"

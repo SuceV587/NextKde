@@ -7,7 +7,7 @@ import QtQuick
 QtObject {
     id: tokens
 
-    readonly property int version: 4
+    readonly property int version: 5
     readonly property string style: AppearanceConfigService.shellStyle
     readonly property bool isWindows12: style === "windows12"
     readonly property bool isMacos: style === "macos"
@@ -71,8 +71,14 @@ QtObject {
     }
 
     readonly property QtObject glass: QtObject {
-        readonly property real blurStrength: AppearanceConfigService.blurStrength
-        readonly property real liquidStrength: AppearanceConfigService.liquidStrength
+        readonly property real dockBlur: AppearanceConfigService.effectiveDockBlur
+        readonly property real dockLiquid: AppearanceConfigService.effectiveDockLiquid
+        readonly property real barBlur: AppearanceConfigService.effectiveBarBlur
+        readonly property real barLiquid: AppearanceConfigService.effectiveBarLiquid
+        readonly property real launcherBlur: AppearanceConfigService.effectiveLauncherBlur
+        readonly property real launcherLiquid: AppearanceConfigService.effectiveLauncherLiquid
+        readonly property real blurStrength: dockBlur
+        readonly property real liquidStrength: dockLiquid
         readonly property real highlightMultiplier: tokens.isWindows12 ? 0.72
             : tokens.isMaterial ? 0.55 : 1.0
         readonly property real ambientMultiplier: tokens.isWindows12 ? 0.85

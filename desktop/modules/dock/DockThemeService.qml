@@ -38,7 +38,7 @@ QtObject {
     // Light palette
     // ═══════════════════════════════════════════════════
     readonly property color lightBg: Qt.rgba(0.95, 0.95, 0.97, 0.35)
-    readonly property color lightFg: Qt.rgba(0.08, 0.08, 0.12, 0.92)
+    readonly property color lightFg: "#000000"
     readonly property color lightAccent: Qt.rgba(0.0, 0.50, 0.90, 1.0)
     readonly property color lightDivider: Qt.rgba(0.0, 0.0, 0.0, 0.12)
     readonly property color lightTooltipBg: Qt.rgba(0.92, 0.92, 0.94, 0.95)

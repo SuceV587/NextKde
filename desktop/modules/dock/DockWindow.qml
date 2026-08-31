@@ -42,6 +42,7 @@ PanelWindow {
     // edge. Anchoring only top (without bottom) would let a side surface
     // collapse to the implicit thickness and become 0-height.
     property string position: "bottom"
+    property Component leadingAccessory: null
     property Component trailingAccessory: null
     property bool clockInInfoCarousel: false
     readonly property bool vertical: root.position === "left"
@@ -104,7 +105,16 @@ PanelWindow {
             : dockContainer.height + root.edgeMargin + root.workspaceGap)
         : 0
 
-    BackgroundEffect.blurRegion: Region {
+    // The custom KWin glass effect consumes this region for both backdrop
+    // blur and liquid refraction. Keep publishing it when either channel is
+    // active; gating only on blur makes a liquid-only Dock fully transparent.
+    BackgroundEffect.blurRegion: (root.visible
+        && (AppearanceConfigService.effectiveDockBlur > 0.005
+            || AppearanceConfigService.effectiveDockLiquid > 0.005))
+        ? dockBlurRegionHolder : null
+
+    Region {
+        id: dockBlurRegionHolder
         RoundedBlurRegion {
             id: glassRegion
             item: dockWrapper
@@ -153,6 +163,7 @@ PanelWindow {
             targetScreen: root.screen
             surfaceOriginX: root.surfaceGlobalX
             surfaceOriginY: root.surfaceGlobalY
+            leadingAccessory: root.leadingAccessory
             trailingAccessory: root.trailingAccessory
             clockInInfoCarousel: root.clockInInfoCarousel
         }

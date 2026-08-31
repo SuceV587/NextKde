@@ -148,9 +148,14 @@ PopupWindow {
     signal aboutToShow()
     signal aboutToHide()
 
-    BackgroundEffect.blurRegion: RoundedBlurRegion {
-        item: glass
-        radius: root.menuRadius
+    BackgroundEffect.blurRegion: root.visible ? contextMenuBlurHolder : null
+
+    Region {
+        id: contextMenuBlurHolder
+        RoundedBlurRegion {
+            item: glass
+            radius: root.menuRadius
+        }
     }
 
     LiquidGlassSurface {

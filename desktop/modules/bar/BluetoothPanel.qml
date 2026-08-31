@@ -40,7 +40,13 @@ PopupWindow {
     // list are visible through the glass. Stepped region encodes the radius
     // (top scanline at x=blurRadius) so the plugin rounds corners exactly.
     readonly property int blurRadius: Math.max(1, Math.min(20, Math.floor(300 / 2)))
-    BackgroundEffect.blurRegion: Region {
+    BackgroundEffect.blurRegion: (panel.visible
+        && (AppearanceConfigService.effectiveBarBlur > 0.005
+            || AppearanceConfigService.effectiveBarLiquid > 0.005))
+        ? bluetoothBlurRegionHolder : null
+
+    Region {
+        id: bluetoothBlurRegionHolder
         x: panel.blurRadius
         y: 0
         width: 300 - panel.blurRadius
@@ -64,6 +70,14 @@ PopupWindow {
         visible = false
     }
 
+    Connections {
+        target: ScreenLifecycle
+        function onOutputAvailableChanged() {
+            if (!ScreenLifecycle.outputAvailable)
+                panel.close()
+        }
+    }
+
     function openBluetoothSettings() {
         close()
         bluetoothSettingsProcess.running = true
@@ -83,15 +97,19 @@ PopupWindow {
         }
     }
 
-    Rectangle {
+    LiquidGlassSurface {
         id: surface
         anchors.fill: parent
-        radius: 20
-        // Transparent so the compositor blur region shows through - real
-        // liquid glass with windows visible behind the device list.
-        color: Qt.rgba(1, 1, 1, 0.08)
+        radius: panel.blurRadius
+        baseColor: ThemeService.backgroundColor
+        surfaceOpacity: 1.0
+        blurStrength: AppearanceConfigService.effectiveBarBlur
+        liquidStrength: AppearanceConfigService.effectiveBarLiquid
+        ambientPrimary: WallpaperPaletteService.primary
+        ambientSecondary: WallpaperPaletteService.secondary
+        ambientStrength: 0.35 * AppearanceTokens.glass.ambientMultiplier
         border.width: 1
-        border.color: Qt.rgba(0.74, 0.95, 1, 0.30)
+        border.color: ThemeService.isDark ? Qt.rgba(0.74, 0.95, 1, 0.30) : Qt.rgba(0, 0, 0, 0.10)
 
         ListView {
             id: deviceList

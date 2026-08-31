@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Remove the Quickshell Command Shortcuts registered by install.py.
 
-Deletes the .desktop launchers and their [services][...] sections from
-kglobalshortcutsrc, then reloads kglobalaccel so the key grabs are released.
+The DBus unregister runs first so the live daemon drops the components and
+saves kglobalshortcutsrc without them; afterwards the .desktop launchers and
+any remaining [services][...] sections are removed and the service restarted
+so the key grabs are released.
 
 Usage: python3 uninstall.py
 """
@@ -18,12 +20,29 @@ SHORTCUTS_RC = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser
 def main():
     with open(os.path.join(SCRIPT_DIR, "shortcuts.json"), encoding="utf-8") as f:
         table = json.load(f)
+
+    # Unregister in the live daemon first; it saves kglobalshortcutsrc as part
+    # of that, which would otherwise resurrect the sections removed below.
+    try:
+        import dbus
+        bus = dbus.SessionBus()
+        kg = bus.get_object("org.kde.kglobalaccel", "/kglobalaccel")
+        iface = dbus.Interface(kg, "org.kde.KGlobalAccel")
+        for entry in table["shortcuts"]:
+            desktop_name = entry["id"] + ".desktop"
+            iface.unregister(desktop_name, "_launch")
+            print(f"[global-shortcuts] DBus 释放: {desktop_name}")
+    except Exception as e:
+        print(f"[global-shortcuts] DBus 释放跳过/警告: {e}")
+
     removed_sections = set()
     for entry in table["shortcuts"]:
         desktop_path = os.path.join(APPS_DIR, entry["id"] + ".desktop")
         if os.path.exists(desktop_path):
             os.remove(desktop_path)
             print(f"[global-shortcuts] 删除 {desktop_path}")
+        removed_sections.add(f"[{entry['id'].replace('.', '_')}]")
+        removed_sections.add(f"[{entry['id']}.desktop]")
         removed_sections.add(f"[services][{entry['id']}.desktop]")
 
     try:

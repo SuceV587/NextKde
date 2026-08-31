@@ -33,7 +33,7 @@ QtObject {
     // Runtime values (backed by JSON when available)
     // ═══════════════════════════════════════════════════════════
     property real   baseHeight:   60
-    property string theme:        "dark"
+    property string theme:        "system"
     property string position:     "bottom"
     // Reserved strip of the top status bar. Side docks subtract it from the
     // screen height so their column cap never overlaps the bar. The bar reads
@@ -80,6 +80,8 @@ QtObject {
     // Dock show mode. Single mutually-exclusive enum: "always" | "smart" |
     // "persistent". Never store two booleans — that allows impossible states.
     property string visibilityMode: "always"
+    // Window grouping mode: "grouped" (macOS style - 1 icon per app) | "separate" (classic taskbar)
+    property string windowGrouping: "grouped"
     // Becomes true once config load finishes (success, missing file, or parse
     // error). The auto-hide controller waits on this before its first reveal
     // decision so a saved smart/persistent dock never flashes fully shown.
@@ -87,6 +89,10 @@ QtObject {
 
     function isValidIconMode(value) {
         return value === "color" || value === "grayscale" || value === "tint"
+    }
+
+    function isValidWindowGrouping(value) {
+        return value === "grouped" || value === "separate"
     }
 
     function isValidRgbColor(value) {
@@ -365,6 +371,8 @@ QtObject {
             iconTintColor:    svc.iconTintColor,
             // Show mode (v3)
             visibilityMode: svc.visibilityMode,
+            // Grouping mode (macOS style vs separate)
+            windowGrouping: svc.windowGrouping,
         }
         const json = JSON.stringify(obj, null, 2)
         console.log("[DockConfig] save requested path=" + svc.configPath
@@ -518,6 +526,14 @@ QtObject {
 
         if (obj.iconMode === undefined || obj.iconDuotoneShadowColor !== undefined)
             scheduleSave()
+        if (obj.windowGrouping !== undefined) {
+            if (isValidWindowGrouping(obj.windowGrouping)) {
+                svc.windowGrouping = obj.windowGrouping
+            } else {
+                console.warn("[DockConfig] invalid windowGrouping ignored")
+                scheduleSave()
+            }
+        }
         applyVisibilityMode(obj)
     }
 

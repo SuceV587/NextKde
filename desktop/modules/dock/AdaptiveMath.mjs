@@ -16,7 +16,9 @@ const DEFAULT_PROPORTIONS = {
     dividerWidth: 1,    // the ONLY fixed pixel value — a 1px hairline
 }
 const INFO_UNITS = 4        // shared music/weather slot width ≡ 4 icon squares
-const MIN_ICON_SIZE = 24
+// At the compact limit this yields a 25px Dock (18 × 1.4), which still fits
+// the integrated SysTray's 24px single-row touch cell without overflow.
+const MIN_ICON_SIZE = 18
 // This matches the Settings slider range. PanelWindow does not impose a
 // height cap; keeping the cap here makes the layout calculation authoritative.
 const MAX_DOCK_HEIGHT = 100
@@ -58,7 +60,8 @@ export function computeLayout(
     hasInfoSlot,
     availableLength,
     proportions = {},
-    maxLengthRatio = MAX_WIDTH_RATIO
+    maxLengthRatio = MAX_WIDTH_RATIO,
+    infoUnitsOverride = INFO_UNITS
 ) {
     const p = {
         vpad:    Number.isFinite(Number(proportions?.vpad))    ? Number(proportions.vpad)    : DEFAULT_PROPORTIONS.vpad,
@@ -70,7 +73,9 @@ export function computeLayout(
     const maxWidth = availableLength * maxLengthRatio
 
     // ── Determine right-side information section ──
-    const infoUnits = hasInfoSlot ? INFO_UNITS : 0
+    const requestedInfoUnits = Number(infoUnitsOverride)
+    const infoUnits = hasInfoSlot && Number.isFinite(requestedInfoUnits)
+        ? Math.max(0, requestedInfoUnits) : 0
     // Count only dividers that are actually visible. Reserving space for a
     // hidden boundary made sparse docks a few pixels wider than their content.
     const dividerCount = (pinnedCount > 0 && windowCount > 0 ? 1 : 0)
@@ -152,4 +157,4 @@ export function computeLayout(
     }
 }
 
-export { MAX_HEIGHT_RATIO, MAX_WIDTH_RATIO }
+export { MIN_ICON_SIZE, MAX_HEIGHT_RATIO, MAX_WIDTH_RATIO }

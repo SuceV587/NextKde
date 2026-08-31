@@ -19,7 +19,9 @@ Item {
         width: 24
         height: 24
         radius: width / 2
-        color: pointer.containsMouse ? Qt.rgba(1, 1, 1, 0.20) : "transparent"
+        color: pointer.containsMouse
+            ? (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.20) : Qt.rgba(0, 0, 0, 0.10))
+            : "transparent"
         Behavior on color { ColorAnimation { duration: 120 } }
     }
 

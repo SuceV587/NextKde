@@ -116,6 +116,9 @@ Item {
 
     signal activate()
     signal requestEdit()
+    // Emitted when a plain tap (not the press-and-hold that started editing)
+    // lands on the icon while editing; the owning surface ends its edit state.
+    signal requestEditExit()
     signal contextRequested()
     property bool _heldForEdit: false
     property real _windowHandoffOpacity: 1.0
@@ -271,15 +274,20 @@ Item {
 
     // ── Hover animation ──
     property bool _hovering: false
-    readonly property string _previewWindowId: {
-        // Pinned items may represent several windows. Start with the first;
-        // standalone window items already carry the exact ID.
+    readonly property var _appWindows: {
         WindowService.revision
-        if (icon.windowId)
-            return icon.windowId
-        const windows = WindowService.windowsForApp(icon.appId)
-        return windows.length > 0 ? windows[0].windowId : ""
+        if (icon.windowId) {
+            const win = WindowService.windowById(icon.windowId)
+            return win ? [win] : []
+        }
+        if (icon.appId)
+            return WindowService.windowsForApp(icon.appId)
+        return []
     }
+    readonly property bool _hasWindows: _appWindows.length > 0
+    readonly property string _previewWindowId: _hasWindows ? _appWindows[0].windowId : (icon.windowId || "")
+    readonly property int _effectiveWindowCount: _hasWindows ? _appWindows.length : (icon.isRunning ? 1 : 0)
+
     Behavior on scale {
         NumberAnimation {
             duration: DockAnimation.iconHoverDuration
@@ -289,24 +297,19 @@ Item {
 
     Timer {
         id: previewDelay
-        // Previews are intentionally deliberate: only a 1s dwell opens
-        // one, so ordinary pointer travel across the Dock remains quiet.
-        interval: 1000
+        // Previews dwell time: 600ms responsive hover
+        interval: 600
         repeat: false
         onTriggered: {
-            // A context menu owns the interaction for its icon. Do not let a
-            // hover timer replace it with a preview while the pointer moves
-            // between Dock icons to open another menu.
-            if (icon._hovering && icon._previewWindowId && !icon.editMode
+            if (icon._hovering && icon._hasWindows && !icon.editMode
                     && !DockModelService.activeContextMenu) {
                 console.log("[DockIcon] preview request app=" + icon.appId
-                    + " window=" + icon._previewWindowId);
+                    + " windowCount=" + icon._appWindows.length);
+                preview.appId = icon.appId
                 preview.windowId = icon._previewWindowId
                 preview.title = WindowService.windowById(icon._previewWindowId)?.title
                     ?? icon.displayName
-                // A thumbnail takes precedence over the context menu. Keeping
-                // both surfaces open would make their pointer/focus behavior
-                // ambiguous, especially when moving upward from the Dock.
+                preview.windows = icon._appWindows
                 DockModelService.openDockPopup(preview)
             } else if (icon._hovering && icon.isRunning) {
                 console.log("[DockIcon] preview skipped app=" + icon.appId
@@ -315,12 +318,12 @@ Item {
         }
     }
 
-    // The preview is a separate Wayland surface. Leave a small hand-off window
+    // The preview is a separate Wayland surface. Leave a comfortable hand-off window
     // after the pointer exits the icon so it can cross the anchor gap and enter
-    // the preview instead of the preview vanishing mid-move.
+    // the preview smoothly without premature dismissal.
     Timer {
         id: previewCloseDelay
-        interval: 240
+        interval: 480
         repeat: false
         onTriggered: {
             if (!icon._hovering && !preview.pointerInside)
@@ -455,6 +458,10 @@ Item {
         height: icon.iconSize
         anchors.centerIn: parent
         source: icon.iconSource || ""
+        // A newly opened window has no previous Dock texture to retain. Decode
+        // this small themed icon before its first frame instead of exposing an
+        // empty Image/ShaderEffect while several windows arrive together.
+        asynchronous: false
         visible: !icon.glyph
         rotation: icon.vertical ? -90 : 0
         transformOrigin: Item.Center
@@ -466,7 +473,7 @@ Item {
         // the whole DockIcon would clip the indicators past its edges.
         layer.enabled: true
         layer.smooth: true
-        
+
         // Icon appearance style from ConfigService
         opacityMultiplier: ConfigService.iconMode === "color"
             ? 1.0 : ConfigService.iconOpacity
@@ -490,36 +497,52 @@ Item {
         }
     }
 
-    // Style-driven running indicator: macOS uses a dot, Windows a longer
-    // underline, and Material a shorter tonal pill. Rotation of the content
-    // row naturally turns the line toward the attached edge on side docks.
-    Rectangle {
+    // Style-driven running indicator: macOS uses dots (single dot for 1 window,
+    // multi-dot for multiple windows), Windows a longer underline, and Material a shorter tonal pill.
+    Item {
         id: runningIndicator
-        width: icon.runningIndicatorWidth
+        width: indicatorRow.implicitWidth
         height: icon.runningIndicatorHeight
-        radius: width / 2
-        color: icon.dotIndicator ? Qt.rgba(1, 1, 1, 0.95)
-            : ThemeService.accentColor
-        border {
-            width: icon.dotIndicator ? 1 : 0
-            color: Qt.rgba(0, 0, 0, 0.40)
-        }
         opacity: icon.isRunning ? 1 : 0
         visible: opacity > 0.01
         z: 2
         anchors.horizontalCenter: iconImage.horizontalCenter
-        // Right dock: the dot's far (bottom) edge touches the icon's top
-        // edge, placing the dot above it — rendered on the screen-right
-        // side of the icon. All other docks: the dot's near (top) edge
-        // touches the icon's bottom edge, placing the dot below it.
         anchors.top: icon.vertical && icon.dockEdge === "right"
             ? undefined : iconImage.bottom
         anchors.bottom: icon.vertical && icon.dockEdge === "right"
             ? iconImage.top : undefined
         anchors.topMargin: icon.runningIndicatorGap
         anchors.bottomMargin: icon.runningIndicatorGap
+
         Behavior on opacity {
             NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+        }
+
+        Row {
+            id: indicatorRow
+            anchors.centerIn: parent
+            spacing: icon._effectiveWindowCount >= 3 ? 2 : 2.5
+
+            Repeater {
+                model: icon.dotIndicator
+                    ? Math.min(3, Math.max(1, icon._effectiveWindowCount))
+                    : 1
+                delegate: Rectangle {
+                    required property int index
+                    readonly property real dotSize: icon._effectiveWindowCount >= 3
+                        ? Math.max(3, icon.runningIndicatorWidth * 0.82)
+                        : icon.runningIndicatorWidth
+                    width: icon.dotIndicator ? dotSize : icon.runningIndicatorWidth
+                    height: icon.dotIndicator ? dotSize : icon.runningIndicatorHeight
+                    radius: width / 2
+                    color: icon.dotIndicator ? Qt.rgba(1, 1, 1, 0.95)
+                        : ThemeService.accentColor
+                    border {
+                        width: 0
+                        color: Qt.rgba(0, 0, 0, 0.40)
+                    }
+                }
+            }
         }
     }
 
@@ -555,10 +578,13 @@ Item {
         hoverEnabled: true
         acceptedButtons: (icon.showContextMenu || icon.customContextMenu)
             ? Qt.LeftButton | Qt.RightButton : Qt.LeftButton
-        // Normal clicks stay owned by the icon.  Once a long press enables dock
-        // edit mode, let the parent DragHandler take the pointer to reorder
-        // pinned apps; otherwise the wiggle animation starts but dragging cannot.
-        preventStealing: !icon.editMode
+        // Never resist pointer stealing: a deliberate drag must let the
+        // pinned delegate's DragHandler take the grab and reorder directly
+        // (macOS-style), not only after a long press enters edit mode. Plain
+        // clicks still complete here because the handler only steals after
+        // its drag threshold, which cancels this MouseArea instead of
+        // emitting clicked.
+        preventStealing: false
         cursorShape: Qt.PointingHandCursor
         onPressed: {
             icon._heldForEdit = false
@@ -578,11 +604,14 @@ Item {
             icon.requestEdit()
         }
         onClicked: function(mouse) {
-            // Persistent Dock editing is spatial manipulation, not app
-            // activation. A tap on a pinned icon during this mode must remain
-            // harmless so users can place several icons before tapping away.
-            if (icon.editMode)
+            // Dock editing is spatial manipulation, not app activation. The
+            // hold that started editing must not immediately end it, but any
+            // later plain tap on a dock icon finishes the session.
+            if (icon.editMode) {
+                if (!icon._heldForEdit)
+                    icon.requestEditExit()
                 return
+            }
             if (mouse.button === Qt.RightButton) {
                 if (icon.customContextMenu) {
                     icon.contextRequested()
@@ -608,10 +637,14 @@ Item {
                     contextMenu.addItem("", "激活窗口", "activate")
                     contextMenu.addItem("", "最小化", "minimize")
                     contextMenu.addItem("", "关闭窗口", "close")
+                    contextMenu.addItem("", "新建窗口", "new_window")
                     contextMenu.addItem(pinned ? "" : "",
                         pinned ? "取消固定" : "固定此应用", pinned ? "unpin" : "pin")
                 } else {
                     contextMenu.addItem("", "打开", "open")
+                    contextMenu.addItem("", "新建窗口", "new_window")
+                    if (icon.isRunning)
+                        contextMenu.addItem("", "关闭所有窗口", "close_all")
                     contextMenu.addItem(pinned ? "" : "",
                         pinned ? "取消固定" : "固定此应用", pinned ? "unpin" : "pin")
                 }
@@ -654,6 +687,14 @@ Item {
             switch (name) {
             case "open":
                 DockModelService.activateApp(icon.appId)
+                break
+            case "new_window":
+                DockModelService.launchNewWindow(icon.appId)
+                break
+            case "close_all":
+                const wins = WindowService.windowsForApp(icon.appId)
+                for (let i = 0; i < wins.length; i++)
+                    WindowService.closeWindow(wins[i].windowId)
                 break
             case "unpin":
                 AppActionService.unpin(icon.appId)

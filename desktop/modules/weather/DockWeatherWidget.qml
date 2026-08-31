@@ -8,6 +8,7 @@ Item {
     property int widthUnits: 4
     readonly property real backgroundGap: iconSize * 0.1
     readonly property real contentWidth: iconSize * widthUnits
+    readonly property bool compact: iconSize < 32
     function tone(color) {
         return ConfigService.styledDockColor(color)
     }
@@ -153,6 +154,7 @@ Item {
     Row {
         id: weatherRow
         anchors.centerIn: parent
+        visible: !widget.compact
         // Keep the telemetry column clear of the rounded right edge. Because
         // the row remains centred, this also shifts it gently left as a unit.
         width: widget.contentWidth - Math.round(widget.iconSize * 0.4)
@@ -177,11 +179,10 @@ Item {
             Text { width: parent.width; text: WeatherService.temperature; color: ThemeService.foregroundColor; font.pixelSize: Math.max(16, widget.iconSize * 0.42); font.weight: Font.Bold }
             Text { width: parent.width; text: WeatherService.cityName + " · " + WeatherService.conditionText(WeatherService.weatherCode); color: ThemeService.foregroundColor; opacity: 0.75; font.pixelSize: Math.max(9, widget.iconSize * 0.20); elide: Text.ElideRight }
         }
-        Rectangle {
+        // Preserve the original column split without drawing a visible rule.
+        Item {
             width: 1
             height: Math.round(widget.iconSize * 0.48)
-            anchors.verticalCenter: parent.verticalCenter
-            color: Qt.rgba(1, 1, 1, ThemeService.isDark ? 0.26 : 0.36)
         }
         Item { width: weatherRow.metricGapFiller; height: 1 }
         Column {
@@ -194,7 +195,7 @@ Item {
                 color: ThemeService.foregroundColor
                 opacity: 0.88
                 font.pixelSize: Math.max(8, widget.iconSize * 0.19)
-                horizontalAlignment: Text.AlignRight
+                horizontalAlignment: Text.AlignHCenter
             }
             Text {
                 width: parent.width
@@ -202,7 +203,41 @@ Item {
                 color: ThemeService.foregroundColor
                 opacity: 0.74
                 font.pixelSize: Math.max(8, widget.iconSize * 0.19)
-                horizontalAlignment: Text.AlignRight
+                horizontalAlignment: Text.AlignHCenter
+            }
+        }
+    }
+
+    Row {
+        anchors.centerIn: parent
+        visible: widget.compact
+        height: parent.height
+        spacing: Math.max(2, Math.round(widget.iconSize * 0.08))
+
+        Text {
+            text: WeatherService.conditionSymbol(WeatherService.weatherCode,
+                                                 WeatherService.isDay)
+            color: "white"
+            anchors.verticalCenter: parent.verticalCenter
+            font.pixelSize: Math.max(9, Math.round(widget.iconSize * 0.55))
+        }
+        Text {
+            text: WeatherService.temperature
+            color: "white"
+            anchors.verticalCenter: parent.verticalCenter
+            font {
+                pixelSize: Math.max(9, Math.round(widget.iconSize * 0.48))
+                weight: Font.DemiBold
+            }
+        }
+        Text {
+            text: "· 体感 " + WeatherService.apparentTemperature
+            color: "white"
+            opacity: 0.68
+            anchors.verticalCenter: parent.verticalCenter
+            font {
+                pixelSize: Math.max(6, Math.round(widget.iconSize * 0.28))
+                weight: Font.Medium
             }
         }
     }
