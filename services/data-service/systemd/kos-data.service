@@ -1,11 +1,11 @@
 [Unit]
-Description=Quickshell shared data service
+Description=KOS shared data service
 After=graphical-session.target
 PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/lib/quickshell/shell-data-service
+ExecStart=%h/.local/libexec/kos-data-service
 Restart=on-failure
 RestartSec=2
 

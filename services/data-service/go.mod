@@ -1,4 +1,4 @@
-module quickshell/shell-data-service
+module kos/data-service
 
 go 1.26
 

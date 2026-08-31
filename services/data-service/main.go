@@ -1,11 +1,9 @@
-// shell-data-service owns persistent shell telemetry. It deliberately has no
+// kos-data-service owns persistent shell telemetry. It deliberately has no
 // GUI dependencies: Quickshell only consumes snapshot.json.
 package main
 
 import (
 	"bufio"
-	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -101,22 +99,25 @@ type State struct {
 	Activity Activity `json:"activity"`
 	Desktop  Desktop  `json:"desktop"`
 }
-type Event struct {
-	Type   string   `json:"type,omitempty"`
-	AppID  string   `json:"appID,omitempty"`
-	Name   string   `json:"name,omitempty"`
-	Icon   string   `json:"icon,omitempty"`
-	Active *bool    `json:"active,omitempty"`
-	Mode   string   `json:"mode,omitempty"`
-	Paths  []string `json:"paths,omitempty"`
+type DataRequest struct {
+	Version   int                    `json:"version"`
+	RequestID string                 `json:"requestId"`
+	Operation string                 `json:"operation"`
+	Payload   map[string]interface{} `json:"payload"`
 }
 
-type EventResponse struct {
-	Type  string   `json:"type"`
-	OK    bool     `json:"ok"`
-	Mode  string   `json:"mode,omitempty"`
-	Paths []string `json:"paths,omitempty"`
-	Error string   `json:"error,omitempty"`
+type DataResponse struct {
+	Version   int         `json:"version"`
+	RequestID string      `json:"requestId,omitempty"`
+	OK        bool        `json:"ok"`
+	Result    interface{} `json:"result,omitempty"`
+	Error     *DataError  `json:"error,omitempty"`
+}
+
+type DataError struct {
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	Retryable bool   `json:"retryable"`
 }
 
 type Service struct {
@@ -126,7 +127,6 @@ type Service struct {
 	state                     State
 	statePath, snapshotPath   string
 	desktopDirectory          string
-	clipboard                 *ClipboardManager
 	last                      time.Time
 	prevCPUTotal, prevCPUIdle float64
 }
@@ -147,7 +147,6 @@ func newService() *Service {
 		statePath:          filepath.Join(root, "state.json"),
 		snapshotPath:       filepath.Join(root, "snapshot.json"),
 		desktopDirectory:   desktopDirectory(),
-		clipboard:          newClipboardManager(),
 		desktopSubscribers: map[net.Conn]struct{}{},
 		last:               time.Now(),
 	}
@@ -203,7 +202,10 @@ func (s *Service) subscribeDesktop(conn net.Conn) {
 	// subscriber is therefore always prompted to consume one complete current
 	// directory state instead of waiting for the next filesystem mutation.
 	_ = conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
-	_, _ = conn.Write([]byte("desktop_changed\n"))
+	event := map[string]interface{}{"version": 1, "event": "desktop.changed",
+		"payload": map[string]interface{}{"updatedAt": time.Now().UnixMilli()}}
+	raw, _ := json.Marshal(event)
+	_, _ = conn.Write(append(raw, '\n'))
 }
 
 func (s *Service) unsubscribeDesktop(conn net.Conn) {
@@ -217,7 +219,10 @@ func (s *Service) publishDesktop() {
 	defer s.desktopSubscribersMu.Unlock()
 	for conn := range s.desktopSubscribers {
 		_ = conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
-		if _, err := conn.Write([]byte("desktop_changed\n")); err != nil {
+		event := map[string]interface{}{"version": 1, "event": "desktop.changed",
+			"payload": map[string]interface{}{"updatedAt": time.Now().UnixMilli()}}
+		raw, _ := json.Marshal(event)
+		if _, err := conn.Write(append(raw, '\n')); err != nil {
 			delete(s.desktopSubscribers, conn)
 			_ = conn.Close()
 		}
@@ -406,171 +411,6 @@ func watchDesktop(s *Service) {
 			}
 		}
 	}
-}
-
-// ClipboardManager delegates only the Qt/Wayland-specific clipboard ownership
-// to a tiny GUI-less helper. The Go service remains the single long-running
-// backend and supervises the helper process that must stay alive while it owns
-// a Wayland selection.
-type ClipboardManager struct {
-	mu         sync.Mutex
-	helperPath string
-	owner      *exec.Cmd
-}
-
-type clipboardPayload struct {
-	Mode  string   `json:"mode"`
-	Paths []string `json:"paths"`
-}
-
-func newClipboardManager() *ClipboardManager {
-	if configured := os.Getenv("QUICKSHELL_FILE_CLIPBOARD_HELPER"); configured != "" {
-		return &ClipboardManager{helperPath: configured}
-	}
-	executable, err := os.Executable()
-	if err != nil {
-		return &ClipboardManager{helperPath: "quickshell-file-clipboard-helper"}
-	}
-	return &ClipboardManager{helperPath: filepath.Join(filepath.Dir(executable),
-		"quickshell-file-clipboard-helper")}
-}
-
-func normalizeClipboardPaths(paths []string) []string {
-	normalized := make([]string, 0, len(paths))
-	seen := make(map[string]struct{}, len(paths))
-	for _, path := range paths {
-		path = filepath.Clean(path)
-		if !filepath.IsAbs(path) {
-			continue
-		}
-		if _, exists := seen[path]; exists {
-			continue
-		}
-		seen[path] = struct{}{}
-		normalized = append(normalized, path)
-	}
-	return normalized
-}
-
-func (m *ClipboardManager) helperAvailable() error {
-	if strings.ContainsRune(m.helperPath, filepath.Separator) {
-		info, err := os.Stat(m.helperPath)
-		if err != nil {
-			return fmt.Errorf("clipboard helper unavailable: %w", err)
-		}
-		if info.IsDir() || info.Mode()&0111 == 0 {
-			return fmt.Errorf("clipboard helper is not executable: %s", m.helperPath)
-		}
-		return nil
-	}
-	_, err := exec.LookPath(m.helperPath)
-	if err != nil {
-		return fmt.Errorf("clipboard helper unavailable: %w", err)
-	}
-	return nil
-}
-
-func (m *ClipboardManager) set(mode string, paths []string) error {
-	if mode != "copy" && mode != "cut" {
-		return fmt.Errorf("unsupported clipboard mode %q", mode)
-	}
-	paths = normalizeClipboardPaths(paths)
-	if len(paths) == 0 {
-		return errors.New("clipboard path list is empty")
-	}
-	if err := m.helperAvailable(); err != nil {
-		return err
-	}
-	payload, err := json.Marshal(clipboardPayload{Mode: mode, Paths: paths})
-	if err != nil {
-		return err
-	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.owner != nil && m.owner.Process != nil {
-		_ = m.owner.Process.Kill()
-		m.owner = nil
-	}
-
-	command := exec.Command(m.helperPath, "--set")
-	command.Stdin = bytes.NewReader(payload)
-	command.Stderr = os.Stderr
-	stdout, err := command.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	if err = command.Start(); err != nil {
-		return err
-	}
-	ready := make(chan error, 1)
-	go func() {
-		line, readErr := bufio.NewReader(stdout).ReadBytes('\n')
-		if readErr != nil {
-			ready <- readErr
-			return
-		}
-		var response EventResponse
-		if err := json.Unmarshal(bytes.TrimSpace(line), &response); err != nil {
-			ready <- err
-			return
-		}
-		if !response.OK {
-			ready <- errors.New(response.Error)
-			return
-		}
-		ready <- nil
-	}()
-	select {
-	case err = <-ready:
-		if err != nil {
-			_ = command.Process.Kill()
-			_ = command.Wait()
-			return err
-		}
-	case <-time.After(2 * time.Second):
-		_ = command.Process.Kill()
-		_ = command.Wait()
-		return errors.New("clipboard helper startup timed out")
-	}
-
-	m.owner = command
-	go func(owner *exec.Cmd) {
-		_ = owner.Wait()
-		m.mu.Lock()
-		if m.owner == owner {
-			m.owner = nil
-		}
-		m.mu.Unlock()
-	}(command)
-	return nil
-}
-
-func (m *ClipboardManager) read() (clipboardPayload, error) {
-	if err := m.helperAvailable(); err != nil {
-		return clipboardPayload{}, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, m.helperPath, "--read")
-	var stderr bytes.Buffer
-	command.Stderr = &stderr
-	output, err := command.Output()
-	if ctx.Err() != nil {
-		return clipboardPayload{}, errors.New("clipboard read timed out")
-	}
-	if err != nil {
-		return clipboardPayload{}, fmt.Errorf("clipboard read failed: %s", strings.TrimSpace(stderr.String()))
-	}
-	var response EventResponse
-	if err = json.Unmarshal(bytes.TrimSpace(output), &response); err != nil {
-		return clipboardPayload{}, err
-	}
-	if !response.OK {
-		return clipboardPayload{}, errors.New(response.Error)
-	}
-	return clipboardPayload{Mode: response.Mode,
-		Paths: normalizeClipboardPaths(response.Paths)}, nil
 }
 
 // parseF64 reads a /proc or /sys file that holds a single non-negative number.
@@ -996,58 +836,71 @@ func (s *Service) sample() {
 	s.state.Metrics.AverageMilliC = current
 	s.state.Metrics.MaximumMilliC = maximum5Minute
 }
-func (s *Service) event(e Event) *EventResponse {
-	// Desktop mutations originate from the shell itself as well as external
-	// file managers. Shell-originated mutations request this immediate scan so
-	// the UI does not have to wait for the low-frequency safety poll below.
-	if e.Type == "refresh_desktop" {
+func dataError(request DataRequest, code, message string, retryable bool) DataResponse {
+	return DataResponse{Version: 1, RequestID: request.RequestID, OK: false,
+		Error: &DataError{Code: code, Message: message, Retryable: retryable}}
+}
+
+func (s *Service) handleRequest(request DataRequest) DataResponse {
+	if request.Version != 0 && request.Version != 1 {
+		return dataError(request, "unsupported-version", "不支持的协议版本", false)
+	}
+	switch request.Operation {
+	case "metrics.snapshot":
+		s.mu.Lock()
+		metrics := s.state.Metrics
+		s.mu.Unlock()
+		return DataResponse{Version: 1, RequestID: request.RequestID, OK: true,
+			Result: map[string]interface{}{"metrics": metrics}}
+	case "activity.snapshot":
+		s.mu.Lock()
+		activity := s.state.Activity
+		s.mu.Unlock()
+		return DataResponse{Version: 1, RequestID: request.RequestID, OK: true,
+			Result: map[string]interface{}{"activity": activity}}
+	case "desktop.snapshot":
+		s.mu.Lock()
+		desktop := s.state.Desktop
+		s.mu.Unlock()
+		return DataResponse{Version: 1, RequestID: request.RequestID, OK: true,
+			Result: map[string]interface{}{"desktop": desktop}}
+	case "desktop.refresh":
 		if s.refreshDesktop() {
 			s.persist()
 			s.publishDesktop()
 		}
-		return nil
-	}
-	if e.Type == "clipboard_set" {
-		paths := normalizeClipboardPaths(e.Paths)
-		if err := s.clipboard.set(e.Mode, paths); err != nil {
-			return &EventResponse{Type: "clipboard", OK: false, Error: err.Error()}
+		return DataResponse{Version: 1, RequestID: request.RequestID, OK: true,
+			Result: map[string]interface{}{"refreshed": true}}
+	case "activity.active-app":
+		appID, _ := request.Payload["appID"].(string)
+		name, _ := request.Payload["name"].(string)
+		icon, _ := request.Payload["icon"].(string)
+		s.mu.Lock()
+		s.settle(time.Now())
+		s.state.Activity.ActiveApp = appID
+		s.state.Activity.Active = appID != ""
+		if appID != "" {
+			app := s.state.Activity.TodayApps[appID]
+			app.Name = name
+			if icon != "" {
+				app.Icon = icon
+			}
+			s.state.Activity.TodayApps[appID] = app
 		}
-		return &EventResponse{Type: "clipboard", OK: true, Mode: e.Mode, Paths: paths}
+		s.mu.Unlock()
+		return DataResponse{Version: 1, RequestID: request.RequestID, OK: true}
+	default:
+		return dataError(request, "unknown-operation", "未知的数据操作", false)
 	}
-	if e.Type == "clipboard_read" {
-		payload, err := s.clipboard.read()
-		if err != nil {
-			return &EventResponse{Type: "clipboard", OK: false, Error: err.Error()}
-		}
-		return &EventResponse{Type: "clipboard", OK: true,
-			Mode: payload.Mode, Paths: payload.Paths}
-	}
-	s.mu.Lock()
-	s.settle(time.Now())
-	switch e.Type {
-	case "active_app":
-		s.state.Activity.ActiveApp = e.AppID
-		s.state.Activity.Active = e.AppID != ""
-		app := s.state.Activity.TodayApps[e.AppID]
-		app.Name = e.Name
-		if e.Icon != "" {
-			app.Icon = e.Icon
-		}
-		s.state.Activity.TodayApps[e.AppID] = app
-	case "session":
-		if e.Active != nil {
-			s.state.Activity.Active = *e.Active
-		}
-	}
-	s.mu.Unlock()
-	return nil
 }
+
 func serve(s *Service, path string) error {
 	_ = os.Remove(path)
 	l, err := net.Listen("unix", path)
 	if err != nil {
 		return err
 	}
+	_ = os.Chmod(path, 0600)
 	defer l.Close()
 	for {
 		c, e := l.Accept()
@@ -1056,28 +909,20 @@ func serve(s *Service, path string) error {
 		}
 		go func() {
 			defer c.Close()
-			// Keep compatibility with Quickshell instances started before the
-			// explicit subscribe_desktop handshake was introduced. One-shot event
-			// clients may receive this marker before their JSON response; QML's
-			// response parser deliberately ignores non-JSON lines.
 			s.subscribeDesktop(c)
 			defer s.unsubscribeDesktop(c)
 			scanner := bufio.NewScanner(c)
 			for scanner.Scan() {
-				var event Event
-				if json.Unmarshal(scanner.Bytes(), &event) != nil {
+				var request DataRequest
+				if json.Unmarshal(scanner.Bytes(), &request) != nil {
+					response := dataError(request, "invalid-json", "请求不是有效 JSON", false)
+					raw, _ := json.Marshal(response)
+					_, _ = c.Write(append(raw, '\n'))
 					continue
 				}
-				if event.Type == "subscribe_desktop" {
-					s.subscribeDesktop(c)
-					continue
-				}
-				if response := s.event(event); response != nil {
-					raw, err := json.Marshal(response)
-					if err == nil {
-						_, _ = c.Write(append(raw, '\n'))
-					}
-				}
+				response := s.handleRequest(request)
+				raw, _ := json.Marshal(response)
+				_, _ = c.Write(append(raw, '\n'))
 			}
 		}()
 	}
@@ -1086,7 +931,7 @@ func serve(s *Service, path string) error {
 func main() {
 	s := newService()
 	runtime := homePath("XDG_RUNTIME_DIR", "/tmp")
-	socket := filepath.Join(runtime, "shell-data-service.sock")
+	socket := filepath.Join(runtime, "kos-data.sock")
 	// Publish the initial full directory snapshot before accepting subscribers.
 	// This removes the startup race where QML connected while snapshot.json was
 	// still stale and then waited indefinitely for a second filesystem event.
