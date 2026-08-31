@@ -1,10 +1,12 @@
 # 启动台、Dock 与 Bar 统一模糊逻辑及独立/继承调节实现计划
 
+> 已废弃（2026-08-31）：KWin glass 只提供可靠的全局强度参数。后续实现统一使用全局模糊与液态值，不再提供分表面继承或独立调节。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 实现启动台、Dock 和 Bar 共用一套液态毛玻璃与模糊逻辑，支持继承 Dock 数值或各自独立调节，并在 `AppearanceConfigService`、`AppearanceTokens`、`LiquidGlassSurface`、IPC 与 `kos-settings` 中完整落地。
 
-**Architecture:** 
+**Architecture:**
 1. 在 `AppearanceConfigService` (schema v5) 中统一维护 `dockBlur/LiquidStrength`、`barBlurInheritDock`、`barBlur/LiquidStrength`、`launcherBlurInheritDock`、`launcherBlur/LiquidStrength` 及响应式 `effective*` 只读属性；
 2. 在 `AppearanceTokens` 中导出统一的 semantic tokens；
 3. 将 `LiquidGlassSurface`、`BarWindow` 和 `AppLauncherWindow` 接入对应的 effective 属性；

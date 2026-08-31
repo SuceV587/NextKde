@@ -52,7 +52,12 @@ PanelWindow {
         right: (AppearanceConfigService.barLayoutMode === "floating") ? 15 : 0
     }
 
-    BackgroundEffect.blurRegion: (root.visible && AppearanceConfigService.effectiveBarBlur > 0.005) ? barBlurRegionHolder : null
+    // KWin's glass effect uses this region for both blur and liquid
+    // refraction, so a liquid-only Bar must keep publishing it.
+    BackgroundEffect.blurRegion: (root.visible
+        && (AppearanceConfigService.effectiveBarBlur > 0.005
+            || AppearanceConfigService.effectiveBarLiquid > 0.005))
+        ? barBlurRegionHolder : null
 
     Region {
         id: barBlurRegionHolder

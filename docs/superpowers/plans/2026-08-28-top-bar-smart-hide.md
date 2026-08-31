@@ -4,7 +4,7 @@
 
 **Goal:** 为 NextKde 顶部状态栏（Bar）实现三档显示与智能隐藏模式（始终显示 / 智能隐藏 / 持续隐藏），包含触顶隐形呼出、防抖动滞后计算、交互抑制器保护以及在设置中心（kos-settings）中的可视化配置。
 
-**Architecture:** 
+**Architecture:**
 1. 扩展 `DockAutoHideMath.mjs` 算法支持顶部区域碰撞计算与 8px/16px 进退滞后回差。
 2. 新建 `desktop/modules/bar/BarAutoHideController.qml` 状态机控制器，管理生命周期阶段、延迟定时器与单值 `revealProgress` 驱动的位移与渐变。
 3. 重构 `BarWindow.qml`：在智能/持续隐藏模式下动态管理 `exclusiveZone = 0`，加入顶部 2px 触顶感应带与 Wayland input mask 裁切。

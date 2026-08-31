@@ -1,5 +1,5 @@
 // Test harness for AdaptiveMath.mjs — run with: node test_adaptive.mjs
-import { computeLayout } from "./AdaptiveMath.mjs";
+import { computeLayout, MIN_ICON_SIZE } from "./AdaptiveMath.mjs";
 
 const cases = [
     [60, 5, 3, false, 1920, 'few icons, no music'],
@@ -18,7 +18,7 @@ for (const [bh, pc, wc, hasInfoSlot, sw, desc] of cases) {
     const issues = [];
     if (r.iconUnits > 0) {
         if (r.dockHeight > 100) issues.push('dockHeight exceeds max: ' + r.dockHeight);
-        if (r.iconSize < 24 && r.iconSize !== 0) issues.push('iconSize below min');
+        if (r.iconSize < MIN_ICON_SIZE && r.iconSize !== 0) issues.push('iconSize below min');
         if (r.dockWidth > sw * 0.98 + 2) issues.push('dockWidth > 98%');
         if (r.infoUnits !== (hasInfoSlot ? 4 : 0)) issues.push('wrong infoUnits');
         if (r.activeBackgroundGap <= 0) issues.push('missing active background gap');
@@ -47,5 +47,19 @@ if (configured.hPadding !== Math.round(configured.iconSize * 0.3))
 const normal = computeLayout(60, 1, 1, false, 1920);
 if (Math.abs(normal.activeBackgroundGap - normal.iconSize * 0.1) > 0.001)
     errors++, console.log('FAIL: active background gap is not proportional');
-console.log(errors ? '\n' + errors + ' FAILED' : '\nAll ' + cases.length + ' passed');
+
+const sideInfo = computeLayout(60, 3, 2, true, 1080, {}, 0.95, 2);
+if (sideInfo.infoUnits !== 2)
+    errors++, console.log('FAIL: side info slot did not reserve two units');
+
+const invalidInfo = computeLayout(60, 3, 2, true, 1080, {}, 0.95, NaN);
+if (invalidInfo.infoUnits !== 0)
+    errors++, console.log('FAIL: invalid info unit override was not rejected');
+
+const crowded = computeLayout(60, 80, 80, true, 800);
+if (crowded.iconSize !== MIN_ICON_SIZE)
+    errors++, console.log('FAIL: crowded layout did not clamp to icon floor');
+
+console.log(errors ? '\n' + errors + ' FAILED'
+    : '\nAll ' + (cases.length + 3) + ' passed');
 process.exit(errors ? 1 : 0);

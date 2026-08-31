@@ -124,6 +124,8 @@ QtObject {
             && items.every((item, i) => {
                 const prev = svc.pinnedItems[i];
                 return prev && item.appId === prev.appId
+                    && item.name === prev.name
+                    && item.icon === prev.icon
                     && item.isRunning === prev.isRunning
                     && item.isActivated === prev.isActivated
                     && item.windowCount === prev.windowCount;
@@ -238,6 +240,11 @@ QtObject {
     }
 
     function _setWindowItems(nextItems) {
+        // Reordering ListModel rows while its Repeater delegates are alive can
+        // leave Qt Quick trying to stack items whose parents are already being
+        // replaced. Grouped mode changes representative window IDs frequently,
+        // so update rows in place and rely on DockIcon's synchronous decode to
+        // avoid an empty first texture.
         while (svc.windowModel.count > nextItems.length)
             svc.windowModel.remove(svc.windowModel.count - 1);
 
@@ -247,6 +254,7 @@ QtObject {
                 svc.windowModel.append(item);
                 continue;
             }
+
             const row = svc.windowModel.get(i);
             const keys = Object.keys(item);
             for (let j = 0; j < keys.length; j++) {

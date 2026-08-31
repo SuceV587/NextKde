@@ -12,44 +12,23 @@ QtObject {
     readonly property string configDir: Quickshell.stateDir + "/appearance"
     readonly property string configPath: configDir + "/config.json"
 
-    // Global baseline appearance settings: shared default for all shell surfaces.
+    // KWin owns one glass pipeline. Surface-specific overrides cannot map
+    // reliably to its compositor parameters, so every shell surface shares
+    // this one global configuration.
     property real globalBlurStrength: 0.42
     property real globalLiquidStrength: 1.0
 
-    // Dock blur settings: either inherits global baseline or uses independent values.
-    property bool dockBlurInherit: true
-    property real dockBlurStrength: 0.42
-    property real dockLiquidStrength: 1.0
-
-    // Bar blur settings: either inherits global baseline or uses independent values.
-    property bool barBlurInherit: true
-    property real barBlurStrength: 0.42
-    property real barLiquidStrength: 1.0
-
-    // Launcher blur settings: either inherits global baseline or uses independent values.
-    property bool launcherBlurInherit: true
-    property real launcherBlurStrength: 0.42
-    property real launcherLiquidStrength: 1.0
-
-    // Compatibility aliases:
-    property alias barBlurInheritDock: service.barBlurInherit
-    property alias launcherBlurInheritDock: service.launcherBlurInherit
     property real blurStrength: globalBlurStrength
     property real liquidStrength: globalLiquidStrength
 
-    // Effective reactive properties for consumers:
-    readonly property real effectiveDockBlur: dockBlurInherit
-        ? globalBlurStrength : dockBlurStrength
-    readonly property real effectiveDockLiquid: dockBlurInherit
-        ? globalLiquidStrength : dockLiquidStrength
-    readonly property real effectiveBarBlur: barBlurInherit
-        ? globalBlurStrength : barBlurStrength
-    readonly property real effectiveBarLiquid: barBlurInherit
-        ? globalLiquidStrength : barLiquidStrength
-    readonly property real effectiveLauncherBlur: launcherBlurInherit
-        ? globalBlurStrength : launcherBlurStrength
-    readonly property real effectiveLauncherLiquid: launcherBlurInherit
-        ? globalLiquidStrength : launcherLiquidStrength
+    // Retain descriptive names at call sites; they intentionally resolve to
+    // the one global KWin glass configuration.
+    readonly property real effectiveDockBlur: globalBlurStrength
+    readonly property real effectiveDockLiquid: globalLiquidStrength
+    readonly property real effectiveBarBlur: globalBlurStrength
+    readonly property real effectiveBarLiquid: globalLiquidStrength
+    readonly property real effectiveLauncherBlur: globalBlurStrength
+    readonly property real effectiveLauncherLiquid: globalLiquidStrength
 
     // "macos" matches the shell geometry that predates selectable styles,
     // so upgrading an existing installation does not unexpectedly reshape it.
@@ -57,6 +36,7 @@ QtObject {
     property bool barIntegratedWithDock: false
     property string barVisibilityMode: "always" // "always" | "smart" | "persistent"
     property string barLayoutMode: "full" // "full" | "floating"
+    property string dockWindowAnimationStyle: "scale"
     property bool ready: false
 
     function isValidShellStyle(value) {
@@ -71,6 +51,10 @@ QtObject {
 
     function isValidBarLayoutMode(value) {
         return value === "full" || value === "floating"
+    }
+
+    function isValidDockWindowAnimationStyle(value) {
+        return value === "scale" || value === "genie"
     }
 
     function _normalized(value) {
@@ -117,102 +101,6 @@ QtObject {
         return updateGlobalLiquidStrength(rawValue)
     }
 
-    function updateDockBlurInherit(rawValue) {
-        const value = _toBool(rawValue)
-        if (dockBlurInherit === value)
-            return false
-        dockBlurInherit = value
-        saveTimer.restart()
-        effectSyncTimer.restart()
-        return true
-    }
-
-    function updateDockBlurStrength(rawValue) {
-        const value = _normalized(rawValue)
-        if (!Number.isFinite(value)
-                || Math.abs(dockBlurStrength - value) <= 0.001)
-            return false
-        dockBlurStrength = value
-        saveTimer.restart()
-        effectSyncTimer.restart()
-        return true
-    }
-
-    function updateDockLiquidStrength(rawValue) {
-        const value = _normalized(rawValue)
-        if (!Number.isFinite(value)
-                || Math.abs(dockLiquidStrength - value) <= 0.001)
-            return false
-        dockLiquidStrength = value
-        saveTimer.restart()
-        effectSyncTimer.restart()
-        return true
-    }
-
-    function updateBarBlurInherit(rawValue) {
-        const value = _toBool(rawValue)
-        if (barBlurInherit === value)
-            return false
-        barBlurInherit = value
-        saveTimer.restart()
-        effectSyncTimer.restart()
-        return true
-    }
-
-    function updateBarBlurStrength(rawValue) {
-        const value = _normalized(rawValue)
-        if (!Number.isFinite(value)
-                || Math.abs(barBlurStrength - value) <= 0.001)
-            return false
-        barBlurStrength = value
-        saveTimer.restart()
-        effectSyncTimer.restart()
-        return true
-    }
-
-    function updateBarLiquidStrength(rawValue) {
-        const value = _normalized(rawValue)
-        if (!Number.isFinite(value)
-                || Math.abs(barLiquidStrength - value) <= 0.001)
-            return false
-        barLiquidStrength = value
-        saveTimer.restart()
-        effectSyncTimer.restart()
-        return true
-    }
-
-    function updateLauncherBlurInherit(rawValue) {
-        const value = _toBool(rawValue)
-        if (launcherBlurInherit === value)
-            return false
-        launcherBlurInherit = value
-        saveTimer.restart()
-        effectSyncTimer.restart()
-        return true
-    }
-
-    function updateLauncherBlurStrength(rawValue) {
-        const value = _normalized(rawValue)
-        if (!Number.isFinite(value)
-                || Math.abs(launcherBlurStrength - value) <= 0.001)
-            return false
-        launcherBlurStrength = value
-        saveTimer.restart()
-        effectSyncTimer.restart()
-        return true
-    }
-
-    function updateLauncherLiquidStrength(rawValue) {
-        const value = _normalized(rawValue)
-        if (!Number.isFinite(value)
-                || Math.abs(launcherLiquidStrength - value) <= 0.001)
-            return false
-        launcherLiquidStrength = value
-        saveTimer.restart()
-        effectSyncTimer.restart()
-        return true
-    }
-
     function updateShellStyle(rawStyle) {
         const style = String(rawStyle)
         if (!isValidShellStyle(style) || shellStyle === style)
@@ -249,37 +137,27 @@ QtObject {
         return true
     }
 
+    function updateDockWindowAnimationStyle(rawStyle) {
+        const style = String(rawStyle)
+        if (!isValidDockWindowAnimationStyle(style)
+                || dockWindowAnimationStyle === style)
+            return false
+        dockWindowAnimationStyle = style
+        saveTimer.restart()
+        dockAnimationEffectSyncTimer.restart()
+        return true
+    }
+
     function resetStrengths() {
         const globalBlurChanged = Math.abs(globalBlurStrength - 0.42) > 0.001
         const globalLiquidChanged = Math.abs(globalLiquidStrength - 1.0) > 0.001
-        const dockInheritChanged = !dockBlurInherit
-        const dockBlurChanged = Math.abs(dockBlurStrength - 0.42) > 0.001
-        const dockLiquidChanged = Math.abs(dockLiquidStrength - 1.0) > 0.001
-        const barInheritChanged = !barBlurInherit
-        const barBlurChanged = Math.abs(barBlurStrength - 0.42) > 0.001
-        const barLiquidChanged = Math.abs(barLiquidStrength - 1.0) > 0.001
-        const launcherInheritChanged = !launcherBlurInherit
-        const launcherBlurChanged = Math.abs(launcherBlurStrength - 0.42) > 0.001
-        const launcherLiquidChanged = Math.abs(launcherLiquidStrength - 1.0) > 0.001
 
         globalBlurStrength = 0.42
         globalLiquidStrength = 1.0
         blurStrength = 0.42
         liquidStrength = 1.0
-        dockBlurInherit = true
-        dockBlurStrength = 0.42
-        dockLiquidStrength = 1.0
-        barBlurInherit = true
-        barBlurStrength = 0.42
-        barLiquidStrength = 1.0
-        launcherBlurInherit = true
-        launcherBlurStrength = 0.42
-        launcherLiquidStrength = 1.0
 
         const changed = globalBlurChanged || globalLiquidChanged
-            || dockInheritChanged || dockBlurChanged || dockLiquidChanged
-            || barInheritChanged || barBlurChanged || barLiquidChanged
-            || launcherInheritChanged || launcherBlurChanged || launcherLiquidChanged
 
         if (changed) {
             saveTimer.restart()
@@ -305,6 +183,12 @@ QtObject {
         onTriggered: service._syncGlassEffect()
     }
 
+    property Timer dockAnimationEffectSyncTimer: Timer {
+        interval: 80
+        repeat: false
+        onTriggered: service._syncDockWindowAnimationEffect()
+    }
+
     property Component processFactory: Component {
         Process {
             stdout: StdioCollector {}
@@ -323,27 +207,16 @@ QtObject {
 
     function _save() {
         const payload = JSON.stringify({
-            version: 6,
+            version: 8,
             globalBlurStrength: service.globalBlurStrength,
             globalLiquidStrength: service.globalLiquidStrength,
-            dockBlurInherit: service.dockBlurInherit,
-            dockBlurStrength: service.dockBlurStrength,
-            dockLiquidStrength: service.dockLiquidStrength,
-            barBlurInherit: service.barBlurInherit,
-            barBlurStrength: service.barBlurStrength,
-            barLiquidStrength: service.barLiquidStrength,
-            launcherBlurInherit: service.launcherBlurInherit,
-            launcherBlurStrength: service.launcherBlurStrength,
-            launcherLiquidStrength: service.launcherLiquidStrength,
-            // Backwards compatibility fields for external tools
-            barBlurInheritDock: service.barBlurInherit,
-            launcherBlurInheritDock: service.launcherBlurInherit,
             blurStrength: service.globalBlurStrength,
             liquidStrength: service.globalLiquidStrength,
             shellStyle: service.shellStyle,
             barIntegratedWithDock: service.barIntegratedWithDock,
             barVisibilityMode: service.barVisibilityMode,
             barLayoutMode: service.barLayoutMode,
+            dockWindowAnimationStyle: service.dockWindowAnimationStyle,
         }, null, 2)
         const process = _makeProcess([
             "sh", "-c",
@@ -364,9 +237,9 @@ QtObject {
     }
 
     function _syncGlassEffect() {
-        const dockBlurLevel = Math.round(1 + service.effectiveDockBlur * 14)
-        const contentBlurLevel = Math.round(1 + service.effectiveLauncherBlur * 14)
-        const refractionLevel = Math.round(service.effectiveDockLiquid * 20)
+        const dockBlurLevel = Math.round(1 + service.globalBlurStrength * 14)
+        const contentBlurLevel = Math.round(1 + service.globalBlurStrength * 14)
+        const refractionLevel = Math.round(service.globalLiquidStrength * 20)
         const process = _makeProcess([
             "sh", "-c",
             "kwriteconfig6 --file kwinrc --group Effect-blurplus --key BlurStrength \"$1\" && "
@@ -399,6 +272,31 @@ QtObject {
         process.running = true
     }
 
+    function _syncDockWindowAnimationEffect() {
+        const process = _makeProcess([
+            "sh", "-c",
+            "kwriteconfig6 --file kwinrc --group Effect-kos_dock_window_animation "
+                + "--key AnimationStyle \"$1\" && "
+                + "qdbus6 org.kde.KWin /Effects "
+                + "org.kde.kwin.Effects.reconfigureEffect kos_dock_window_animation",
+            "appearance-dock-animation-sync",
+            service.dockWindowAnimationStyle,
+        ])
+        if (!process)
+            return
+        process.exited.connect(function(code) {
+            if (code !== 0) {
+                console.warn("[AppearanceConfig] Dock animation sync failed code="
+                    + code + " stderr=" + (process.stderr?.text ?? ""))
+            } else {
+                console.log("[AppearanceConfig] Dock window animation="
+                    + service.dockWindowAnimationStyle)
+            }
+            process.destroy()
+        })
+        process.running = true
+    }
+
     function _load() {
         const process = _makeProcess([
             "sh", "-c", "cat \"$1\"", "appearance-config-load",
@@ -412,21 +310,18 @@ QtObject {
             if (code === 0 && process.stdout?.text) {
                 try {
                     const object = JSON.parse(process.stdout.text)
-                    const globalBlur = service._normalized(object.globalBlurStrength ?? object.blurStrength ?? object.dockBlurStrength)
-                    const globalLiquid = service._normalized(object.globalLiquidStrength ?? object.liquidStrength ?? object.dockLiquidStrength)
-                    const hasDockInherit = typeof object.dockBlurInherit === "boolean"
-                    const dockBlur = service._normalized(object.dockBlurStrength)
-                    const dockLiquid = service._normalized(object.dockLiquidStrength)
-                    const hasBarInherit = typeof object.barBlurInherit === "boolean" || typeof object.barBlurInheritDock === "boolean"
-                    const barBlur = service._normalized(object.barBlurStrength)
-                    const barLiquid = service._normalized(object.barLiquidStrength)
-                    const hasLauncherInherit = typeof object.launcherBlurInherit === "boolean" || typeof object.launcherBlurInheritDock === "boolean"
-                    const launcherBlur = service._normalized(object.launcherBlurStrength)
-                    const launcherLiquid = service._normalized(object.launcherLiquidStrength)
+                    // Old v7 files may have a Dock value but never a global
+                    // one. Read it once as the global migration source, then
+                    // save the flattened v8 shape below.
+                    const globalBlur = service._normalized(object.globalBlurStrength
+                        ?? object.blurStrength ?? object.dockBlurStrength)
+                    const globalLiquid = service._normalized(object.globalLiquidStrength
+                        ?? object.liquidStrength ?? object.dockLiquidStrength)
                     const style = String(object.shellStyle ?? "")
                     const hasBarIntegration = typeof object.barIntegratedWithDock === "boolean"
                     const barVisibility = String(object.barVisibilityMode ?? "")
                     const barLayout = String(object.barLayoutMode ?? "")
+                    const animationStyle = String(object.dockWindowAnimationStyle ?? "")
 
                     if (Number.isFinite(globalBlur)) {
                         service.globalBlurStrength = globalBlur
@@ -436,24 +331,6 @@ QtObject {
                         service.globalLiquidStrength = globalLiquid
                         service.liquidStrength = globalLiquid
                     }
-                    if (hasDockInherit)
-                        service.dockBlurInherit = object.dockBlurInherit
-                    if (Number.isFinite(dockBlur))
-                        service.dockBlurStrength = dockBlur
-                    if (Number.isFinite(dockLiquid))
-                        service.dockLiquidStrength = dockLiquid
-                    if (hasBarInherit)
-                        service.barBlurInherit = object.barBlurInherit ?? object.barBlurInheritDock
-                    if (Number.isFinite(barBlur))
-                        service.barBlurStrength = barBlur
-                    if (Number.isFinite(barLiquid))
-                        service.barLiquidStrength = barLiquid
-                    if (hasLauncherInherit)
-                        service.launcherBlurInherit = object.launcherBlurInherit ?? object.launcherBlurInheritDock
-                    if (Number.isFinite(launcherBlur))
-                        service.launcherBlurStrength = launcherBlur
-                    if (Number.isFinite(launcherLiquid))
-                        service.launcherLiquidStrength = launcherLiquid
                     if (service.isValidShellStyle(style))
                         service.shellStyle = style
                     if (hasBarIntegration)
@@ -462,15 +339,15 @@ QtObject {
                         service.barVisibilityMode = barVisibility
                     if (service.isValidBarLayoutMode(barLayout))
                         service.barLayoutMode = barLayout
+                    if (service.isValidDockWindowAnimationStyle(animationStyle))
+                        service.dockWindowAnimationStyle = animationStyle
 
-                    if (Number(object.version) !== 6
+                    if (Number(object.version) !== 8
                             || !service.isValidShellStyle(style)
                             || !hasBarIntegration
                             || !service.isValidBarVisibilityMode(barVisibility)
                             || !service.isValidBarLayoutMode(barLayout)
-                            || !hasDockInherit
-                            || !hasBarInherit
-                            || !hasLauncherInherit)
+                            || !service.isValidDockWindowAnimationStyle(animationStyle))
                         service.saveTimer.restart()
                 } catch (error) {
                     console.warn("[AppearanceConfig] parse error: " + error)
@@ -478,6 +355,7 @@ QtObject {
             }
             service.ready = true
             service.effectSyncTimer.restart()
+            service.dockAnimationEffectSyncTimer.restart()
             process.destroy()
         })
         process.running = true

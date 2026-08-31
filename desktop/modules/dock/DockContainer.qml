@@ -42,11 +42,14 @@ Item {
     readonly property int windowCount: DockModelService.windowCount
     readonly property bool hasPlayingMusic: DockMprisService.hasPlayingPlayer
     readonly property bool hasWeather: WeatherService.available
-    readonly property bool hasClock: clockInInfoCarousel && !vertical
+    // Side Docks have no readable top-bar clock counterpart, so keep their
+    // compact carousel useful even when the bottom-only Bar integration flag
+    // is off.
+    readonly property bool hasClock: clockInInfoCarousel || vertical
     // Temperature is a permanent horizontal Dock page. MetricsService may
     // still be loading its first snapshot; the card remains and shows "--".
-    readonly property bool hasTemperature: !vertical
-    readonly property bool hasInfo: hasPlayingMusic || hasWeather || hasClock
+    readonly property bool hasTemperature: true
+    readonly property bool hasAvailableInfo: hasPlayingMusic || hasWeather || hasClock
         || hasTemperature
     readonly property int screenWidth: targetScreen?.width
         ?? Quickshell.screens[0]?.width ?? 1920
@@ -99,6 +102,25 @@ Item {
     readonly property real estimatedAccessoryWidth:
         leadingAccessoryReserveWidth + trailingAccessoryReserveWidth
         + accessoryCount * baseHeight * 0.60
+    // Probe the crowded layout with the carousel included before deciding
+    // whether it is safe to show. This avoids a feedback loop where hiding the
+    // carousel makes icons larger and immediately makes it reappear.
+    readonly property var _infoProbeLayout: AdaptiveMath.computeLayout(
+        baseHeight, pinnedCount, windowCount,
+        hasAvailableInfo && !vertical,
+        Math.max(baseHeight, availableLength - estimatedAccessoryWidth),
+        proportions,
+        vertical ? AdaptiveMath.MAX_HEIGHT_RATIO : AdaptiveMath.MAX_WIDTH_RATIO
+    )
+    // At the 18px absolute icon floor, the cards cannot keep even compact
+    // glyphs legible. Remove the carousel and its divider as one unit, which
+    // also returns its four icon-widths to application tasks.
+    readonly property bool hideInfoCarousel: !vertical && hasAvailableInfo
+        && _infoProbeLayout.iconSize <= AdaptiveMath.MIN_ICON_SIZE
+    readonly property bool hasInfo: hasAvailableInfo && !hideInfoCarousel
+    // A side Dock rotates its content row. Its dedicated compact carousel
+    // needs only two icon lengths, while the bottom carousel keeps four.
+    readonly property int infoSlotUnits: vertical ? 2 : 4
 
     // ═══════════════════════════════════════════════════════════
     // Computed layout (re-evaluates on any input change)
@@ -108,12 +130,11 @@ Item {
     // height or spacing locally, otherwise width fitting can be bypassed.
     readonly property var _layout: AdaptiveMath.computeLayout(
         baseHeight, pinnedCount, windowCount,
-        // The info carousel is hidden on side docks (vertical Phase 2); its
-        // invisible units must not shrink the icon column.
-        hasInfo && !vertical,
+        hasInfo,
         Math.max(baseHeight, availableLength - estimatedAccessoryWidth),
         proportions,
-        vertical ? AdaptiveMath.MAX_HEIGHT_RATIO : AdaptiveMath.MAX_WIDTH_RATIO
+        vertical ? AdaptiveMath.MAX_HEIGHT_RATIO : AdaptiveMath.MAX_WIDTH_RATIO,
+        infoSlotUnits
     )
 
     readonly property int computedDockHeight: _layout.dockHeight
@@ -131,12 +152,10 @@ Item {
     // keeps the Row width stable while the active background appears/disappears.
     readonly property real activeBackgroundGap: _layout.activeBackgroundGap
     readonly property int iconUnits: _layout.iconUnits
-    readonly property int infoUnits: _layout.infoUnits
+    readonly property real infoUnits: _layout.infoUnits
     // Long press or starting a real drag enters the iPadOS-like edit state.
-    // It ends automatically: on drop, when a plain tap lands on any Dock
-    // icon, or shortly after the pointer leaves the dock. A direct drag
-    // re-enters the state on its own, so ending on drop keeps every reorder
-    // available without an explicit mode switch.
+    // It ends on drop, a plain Dock-icon tap, or shortly after the pointer
+    // leaves, while another direct drag can enter the state again.
     property bool editMode: false
     // This tracks only the in-progress source for reorder geometry; it must
     // not decide whether the user remains in persistent edit mode after drop.
@@ -256,7 +275,8 @@ Item {
     width: implicitWidth
     height: implicitHeight
 
-    // ── Smooth resize transitions ──
+    // Keep PR #2's size interpolation when app groups, accessories, or the
+    // information carousel change the adaptive layout.
     Behavior on height {
         NumberAnimation {
             duration: DockAnimation.dockResizeDuration
@@ -631,67 +651,67 @@ Item {
                 }
 
                 Row {
-                    anchors.centerIn: parent
-                    spacing: container.itemSpacing
+                            anchors.centerIn: parent
+                            spacing: container.itemSpacing
 
-                    DockIcon {
-                        targetScreen: container.targetScreen
-                        surfaceOriginX: container.surfaceOriginX
-                        surfaceOriginY: container.surfaceOriginY
-                        vertical: container.vertical
-                        dockEdge: ConfigService.position
-                        iconSize: container.iconSize
-                        activeBackgroundGap: container.activeBackgroundGap
-                        iconSource: pinnedItemLoader.itemData.icon ?? ""
-                        displayName: pinnedItemLoader.itemData.name ?? ""
-                        isRunning: pinnedItemLoader.itemData.isRunning ?? false
-                        isActivated: pinnedItemLoader.itemData.isActivated ?? false
-                        appId: pinnedItemLoader.itemData.appId ?? ""
-                        isWindowItem: false
-                        isPinnedItem: true
-                        editMode: container.isEditing
-                        isDragging: reorderDrag.active || pinnedItemLoader.settling
-                        onRequestEdit: container.editMode = true
-                        onRequestEditExit: container.editMode = false
-                        onActivate: {
-                            // DockIcon also guards this, but keeping the
-                            // action boundary defensive ensures pinned
-                            // apps can never launch while sorting.
-                            if (!container.isEditing)
-                                DockModelService.activateApp(appId)
-                        }
-                    }
+                            DockIcon {
+                                targetScreen: container.targetScreen
+                                surfaceOriginX: container.surfaceOriginX
+                                surfaceOriginY: container.surfaceOriginY
+                                vertical: container.vertical
+                                dockEdge: ConfigService.position
+                                iconSize: container.iconSize
+                                activeBackgroundGap: container.activeBackgroundGap
+                                iconSource: pinnedItemLoader.itemData.icon ?? ""
+                                displayName: pinnedItemLoader.itemData.name ?? ""
+                                isRunning: pinnedItemLoader.itemData.isRunning ?? false
+                                isActivated: pinnedItemLoader.itemData.isActivated ?? false
+                                appId: pinnedItemLoader.itemData.appId ?? ""
+                                isWindowItem: false
+                                isPinnedItem: true
+                                editMode: container.isEditing
+                                isDragging: reorderDrag.active || pinnedItemLoader.settling
+                                onRequestEdit: container.editMode = true
+                                onRequestEditExit: container.editMode = false
+                                onActivate: {
+                                    // DockIcon also guards this, but keeping the
+                                    // action boundary defensive ensures pinned
+                                    // apps can never launch while sorting.
+                                    if (!container.isEditing)
+                                        DockModelService.activateApp(appId)
+                                }
+                            }
 
-                    Repeater {
-                        model: pinnedItemLoader.itemData.extraWindows ?? []
-                        delegate: DockIcon {
-                            required property var modelData
-                            targetScreen: container.targetScreen
-                            surfaceOriginX: container.surfaceOriginX
-                            surfaceOriginY: container.surfaceOriginY
-                            vertical: container.vertical
-                            dockEdge: ConfigService.position
-                            iconSize: container.iconSize
-                            activeBackgroundGap: container.activeBackgroundGap
-                            iconSource: modelData.iconSource
-                                ?? modelData.identity.iconSource ?? ""
-                            displayName: modelData.title ?? ""
-                            isRunning: true
-                            isActivated: modelData.toplevel.activated ?? false
-                            isUrgent: modelData.isUrgent ?? false
-                            appId: modelData.identity.desktopId ?? ""
-                            windowId: modelData.windowId ?? ""
-                            animationWindowId: modelData.provider === "kwin"
-                                ? String(modelData.handleId ?? "") : ""
-                            isWindowItem: true
-                            isPinnedItem: false
-                            onActivate: {
-                                container.editMode = false
-                                DockModelService.toggleWindow(windowId)
+                            Repeater {
+                                model: pinnedItemLoader.itemData.extraWindows ?? []
+                                delegate: DockIcon {
+                                    required property var modelData
+                                    targetScreen: container.targetScreen
+                                    surfaceOriginX: container.surfaceOriginX
+                                    surfaceOriginY: container.surfaceOriginY
+                                    vertical: container.vertical
+                                    dockEdge: ConfigService.position
+                                    iconSize: container.iconSize
+                                    activeBackgroundGap: container.activeBackgroundGap
+                                    iconSource: modelData.iconSource
+                                        ?? modelData.identity.iconSource ?? ""
+                                    displayName: modelData.title ?? ""
+                                    isRunning: true
+                                    isActivated: modelData.toplevel.activated ?? false
+                                    isUrgent: modelData.isUrgent ?? false
+                                    appId: modelData.identity.desktopId ?? ""
+                                    windowId: modelData.windowId ?? ""
+                                    animationWindowId: modelData.provider === "kwin"
+                                        ? String(modelData.handleId ?? "") : ""
+                                    isWindowItem: true
+                                    isPinnedItem: false
+                                    onActivate: {
+                                        container.editMode = false
+                                        DockModelService.toggleWindow(windowId)
+                                    }
+                                }
                             }
                         }
-                    }
-                }
 
             }
         }
@@ -745,8 +765,7 @@ Item {
             dockHeight: container.computedDockHeight
             dividerWidth: 2
             sideMargin: container.dividerMargin
-            // Hidden together with the information slot on side docks.
-            visible: container.hasInfo && !container.vertical
+            visible: container.hasInfo
         }
 
         // ── Shared music / weather / clock / temperature information slot ──
@@ -756,9 +775,19 @@ Item {
             widthUnits: container.infoUnits
             showClock: container.hasClock
             showTemperature: container.hasTemperature
-            // The carousel's internal pages assume a horizontal slot; hide it
-            // on side docks until it gains a vertical layout (Phase 2).
             visible: container.hasInfo && !container.vertical
+        }
+
+        // Counter-rotated, one-line counterpart for side Docks. The parent
+        // Row rotates 90 degrees, so this component keeps text upright while
+        // reserving only two icon lengths along the edge.
+        DockSideInfoCarousel {
+            iconSize: container.iconSize
+            dockHeight: container.computedDockHeight
+            widthUnits: container.infoUnits
+            showClock: container.hasClock
+            showTemperature: container.hasTemperature
+            visible: container.hasInfo && container.vertical
         }
 
         DockDivider {

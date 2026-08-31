@@ -2365,7 +2365,9 @@ PanelWindow {
     // BackgroundEffect is a Wayland window attachment, so it belongs to this
     // PanelWindow root. The blur region is fixed at full card size. It never
     // scales or fades — only the foreground content animates on open.
-    BackgroundEffect.blurRegion: (root.visible && AppearanceConfigService.effectiveLauncherBlur > 0.005)
+    BackgroundEffect.blurRegion: (root.visible
+        && (AppearanceConfigService.effectiveLauncherBlur > 0.005
+            || AppearanceConfigService.effectiveLauncherLiquid > 0.005))
         ? launcherBlurRegion
         : null
 

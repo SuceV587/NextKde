@@ -380,9 +380,10 @@ PanelWindow {
                 : Qt.rgba(0.95, 0.95, 0.98, 0.50)
             blurStrength: AppearanceConfigService.effectiveLauncherBlur
             liquidStrength: AppearanceConfigService.effectiveLauncherLiquid
-            ambientPrimary: WallpaperPaletteService.primary
-            ambientSecondary: WallpaperPaletteService.secondary
-            ambientStrength: 0.40 * AppearanceTokens.glass.ambientMultiplier
+            // QuickSearch stays neutral. Wallpaper-derived tint makes this
+            // transient surface look coloured even when only KWin liquid
+            // glass is intended to be enabled globally.
+            ambientStrength: 0.0
             border.width: 1
             border.color: ThemeService.isDark
                 ? Qt.rgba(1, 1, 1, 0.12)
@@ -418,9 +419,9 @@ PanelWindow {
                 surfaceOpacity: 1.0
                 materialDepth: 1.0
                 bottomShadeVisible: false
-                ambientPrimary: WallpaperPaletteService.primary
-                ambientSecondary: WallpaperPaletteService.secondary
-                ambientStrength: 0.8
+                // Keep the input capsule neutral as well; the previous 0.8
+                // wallpaper tint was especially visible on colourful walls.
+                ambientStrength: 0.0
 
                 // Inner top-edge glow: a thin bright line hugging the capsule's
                 // upper rim, the hallmark of iOS liquid components.
@@ -676,9 +677,7 @@ PanelWindow {
                     : Qt.rgba(0.96, 0.96, 0.98, 0.95)
                 blurStrength: AppearanceConfigService.effectiveLauncherBlur
                 liquidStrength: AppearanceConfigService.effectiveLauncherLiquid
-                ambientPrimary: WallpaperPaletteService.primary
-                ambientSecondary: WallpaperPaletteService.secondary
-                ambientStrength: 0.35 * AppearanceTokens.glass.ambientMultiplier
+                ambientStrength: 0.0
                 border.width: 1
                 border.color: ThemeService.isDark
                     ? Qt.rgba(1, 1, 1, 0.18)

@@ -65,7 +65,10 @@ PopupWindow {
     // The join sheet (LiquidGlassSurface) is a separate QML material on top;
     // the list card below becomes transparent so this blur shows through.
     readonly property int blurRadius: Math.max(1, Math.min(19, Math.floor(310 / 2)))
-    BackgroundEffect.blurRegion: (panel.visible && AppearanceConfigService.effectiveBarBlur > 0.005) ? networkBlurRegionHolder : null
+    BackgroundEffect.blurRegion: (panel.visible
+        && (AppearanceConfigService.effectiveBarBlur > 0.005
+            || AppearanceConfigService.effectiveBarLiquid > 0.005))
+        ? networkBlurRegionHolder : null
 
     Region {
         id: networkBlurRegionHolder

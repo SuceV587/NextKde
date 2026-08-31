@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Qt5Compat.GraphicalEffects
 import qs.desktop.modules.common
@@ -14,6 +15,7 @@ Item {
     property int widthUnits: 4
     readonly property real backgroundGap: iconSize * 0.1
     readonly property real contentWidth: iconSize * widthUnits
+    readonly property bool compact: iconSize < 32
 
     width: contentWidth + backgroundGap * 2
     height: iconSize
@@ -50,36 +52,17 @@ Item {
     }
 
     component SolarEventRow: Item {
-        property string symbol: ""
         property string label: ""
         property string value: "--:--"
-        property color accent: ThemeService.foregroundColor
 
         Row {
-            anchors.fill: parent
+            anchors.centerIn: parent
             spacing: Math.max(1, Math.round(widget.iconSize * 0.04))
 
             Text {
-                width: Math.round(widget.iconSize * 0.34)
-                height: parent.height
-                text: symbol
-                color: accent
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-                font {
-                    family: "Noto Sans Symbols 2"
-                    pixelSize: Math.max(9, Math.round(widget.iconSize * 0.23))
-                    weight: Font.DemiBold
-                }
-            }
-            Text {
-                width: Math.round(widget.iconSize * 0.43)
-                height: parent.height
                 text: label
                 color: ThemeService.foregroundColor
                 opacity: 0.72
-                horizontalAlignment: Text.AlignLeft
-                verticalAlignment: Text.AlignVCenter
                 font {
                     family: "Noto Sans CJK SC"
                     pixelSize: Math.max(8, Math.round(widget.iconSize * 0.18))
@@ -87,13 +70,9 @@ Item {
                 }
             }
             Text {
-                width: parent.width - x
-                height: parent.height
                 text: value
                 color: ThemeService.foregroundColor
                 opacity: value === "--:--" ? 0.48 : 0.92
-                horizontalAlignment: Text.AlignRight
-                verticalAlignment: Text.AlignVCenter
                 font {
                     family: "SF Pro Display"
                     pixelSize: Math.max(8, Math.round(widget.iconSize * 0.19))
@@ -135,14 +114,14 @@ Item {
     Row {
         id: contentRow
         anchors.centerIn: parent
+        visible: !widget.compact
         width: Math.min(parent.width - widget.backgroundGap * 2,
                         widget.iconSize * 3.86)
         height: Math.round(widget.iconSize * 0.88)
-        spacing: Math.max(3, Math.round(widget.iconSize * 0.10))
+        spacing: 0
 
         Column {
-            width: contentRow.width - solarEvents.width - divider.width
-                - contentRow.spacing * 2
+            width: contentRow.width * 0.60
             height: parent.height
             spacing: Math.max(1, Math.round(widget.iconSize * 0.03))
 
@@ -260,35 +239,59 @@ Item {
             }
         }
 
-        Rectangle {
-            id: divider
-            width: 1
-            height: Math.round(parent.height * 0.70)
-            anchors.verticalCenter: parent.verticalCenter
-            color: Qt.rgba(1, 1, 1, ThemeService.isDark ? 0.16 : 0.24)
-        }
-
         Column {
             id: solarEvents
-            width: Math.round(widget.iconSize * 1.48)
+            width: contentRow.width * 0.40
             height: parent.height
             spacing: 0
 
             SolarEventRow {
                 width: parent.width
                 height: parent.height / 2
-                symbol: "☀︎↓"
                 label: "日落"
                 value: WeatherService.sunsetTime
-                accent: "#ffad66"
             }
             SolarEventRow {
                 width: parent.width
                 height: parent.height / 2
-                symbol: "☀︎↑"
                 label: "日出"
                 value: WeatherService.sunriseTime
-                accent: "#ffd66b"
+            }
+        }
+    }
+
+    Row {
+        anchors.centerIn: parent
+        visible: widget.compact
+        height: parent.height
+        spacing: Math.max(2, Math.round(widget.iconSize * 0.08))
+
+        DockMetricGlyph {
+            width: Math.max(8, Math.round(widget.iconSize * 0.42))
+            height: width
+            anchors.verticalCenter: parent.verticalCenter
+            kind: "clock"
+            glyphColor: "white"
+        }
+        Text {
+            text: Qt.formatDateTime(clock.date, "HH:mm")
+            color: "white"
+            anchors.verticalCenter: parent.verticalCenter
+            font {
+                family: "SF Pro Display"
+                pixelSize: Math.max(9, Math.round(widget.iconSize * 0.52))
+                weight: Font.DemiBold
+            }
+        }
+        Text {
+            text: "· 日落 " + WeatherService.sunsetTime
+            color: "white"
+            opacity: 0.68
+            anchors.verticalCenter: parent.verticalCenter
+            font {
+                family: "Noto Sans CJK SC"
+                pixelSize: Math.max(6, Math.round(widget.iconSize * 0.28))
+                weight: Font.Medium
             }
         }
     }

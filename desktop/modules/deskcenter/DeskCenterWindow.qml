@@ -42,11 +42,10 @@ PanelWindow {
     readonly property real layoutBaseSideMargin: 8
     readonly property real layoutBaseGap: 10
     // The standalone Bar needs its 35px strip plus breathing room. Once Bar
-    // content is hosted by the bottom Dock, reclaim that strip for widgets and
-    // desktop files instead of leaving a permanent empty band.
+    // content is hosted by Dock, reclaim that strip for widgets and desktop
+    // files regardless of which edge hosts the Dock.
     readonly property bool barIntegratedWithDock:
         AppearanceConfigService.barIntegratedWithDock
-        && ConfigService.position === "bottom"
     readonly property real topInset: barIntegratedWithDock
         ? 24 : Math.max(56, ConfigService.barHeight + 21)
     readonly property real bottomInset: Math.max(96, AppLauncherService.dockHeight + 24)
