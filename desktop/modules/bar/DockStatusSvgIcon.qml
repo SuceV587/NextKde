@@ -14,7 +14,8 @@ Item {
     property bool useDockTint: false
     readonly property color iconColor: useDockTint
         && ConfigService.iconMode === "tint"
-        ? ConfigService.styledDockIconColor() : "white"
+        ? ConfigService.styledDockIconColor()
+        : (ThemeService.isDark ? ThemeService.foregroundColor : "#000000")
     readonly property real appearanceOpacity: useDockTint
         && ConfigService.iconMode !== "color"
         ? ConfigService.iconOpacity : 1.0
@@ -35,7 +36,7 @@ Item {
         layer.effect: MultiEffect {
             colorization: 1.0
             colorizationColor: root.iconColor
-            shadowEnabled: root.useDockTint
+            shadowEnabled: root.useDockTint || ThemeService.isDark
             shadowColor: Qt.rgba(0, 0, 0, 0.82)
             shadowOpacity: 0.62
             shadowBlur: 0.32

@@ -1,18 +1,16 @@
 import Quickshell
 import Quickshell.Io
+import qs.desktop.modules.common
 
-// Global controller for the Spotlight-like window switcher. It owns no visual
-// state itself; Variants recreates the overlay when the preferred output is
-// removed and restored by KWin.
+// Global controller for the Spotlight-like window switcher. Its window stays
+// bound to ScreenLifecycle's last real output across suspend/resume churn.
 Scope {
     id: root
 
     property bool open: false
     property string mode: "window"
     property string viewMode: "list"
-    readonly property var targetScreen: Quickshell.screens.length > 1
-        ? Quickshell.screens[1]
-        : (Quickshell.screens[0] ?? null)
+    readonly property var targetScreen: ScreenLifecycle.activeScreen
 
     function normalizeMode(value) {
         return value === "app" || value === "clipboard" ? value : "window"
@@ -58,18 +56,15 @@ Scope {
         function toggle(mode: string): void { root.toggle(mode) }
     }
 
-    Variants {
-        model: root.targetScreen ? [root.targetScreen] : []
-
-        QuickSearchWindow {
-            required property var modelData
-            screen: modelData
-            open: root.open
-            mode: root.mode
-            viewMode: root.viewMode
-            onCloseRequested: root.hide()
-            onModeCycleRequested: root.cycleMode()
-            onViewModeToggleRequested: root.toggleViewMode()
-        }
+    QuickSearchWindow {
+        screen: root.targetScreen
+        visible: root.open && ScreenLifecycle.outputAvailable
+            && root.targetScreen !== null
+        open: root.open
+        mode: root.mode
+        viewMode: root.viewMode
+        onCloseRequested: root.hide()
+        onModeCycleRequested: root.cycleMode()
+        onViewModeToggleRequested: root.toggleViewMode()
     }
 }

@@ -95,7 +95,10 @@ QtObject {
     // thus smart-hide geometry) dead for every later launch. Heal by reaping a
     // genuinely orphaned owner and retrying our bridge a few times (concurrent
     // live shells are never touched; see _retryBridge).
-    property int _bridgeRetryRemaining: 0
+    // Process.running may launch the child before Component.onCompleted. Keep
+    // retries available from object construction so an immediate D-Bus-name
+    // collision after a crash cannot permanently leave the window model empty.
+    property int _bridgeRetryRemaining: 3
     property Timer _bridgeRetryTimer: Timer {
         interval: 350
         repeat: false
@@ -521,9 +524,48 @@ QtObject {
         try { record.toplevel.close(); } catch (e) {}
     }
 
+    property var _minimizedByShowDesktop: []
+
+    function toggleShowDesktop() {
+        const currentId = svc.currentDesktopId;
+        const records = svc.records || [];
+        const currentDeskWindows = [];
+
+        for (let i = 0; i < records.length; i++) {
+            const r = records[i];
+            const onDesktop = r.toplevel?.onAllDesktops
+                || (Array.isArray(r.toplevel?.desktopIds) && r.toplevel.desktopIds.indexOf(currentId) >= 0)
+                || (Array.isArray(r.desktopIds) && r.desktopIds.indexOf(currentId) >= 0);
+            if (onDesktop) {
+                currentDeskWindows.push(r);
+            }
+        }
+
+        const unminimized = currentDeskWindows.filter(r => !r.toplevel?.minimized);
+
+        if (unminimized.length > 0) {
+            // There are visible open windows on current desktop: minimize all of them
+            _minimizedByShowDesktop = unminimized.map(r => r.windowId);
+            for (let i = 0; i < unminimized.length; i++) {
+                minimizeWindow(unminimized[i].windowId, true);
+            }
+        } else {
+            // All windows on current desktop are minimized: restore previously minimized or all
+            const toRestore = _minimizedByShowDesktop.length > 0
+                ? _minimizedByShowDesktop
+                : currentDeskWindows.map(r => r.windowId);
+
+            for (let i = 0; i < toRestore.length; i++) {
+                minimizeWindow(toRestore[i], false);
+            }
+            _minimizedByShowDesktop = [];
+        }
+    }
+
     function _consumeKwinBridgeLine(line) {
         const message = String(line ?? "");
         if (message === "READY") {
+            console.info("[WindowService] KWin bridge ready")
             svc._startKwinScript();
         } else if (message.startsWith("EVENT ")) {
             try {
@@ -546,6 +588,8 @@ QtObject {
                         svc._kwinWindows = event.windows;
                         if (!svc._kwinReceivedInitialSnapshot) {
                             svc._kwinReceivedInitialSnapshot = true;
+                            console.info("[WindowService] initial KWin snapshot windows="
+                                + event.windows.length)
                         }
                         // KWin already coalesces metadata bursts and throttles
                         // live geometry. Apply its authoritative snapshot now;
@@ -640,7 +684,6 @@ QtObject {
     }
 
     Component.onCompleted: {
-        svc._bridgeRetryRemaining = 3
         if (svc._kwinBridgeEnabled)
             _scheduleUpdate()
     }

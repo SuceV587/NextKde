@@ -246,6 +246,26 @@ PanelWindow {
         precision: SystemClock.Seconds
     }
 
+    // Global desktop background click handler: catches clicks on any empty area of the desktop
+    // (left widget columns, margins, empty spaces between widgets, and background wallpaper).
+    MouseArea {
+        id: globalDesktopBackgroundArea
+        anchors.fill: parent
+        z: 0
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+        onPressed: function(mouse) {
+            if (mouse.button === Qt.RightButton) {
+                desktopFileGrid.setSelectedPaths([])
+                desktopFileGrid.contextEntry = null
+                desktopFileGrid.showMenu(null,
+                    Qt.point(mouse.x - desktopFileGrid.x, mouse.y - desktopFileGrid.y))
+                return
+            }
+            desktopFileGrid.clearDesktopSelection()
+        }
+    }
+
     Repeater {
         model: root.widgetDefinitions
 
@@ -290,7 +310,9 @@ PanelWindow {
                         const ctx = getContext("2d")
                         const size = Math.min(width, height)
                         const center = size / 2
-                        const radius = size / 2 - 3
+                        const radius = Math.max(0, size / 2 - 3)
+                        if (radius <= 0)
+                            return
                         const date = clock.date
                         ctx.reset()
                         ctx.translate((width - size) / 2 + center, (height - size) / 2 + center)
@@ -379,7 +401,9 @@ PanelWindow {
                             onPaint: {
                                 const ctx = getContext("2d")
                                 const center = width / 2
-                                const radius = center - 7
+                                const radius = Math.max(0, center - 7)
+                                if (radius <= 0)
+                                    return
                                 const amount = root.timerDuration > 0
                                     ? Math.max(0, Math.min(1, root.timerSeconds / root.timerDuration)) : 1
                                 ctx.reset()
@@ -923,7 +947,9 @@ PanelWindow {
                         spacing: -2
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: activityRings.icons[activityRings.hoveredMetric]
+                            text: activityRings.hoveredMetric >= 0
+                                ? (activityRings.icons[activityRings.hoveredMetric] ?? "")
+                                : ""
                             color: "#7d7782"
                             font { family: "LXGW WenKai Mono Nerd Font"; pixelSize: Math.max(10, activityRings.width * 0.1) }
                         }
@@ -1289,7 +1315,8 @@ PanelWindow {
                 Timer {
                     interval: 250
                     repeat: true
-                    running: musicContent.visible && musicContent.player?.isPlaying
+                    running: musicContent.visible
+                        && !!musicContent.player?.isPlaying
                     onTriggered: {
                         if (musicContent.player)
                             musicContent.player.positionChanged()
@@ -2256,6 +2283,7 @@ PanelWindow {
         }
 
         function showMenu(entry, windowPoint) {
+            contextEntry = entry || null
             // Build and show immediately - never block the right click on the
             // async gio open-with query (a slow/failed query must not make a
             // right click appear to do nothing).

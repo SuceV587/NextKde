@@ -1,12 +1,18 @@
 pragma Singleton
 
 import QtQuick
+import Quickshell
 import Quickshell.Io
 
 // Thin adapter around cliphist. Keeping it here gives QuickSearch one stable
 // clipboard interface while cliphist continues to own persistence and dedupe.
 QtObject {
     id: service
+
+    readonly property string configDir: Quickshell.stateDir + "/clipboard"
+    readonly property string configPath: configDir + "/config.json"
+    property bool watchImages: true
+    property int maxItems: 200
 
     property var entries: []
     property int revision: 0
@@ -25,11 +31,74 @@ QtObject {
     }
     property Process imageHistoryWatcher: Process {
         command: ["wl-paste", "--type", "image", "--watch", "cliphist", "store"]
-        running: true
+        running: service.watchImages
         stderr: SplitParser {
             splitMarker: "\n"
             onRead: data => console.warn("[Clipboard] image watcher: " + data)
         }
+    }
+
+    function setWatchImages(enabled) {
+        if (service.watchImages === enabled)
+            return
+        service.watchImages = enabled
+        service.scheduleSave()
+    }
+
+    function setMaxItems(count) {
+        const clamped = Math.max(20, Math.min(1000, count))
+        if (service.maxItems === clamped)
+            return
+        service.maxItems = clamped
+        service.scheduleSave()
+        service.refresh()
+    }
+
+    property Timer _saveTimer: Timer {
+        interval: 300
+        repeat: false
+        onTriggered: service._save()
+    }
+    function scheduleSave() { _saveTimer.restart() }
+
+    function _save() {
+        const json = JSON.stringify({
+            watchImages: service.watchImages,
+            maxItems: service.maxItems,
+        }, null, 2)
+        const proc = processFactory.createObject(service, {
+            command: ["sh", "-c",
+                      "mkdir -p \"$1\" && printf '%s' \"$2\" > \"$1/config.json.tmp\" && mv \"$1/config.json.tmp\" \"$1/config.json\"",
+                      "clipboard-config-save", configDir, json],
+        })
+        proc.exited.connect(function(code) {
+            if (code !== 0)
+                console.warn("[Clipboard] save config failed")
+            proc.destroy()
+        })
+        proc.running = true
+    }
+
+    function load() {
+        const proc = processFactory.createObject(service, {
+            command: ["sh", "-c", "cat \"$1\"", "clipboard-config-load", configPath],
+        })
+        proc.exited.connect(function(code) {
+            const output = proc.stdout?.text ?? ""
+            if (code === 0 && output) {
+                try {
+                    const saved = JSON.parse(output)
+                    if (typeof saved.watchImages === "boolean")
+                        service.watchImages = saved.watchImages
+                    if (typeof saved.maxItems === "number" && saved.maxItems > 0)
+                        service.maxItems = saved.maxItems
+                } catch (e) {
+                    console.warn("[Clipboard] load config parse error: " + e)
+                }
+            }
+            proc.destroy()
+        })
+        proc.running = true
     }
 
     function refresh() {
@@ -71,10 +140,57 @@ QtObject {
         proc.running = true
     }
 
+    function deleteEntry(selectionRecord) {
+        if (!selectionRecord)
+            return
+        const proc = processFactory.createObject(service, {
+            command: ["sh", "-c", "printf '%s\\n' \"$1\" | cliphist delete",
+                      "quicksearch-clipboard-delete", String(selectionRecord)],
+        })
+        proc.exited.connect(function(code) {
+            if (code === 0)
+                service.refresh()
+            else
+                console.warn("[Clipboard] failed to delete entry: "
+                             + (proc.stderr?.text ?? ""))
+            proc.destroy()
+        })
+        proc.running = true
+    }
+
+    function clearAll() {
+        const proc = processFactory.createObject(service, {
+            command: ["sh", "-c", "cliphist wipe && wl-copy --clear"],
+        })
+        proc.exited.connect(function(code) {
+            if (code === 0) {
+                service.entries = []
+                service.revision += 1
+                service.refresh()
+            } else {
+                console.warn("[Clipboard] failed to clear history: "
+                             + (proc.stderr?.text ?? ""))
+            }
+            proc.destroy()
+        })
+        proc.running = true
+    }
+
+    function openShortcutSettings() {
+        const proc = processFactory.createObject(service, {
+            command: ["systemsettings", "kcm_keys"],
+        })
+        proc.exited.connect(function() {
+            proc.destroy()
+        })
+        proc.running = true
+    }
+
     function _readList(output) {
         const parsed = []
         const lines = output.split("\n")
-        for (let i = 0; i < lines.length; i++) {
+        const limit = service.maxItems > 0 ? service.maxItems : 200
+        for (let i = 0; i < lines.length && parsed.length < limit; i++) {
             const tab = lines[i].indexOf("\t")
             if (tab <= 0)
                 continue
@@ -97,7 +213,10 @@ QtObject {
         revision += 1
     }
 
-    Component.onCompleted: refresh()
+    Component.onCompleted: {
+        load()
+        refresh()
+    }
 
     property Component processFactory: Component {
         Process {

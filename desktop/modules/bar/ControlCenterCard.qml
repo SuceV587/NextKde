@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Wayland
 import QtQuick
 import qs.desktop.modules.common
+import qs.desktop.modules.dock
 
 // A single control-center card as an independent PopupWindow.
 //
@@ -12,9 +13,8 @@ import qs.desktop.modules.common
 // scanline aliasing), and the gaps between card windows show the real
 // desktop underneath - the iOS "hollow" control center look.
 //
-// Positioning: every card anchors to the same transparent positioning popup.
-// Quickshell therefore chooses the correct output from the original clicked
-// item, while the card offsets remain in one stable local grid.
+// Positioning: every card anchors to the transparent geometry oracle, so the
+// clicked control determines the output, edge, and compositor clamping.
 PopupWindow {
     id: root
 
@@ -27,11 +27,11 @@ PopupWindow {
     // Corner radius for the blur region and the visual border.
     property real cardRadius: 19
     // Visual card fill (above the blur).
-    property color cardColor: Qt.rgba(1, 1, 1, 0.10)
+    property color cardColor: ThemeService.backgroundColor
     property color cardBorderColor: Qt.rgba(1, 1, 1, 0.20)
-    // Window opacity would also fade compositor effects; fade the body only.
+    // PanelWindow has no opacity; this applies to the card body instead.
     property real cardOpacity: 1.0
-    // Keep window geometry stable while scaling only the card content.
+    // PanelWindow has no scale; this applies to the card content.
     property real cardScale: 1.0
 
     // ── Wire-up (set by the bar) ──
@@ -40,21 +40,32 @@ PopupWindow {
     // overlays that manage their own visibility (e.g. logout confirmation).
     property bool managedByCoordinator: true
     property bool cardShown: false
+    readonly property bool effectiveShown: root.managedByCoordinator
+        ? (root.cardShown && (!root.coordinator || !root.coordinator.suspended))
+        : root.cardShown
 
     color: "transparent"
     grabFocus: false
-    visible: root.cardShown && root.coordinator.cardAnchor !== null
+    // Keep the popup surface allocated while this control-center instance is
+    // loaded. Closing moves the anchor point off screen instead of switching
+    // `visible`, so the blur region remains stable through the transition.
+    visible: root.coordinator?.cardAnchor !== null
 
     anchor {
-        item: root.coordinator.cardAnchor
-        // Treat the card's top-left as a point inside the positioning popup.
-        rect.x: root.coordinator.gridWidth - root.offsetRight
-            - root.cardWidth + root.coordinator.cardOffsetX
-        rect.y: root.offsetTop + root.coordinator.cardOffsetY
+        item: root.coordinator?.cardAnchor ?? null
+        rect.x: (root.coordinator?.gridWidth ?? 336) - root.offsetRight
+            - root.cardWidth + (root.coordinator?.cardOffsetX ?? 0)
+        rect.y: root.effectiveShown
+            ? root.offsetTop + (root.coordinator?.cardOffsetY ?? 0)
+            : -2000
         rect.width: 0
         rect.height: 0
         edges: Edges.Top | Edges.Left
         gravity: Edges.Bottom | Edges.Right
+        // Hidden cards use a deliberately off-screen anchor. Do not let the
+        // popup placement engine slide that point back on-screen, otherwise
+        // independent sub-panels (such as Power & Session) remain visible.
+        adjustment: PopupAdjustment.None
     }
 
     implicitWidth: root.cardWidth
@@ -71,6 +82,11 @@ PopupWindow {
         Math.round(root.cardRadius),
         Math.floor(Math.min(root.cardWidth, root.cardHeight) / 2)))
 
+    property real blurStrength: AppearanceConfigService.effectiveBarBlur
+    property real liquidStrength: AppearanceConfigService.effectiveBarLiquid
+    readonly property real effectiveBlur: Math.max(0.0, Math.min(1.0, blurStrength))
+    readonly property real effectiveLiquid: Math.max(0.0, Math.min(1.0, liquidStrength))
+
     // Blur region with the radius encoded explicitly, instead of
     // RoundedBlurRegion's ellipse scanlines (whose top-row inset is corrupted
     // by DPR scaling, making the plugin recover a smaller radius than QML
@@ -78,7 +94,12 @@ PopupWindow {
     // smoothQuickshellCard reads exactly this inset as the corner radius.
     // Everything below it is full-width so the card blurs completely and the
     // SDF mask rounds the corners to blurRadius.
-    BackgroundEffect.blurRegion: Region {
+    BackgroundEffect.blurRegion: (root.visible
+        && (root.effectiveBlur > 0.005 || root.effectiveLiquid > 0.005))
+        ? cardBlurRegionHolder : null
+
+    Region {
+        id: cardBlurRegionHolder
         x: root.blurRadius
         y: 0
         width: root.cardWidth - root.blurRadius
@@ -91,16 +112,19 @@ PopupWindow {
         }
     }
 
-    // Card surface: transparent (blur shows through) + subtle tint/border.
-    // The radius MUST match blurRadius (the plugin's SDF mask), not the
-    // original float cardRadius, or the two edges separate into a visible
-    // aliased ring on small cards.
-    Rectangle {
-        id: cardBody
+    // Card surface: LiquidGlassSurface provides liquid finish, ambient wallpaper reflections,
+    // and responsive opacity tied to effectiveBlur and effectiveLiquid.
+    LiquidGlassSurface {
+        id: cardGlass
         anchors.fill: parent
         radius: root.blurRadius
-        color: root.cardColor
-        opacity: root.cardOpacity
+        baseColor: root.cardColor
+        surfaceOpacity: root.cardOpacity
+        blurStrength: root.effectiveBlur
+        liquidStrength: root.effectiveLiquid
+        ambientPrimary: WallpaperPaletteService.primary
+        ambientSecondary: WallpaperPaletteService.secondary
+        ambientStrength: 0.35 * AppearanceTokens.glass.ambientMultiplier
         border.width: 1
         border.color: root.cardBorderColor
 

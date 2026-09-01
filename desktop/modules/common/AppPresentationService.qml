@@ -24,6 +24,14 @@ QtObject {
         return true
     }
 
+    function invalidateThemeIcons() {
+        // Theme icon names resolve to paths from the currently active KDE
+        // icon theme. Keep custom file/resource URLs untouched logically, but
+        // clear the common cache so the next descriptor obtains the new path.
+        _iconCache = ({})
+        revision++
+    }
+
     function overrideFor(desktopId, rawId) {
         const direct = overrides[desktopId] ?? overrides[rawId] ?? null
         if (direct) return direct
@@ -107,6 +115,13 @@ QtObject {
             // Quickshell startup makes AppLauncher-triggered identity refresh
             // repeatedly perform expensive icon lookups on the UI thread.
             service.catalogRevision++
+        }
+    }
+
+    property Connections _iconThemeConnections: Connections {
+        target: IconThemeReloadService
+        function onRevisionChanged() {
+            service.invalidateThemeIcons()
         }
     }
 }

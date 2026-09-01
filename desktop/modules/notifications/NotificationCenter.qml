@@ -1,6 +1,7 @@
 import Quickshell
 import Quickshell.Services.Notifications
 import qs.desktop.modules.bar
+import qs.desktop.modules.common
 import qs.desktop.modules.notifications
 
 // The session D-Bus permits only one org.freedesktop.Notifications owner.
@@ -9,9 +10,7 @@ import qs.desktop.modules.notifications
 Scope {
     id: root
 
-    readonly property var targetScreen: Quickshell.screens.length > 1
-        ? Quickshell.screens[1]
-        : (Quickshell.screens[0] ?? null)
+    readonly property var targetScreen: ScreenLifecycle.activeScreen
     NotificationServer {
         id: server
         bodySupported: true
@@ -44,13 +43,9 @@ Scope {
         sourceModel: server.trackedNotifications
     }
 
-    Variants {
-        model: root.targetScreen ? [root.targetScreen] : []
-
-        NotificationWindow {
-            required property var modelData
-            screen: modelData
-            groupService: notifGroupService
-        }
+    NotificationWindow {
+        screen: root.targetScreen
+        visible: ScreenLifecycle.outputAvailable && root.targetScreen !== null
+        groupService: notifGroupService
     }
 }

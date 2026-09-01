@@ -25,7 +25,10 @@ Rectangle {
     property color _displayAmbientSecondary: ambientSecondary
     // 0 = dock/base surface, 1 = popup, 2 = contextual foreground menu.
     property real materialDepth: 0.0
-    property real liquidStrength: AppearanceConfigService.liquidStrength
+    property real blurStrength: AppearanceConfigService.effectiveDockBlur
+    readonly property real normalizedBlurStrength: Math.max(
+        0.0, Math.min(1.0, blurStrength))
+    property real liquidStrength: AppearanceConfigService.effectiveDockLiquid
     readonly property real normalizedLiquidStrength: Math.max(
         0.0, Math.min(1.0, liquidStrength))
     readonly property real baseLuminance: baseColor.r * 0.2126
@@ -34,14 +37,14 @@ Rectangle {
     // ones retain the stronger reflection that makes the material readable.
     readonly property real highlightFactor: baseLuminance > 0.6 ? 0.70 : 1.0
     readonly property real materialHighlightFactor: highlightFactor
-        * (1.0 + Math.max(0.0, materialDepth) * 0.10)
+        * (1.0 + Math.max(0.0, materialDepth) * 0.15)
         * normalizedLiquidStrength
     // Tint the glass body itself as well as its reflection overlay. This is
     // what makes wallpaper adaptation readable on dark desktops instead of
     // disappearing beneath the base surface.
     // A restrained tint keeps the Dock primarily neutral glass while still
     // letting its material pick up a little colour from the wallpaper.
-    readonly property real ambientBaseMix: Math.min(0.14, ambientStrength * 0.16)
+    readonly property real ambientBaseMix: Math.min(0.18, ambientStrength * 0.22)
         * normalizedLiquidStrength
 
     function _mixColor(from, to, progress) {
@@ -93,23 +96,24 @@ Rectangle {
         baseColor.r * (1.0 - ambientBaseMix) + _displayAmbientPrimary.r * ambientBaseMix,
         baseColor.g * (1.0 - ambientBaseMix) + _displayAmbientPrimary.g * ambientBaseMix,
         baseColor.b * (1.0 - ambientBaseMix) + _displayAmbientPrimary.b * ambientBaseMix,
-        baseColor.a * surfaceOpacity
+        baseColor.a * surfaceOpacity * root.normalizedBlurStrength
     )
 
     // A soft top reflection gives the surface depth without a hard border.
     Rectangle {
         anchors.fill: parent
         radius: root.radius
+        opacity: root.normalizedLiquidStrength
         gradient: Gradient {
             orientation: Gradient.Vertical
-            GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.28 * root.materialHighlightFactor) }
-            GradientStop { position: 0.10; color: Qt.rgba(0.88, 0.94, 1, 0.15 * root.materialHighlightFactor) }
-            GradientStop { position: 0.28; color: Qt.rgba(1, 1, 1, 0.07 * root.materialHighlightFactor) }
-            GradientStop { position: 0.58; color: Qt.rgba(0.86, 0.93, 1, 0.025 * root.materialHighlightFactor) }
+            GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.45 * root.materialHighlightFactor) }
+            GradientStop { position: 0.12; color: Qt.rgba(0.88, 0.94, 1, 0.22 * root.materialHighlightFactor) }
+            GradientStop { position: 0.32; color: Qt.rgba(1, 1, 1, 0.10 * root.materialHighlightFactor) }
+            GradientStop { position: 0.60; color: Qt.rgba(0.86, 0.93, 1, 0.035 * root.materialHighlightFactor) }
             GradientStop {
                 position: 1.0
                 color: Qt.rgba(0, 0, 0, root.bottomShadeVisible
-                    ? (0.11 + Math.max(0.0, root.materialDepth) * 0.025)
+                    ? (0.16 + Math.max(0.0, root.materialDepth) * 0.04)
                         * root.normalizedLiquidStrength : 0.0)
             }
         }
@@ -120,20 +124,21 @@ Rectangle {
     Rectangle {
         anchors.fill: parent
         radius: root.radius
+        opacity: root.normalizedLiquidStrength
         gradient: Gradient {
             orientation: Gradient.Horizontal
             GradientStop {
                 position: 0.0
                 color: Qt.rgba(
                     root._displayAmbientPrimary.r, root._displayAmbientPrimary.g, root._displayAmbientPrimary.b,
-                    root.ambientStrength * 0.26 * root.normalizedLiquidStrength
+                    root.ambientStrength * 0.38 * root.normalizedLiquidStrength
                 )
             }
             GradientStop {
                 position: 0.55
                 color: Qt.rgba(
                     root._displayAmbientSecondary.r, root._displayAmbientSecondary.g, root._displayAmbientSecondary.b,
-                    root.ambientStrength * 0.15 * root.normalizedLiquidStrength
+                    root.ambientStrength * 0.22 * root.normalizedLiquidStrength
                 )
             }
             GradientStop { position: 1.0; color: Qt.rgba(1, 1, 1, 0.0) }
@@ -146,33 +151,36 @@ Rectangle {
     Rectangle {
         anchors.fill: parent
         radius: root.radius
+        opacity: root.normalizedLiquidStrength
         gradient: Gradient {
             orientation: Gradient.Horizontal
-            GradientStop { position: 0.0; color: Qt.rgba(0.72, 0.88, 1, 0.045 * root.materialHighlightFactor) }
+            GradientStop { position: 0.0; color: Qt.rgba(0.72, 0.88, 1, 0.08 * root.materialHighlightFactor) }
             GradientStop { position: 0.46; color: Qt.rgba(1, 1, 1, 0.0) }
-            GradientStop { position: 1.0; color: Qt.rgba(1, 0.84, 0.92, 0.035 * root.materialHighlightFactor) }
+            GradientStop { position: 1.0; color: Qt.rgba(1, 0.84, 0.92, 0.06 * root.materialHighlightFactor) }
         }
     }
 
     // Inset specular lines imply a glass edge without reintroducing a visible
     // outline. Their endpoints begin after the curved corners.
     Rectangle {
+        opacity: root.normalizedLiquidStrength
         x: Math.min(parent.width / 2, root.radius + 3)
         y: 0.8
         width: Math.max(0, parent.width - x * 2)
-        height: 0.6
+        height: 0.8
         gradient: Gradient {
             orientation: Gradient.Horizontal
             GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.0) }
-            GradientStop { position: 0.18; color: Qt.rgba(1, 1, 1, 0.14 * root.materialHighlightFactor) }
-            GradientStop { position: 0.50; color: Qt.rgba(1, 1, 1, 0.26 * root.materialHighlightFactor) }
-            GradientStop { position: 0.82; color: Qt.rgba(1, 1, 1, 0.14 * root.materialHighlightFactor) }
+            GradientStop { position: 0.18; color: Qt.rgba(1, 1, 1, 0.22 * root.materialHighlightFactor) }
+            GradientStop { position: 0.50; color: Qt.rgba(1, 1, 1, 0.42 * root.materialHighlightFactor) }
+            GradientStop { position: 0.82; color: Qt.rgba(1, 1, 1, 0.22 * root.materialHighlightFactor) }
             GradientStop { position: 1.0; color: Qt.rgba(1, 1, 1, 0.0) }
         }
     }
 
     Rectangle {
         visible: root.bottomEdgeVisible
+        opacity: root.normalizedLiquidStrength
         x: Math.min(parent.width / 2, root.radius + 3)
         y: parent.height - 2
         width: Math.max(0, parent.width - x * 2)
@@ -180,9 +188,9 @@ Rectangle {
         gradient: Gradient {
             orientation: Gradient.Horizontal
             GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.0) }
-            GradientStop { position: 0.20; color: Qt.rgba(0, 0, 0, 0.09 * root.normalizedLiquidStrength) }
-            GradientStop { position: 0.50; color: Qt.rgba(0, 0, 0, 0.16 * root.normalizedLiquidStrength) }
-            GradientStop { position: 0.80; color: Qt.rgba(0, 0, 0, 0.09 * root.normalizedLiquidStrength) }
+            GradientStop { position: 0.20; color: Qt.rgba(0, 0, 0, 0.15 * root.normalizedLiquidStrength) }
+            GradientStop { position: 0.50; color: Qt.rgba(0, 0, 0, 0.28 * root.normalizedLiquidStrength) }
+            GradientStop { position: 0.80; color: Qt.rgba(0, 0, 0, 0.15 * root.normalizedLiquidStrength) }
             GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.0) }
         }
     }

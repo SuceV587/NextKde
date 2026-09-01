@@ -42,24 +42,28 @@ Item {
         }
 
         Column {
-            spacing: -1
+            spacing: 0
             anchors.verticalCenter: parent.verticalCenter
 
-            GlassText {
+            Text {
                 text: "平均温度 " + root.currentC + "°"
                 color: ThemeService.foregroundColor
+                style: ThemeService.isDark ? Text.Outline : Text.Normal
+                styleColor: Qt.rgba(0, 0, 0, 0.40)
                 font {
-                    family: "SF Pro Display"
+                    family: "Noto Sans CJK SC, sans-serif"
                     pixelSize: 9
                     weight: Font.Normal
                 }
             }
 
-            GlassText {
+            Text {
                 text: "最高温度 " + root.maximum5MinuteC + "°"
                 color: ThemeService.foregroundColor
+                style: ThemeService.isDark ? Text.Outline : Text.Normal
+                styleColor: Qt.rgba(0, 0, 0, 0.40)
                 font {
-                    family: "SF Pro Display"
+                    family: "Noto Sans CJK SC, sans-serif"
                     pixelSize: 9
                     weight: Font.Normal
                 }
@@ -76,10 +80,19 @@ Item {
     }
 
     PopupWindow {
+        id: temperatureTooltip
         visible: hoverArea.containsMouse && root.available && !detailsPopup.visible
         implicitWidth: tooltipText.implicitWidth + 16
         implicitHeight: tooltipText.implicitHeight + 10
         color: "transparent"
+
+        Connections {
+            target: ScreenLifecycle
+            function onOutputAvailableChanged() {
+                if (!ScreenLifecycle.outputAvailable)
+                    temperatureTooltip.visible = false
+            }
+        }
         anchor {
             item: root
             edges: root.dockHosted ? Edges.Top : Edges.Bottom
@@ -116,6 +129,14 @@ Item {
         implicitWidth: 360
         implicitHeight: 670
         color: "transparent"
+
+        Connections {
+            target: ScreenLifecycle
+            function onOutputAvailableChanged() {
+                if (!ScreenLifecycle.outputAvailable)
+                    detailsPopup.visible = false
+            }
+        }
         anchor {
             item: root
             edges: root.dockHosted ? Edges.Top : Edges.Bottom
@@ -309,9 +330,14 @@ Item {
             }
         }
 
-        BackgroundEffect.blurRegion: RoundedBlurRegion {
-            item: detailsSurface
-            radius: detailsSurface.radius
+        BackgroundEffect.blurRegion: detailsPopup.visible ? cpuDetailsBlurHolder : null
+
+        Region {
+            id: cpuDetailsBlurHolder
+            RoundedBlurRegion {
+                item: detailsSurface
+                radius: detailsSurface.radius
+            }
         }
     }
 
