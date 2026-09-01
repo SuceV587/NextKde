@@ -246,7 +246,10 @@ QtObject {
                 + "kwriteconfig6 --file kwinrc --group Effect-blurplus --key DockBlurStrength \"$2\" && "
                 + "kwriteconfig6 --file kwinrc --group Effect-blurplus --key RefractionStrength \"$3\" && "
                 + "kwriteconfig6 --file kwinrc --group Effect-blur --key BlurStrength \"$1\" && "
-                + "if [ \"$(qdbus6 org.kde.KWin /Effects org.kde.KWin.Effects.isEffectLoaded glass 2>/dev/null)\" != \"true\" ]; then "
+                // KWin exposes this interface with a lowercase `kwin`.  The
+                // previous spelling (`org.kde.KWin.Effects`) does not exist,
+                // so every slider update wrongly treated Glass as unloaded.
+                + "if [ \"$(qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.isEffectLoaded glass 2>/dev/null)\" != \"true\" ]; then "
                 + "  qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect blur 2>/dev/null; "
                 + "  qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect glass 2>/dev/null; "
                 + "fi; "
