@@ -122,6 +122,6 @@
 2. **C++ 构建检查**：
    - 使用 `cmake --build apps/settings/build` 编译验证 `kos-settings`。
 3. **单元与回归测试**：
-   - 运行 `node desktop/modules/dock/test_adaptive.mjs && node desktop/modules/dock/test_autohide.mjs`。
+   - 运行 `node shell/desktop/modules/dock/test_adaptive.mjs && node shell/desktop/modules/dock/test_autohide.mjs`。
 4. **运行时载入检查**：
-   - 运行 `timeout 3 quickshell --path /home/deadalux/Projects/NextKde --no-color` 验证无报错加载。
+   - 运行 `timeout 3 qs -p shell --no-color` 验证无报错加载。

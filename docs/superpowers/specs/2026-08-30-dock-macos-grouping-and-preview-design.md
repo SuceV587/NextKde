@@ -69,7 +69,7 @@
 
 ## 4. 验证计划
 
-1. **单元测试与静态检查**：运行 `node desktop/modules/dock/test_adaptive.mjs` 验证几何布局。
+1. **单元测试与静态检查**：运行 `node shell/desktop/modules/dock/test_adaptive.mjs` 验证几何布局。
 2. **多窗口行为验证**：
    - 启动多个终端或浏览器窗口，验证 Dock 上仅占 1 个图标位置。
    - 鼠标光标悬停在图标上，验证预览浮窗展示横排多张缩略图与加号。

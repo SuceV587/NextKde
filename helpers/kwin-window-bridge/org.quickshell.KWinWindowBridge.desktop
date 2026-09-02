@@ -1,6 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Quickshell KWin Window Bridge
-NoDisplay=true
-Exec=/usr/local/libexec/quickshell-kwin-window-bridge
-X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
