@@ -55,7 +55,9 @@ stdenv.mkDerivation {
     runHook preInstall
 
     mkdir -p $out/share/kos-desktop
+    # Copy shell and shared (shell has symlink pointing to ../shared)
     cp -r shell/ $out/share/kos-desktop/
+    cp -r shared/ $out/share/kos-desktop/
 
     mkdir -p $out/share/applications
     substitute packaging/desktop/kos-settings.desktop.in \
