@@ -17,6 +17,12 @@ let
     preBuild = ''
       export GOPROXY=https://goproxy.cn,direct
     '';
+    postInstall = ''
+      # Go names the binary after the module path; rename to expected name
+      if [ -f "$out/bin/data-service" ]; then
+        mv "$out/bin/data-service" "$out/bin/shell-data-service"
+      fi
+    '';
   };
 
   patched-service = runCommand "kos-data.service" { } ''
