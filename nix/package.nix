@@ -57,8 +57,9 @@ stdenv.mkDerivation {
     mkdir -p $out/share/kos-desktop
     cp -r shell/ $out/share/kos-desktop/
     cp -r shared/ $out/share/kos-desktop/
-    # shell.qml must be at root for quickshell to find it
     cp shell/shell.qml $out/share/kos-desktop/shell.qml
+    # quickshell resolves imports relative to shell.qml, desktop must be a sibling
+    cp -r shell/desktop $out/share/kos-desktop/desktop
 
     mkdir -p $out/share/applications
     substitute packaging/desktop/kos-settings.desktop.in \
