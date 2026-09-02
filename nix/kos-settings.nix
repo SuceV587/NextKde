@@ -25,6 +25,12 @@ stdenv.mkDerivation {
     runHook preInstall
     mkdir -p $out/bin
     install -m 0755 kos-settings $out/bin/
+    # Install QML files: main.qml expects ../share/kos/settings/ relative to binary
+    # and ../../shared/qml/controls relative to main.qml
+    mkdir -p $out/share/kos/settings
+    cp ${src}/main.qml $out/share/kos/settings/main.qml
+    mkdir -p $out/share/shared/qml
+    cp -r ${src}/../shared/qml/controls $out/share/shared/qml/controls
     runHook postInstall
   '';
 
