@@ -3,7 +3,7 @@
   stdenv,
   pkgs,
   src,
-  quickshell,
+  quickshell ? null,
 }:
 
 let
@@ -16,7 +16,7 @@ let
   kwin-effects-glass = pkgs.callPackage ./kwin-effects-glass.nix { inherit src; };
 
   # Patch systemd service files with correct Nix store paths
-  qs_bin = "${quickshell}/bin/quickshell";
+  qs_bin = if quickshell != null then "${quickshell}/bin/quickshell" else "/run/current-system/sw/bin/quickshell";
 
   patched-platform-service = stdenv.mkDerivation {
     name = "kos-platform.service";
