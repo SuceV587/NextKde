@@ -2,27 +2,15 @@
   lib,
   stdenv,
   buildGoModule,
-  cmake,
-  kdePackages,
   runCommand,
   src,
 }:
 
 let
-  file-clipboard-helper = stdenv.mkDerivation {
-    pname = "quickshell-file-clipboard-helper";
-    version = "unstable";
-    src = "${src}/helpers/file-clipboard-helper";
-    nativeBuildInputs = [ cmake ];
-    buildInputs = [ kdePackages.qtbase ];
-    cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" ];
-    dontWrapQtApps = true;
-  };
-
   go-service = buildGoModule {
     pname = "shell-data-service";
     version = "unstable";
-    src = "${src}/services/shell-data-service";
+    src = "${src}/services/data-service";
     vendorHash = "sha256-Gt+D69n3xUiZDkV6yClL3mJFIAELl9JWPF49JYTdLH0=";
     subPackages = [ "." ];
     ldflags = [ "-s" "-w" ];
@@ -31,11 +19,11 @@ let
     '';
   };
 
-  patched-service = runCommand "shell-data-service.service" { } ''
+  patched-service = runCommand "kos-data.service" { } ''
     mkdir -p $out/lib/systemd/user
-    sed 's|%h/.local/lib/quickshell/|${go-service}/bin/|g' \
-      ${src}/services/shell-data-service/systemd/shell-data-service.service \
-      > $out/lib/systemd/user/shell-data-service.service
+    sed 's|%h/.local/libexec/kos-data-service|${go-service}/bin/shell-data-service|g' \
+      ${src}/packaging/systemd/kos-data.service \
+      > $out/lib/systemd/user/kos-data.service
   '';
 in
 stdenv.mkDerivation {
@@ -48,16 +36,15 @@ stdenv.mkDerivation {
 
     mkdir -p $out/lib/quickshell $out/lib/systemd/user
     ln -s ${go-service}/bin/shell-data-service $out/lib/quickshell/shell-data-service
-    ln -s ${file-clipboard-helper}/lib/quickshell/quickshell-file-clipboard-helper \
-      $out/lib/quickshell/quickshell-file-clipboard-helper
-    cp ${patched-service}/lib/systemd/user/shell-data-service.service \
+    cp ${patched-service}/lib/systemd/user/kos-data.service \
       $out/lib/systemd/user/
 
     runHook postInstall
   '';
 
   passthru = {
-    inherit go-service file-clipboard-helper patched-service;
+    inherit go-service patched-service;
+    service = patched-service;
   };
 
   meta = with lib; {

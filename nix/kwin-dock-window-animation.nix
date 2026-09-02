@@ -9,7 +9,7 @@
 stdenv.mkDerivation {
   pname = "kwin-dock-window-animation";
   version = "unstable";
-  src = "${src}/integrations/kwin-dock-window-animation";
+  src = "${src}/integrations/kwin/dock-window-animation";
 
   nativeBuildInputs = [
     cmake

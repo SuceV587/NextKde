@@ -9,7 +9,7 @@
 stdenv.mkDerivation {
   pname = "kwin-context-menu-input";
   version = "unstable";
-  src = "${src}/integrations/kwin-context-menu-input";
+  src = "${src}/integrations/kwin/context-menu-input";
 
   nativeBuildInputs = [
     cmake
