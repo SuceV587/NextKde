@@ -15,13 +15,67 @@ QtObject {
     // Keep this aligned with shell.qml's primaryScreen selection.
     readonly property int preferredScreen: Quickshell.screens.length > 1 ? 1 : 0
     property url wallpaperUrl: ""
+    property string configuredWallpaperUrl: ""
     // Keep a QML-owned reference to each read process. A local JavaScript
     // reference can be collected before its exit callback on some reloads,
     // which leaves the old boolean guard permanently set.
     property var _refreshProcess: null
+    property var _resolveProcess: null
     readonly property color primary: palette.primary
     readonly property color secondary: palette.secondary
     readonly property bool ready: palette.ready
+
+    function _applyWallpaperUrl(nextUrl) {
+        if (wallpaperUrl.toString() === nextUrl)
+            return
+        console.log("[WallpaperPalette] sampling screen=" + preferredScreen
+            + " " + nextUrl)
+        wallpaperUrl = nextUrl
+    }
+
+    function _resolveWallpaperUrl(nextUrl) {
+        if (!nextUrl.endsWith("/")) {
+            _applyWallpaperUrl(nextUrl)
+            return
+        }
+
+        if (_resolveProcess) {
+            _resolveProcess.running = false
+            _resolveProcess.destroy()
+            _resolveProcess = null
+        }
+
+        const screen = Quickshell.screens[Math.min(preferredScreen,
+            Math.max(0, Quickshell.screens.length - 1))]
+        const targetAspect = screen && screen.height > 0
+            ? screen.width / screen.height : 16 / 9
+        const packagePath = decodeURIComponent(nextUrl
+            .replace(/^file:\/\//, "").replace(/\/+$/, ""))
+        const imageSet = ThemeService.isDark ? "images_dark" : "images"
+        const requestedUrl = nextUrl
+        const proc = _processFactory.createObject(svc, {
+            command: ["sh", "-c",
+                "base=\"$1/contents/$2\"; [ -d \"$base\" ] || base=\"$1/contents/images\"; "
+                    + "find \"$base\" -maxdepth 1 -type f -print 2>/dev/null | "
+                    + "awk -v target=\"$3\" 'match($0, /([0-9]+)x([0-9]+)/, size) { ratio=size[1]/size[2]; diff=ratio-target; if (diff<0) diff=-diff; area=size[1]*size[2]; if (!best || diff<bestDiff || (diff==bestDiff && area>bestArea)) { best=$0; bestDiff=diff; bestArea=area } } END { print best }'",
+                "wallpaper-package-resolve", packagePath, imageSet,
+                String(targetAspect)],
+        })
+        _resolveProcess = proc
+        proc.exited.connect(function(code) {
+            if (svc._resolveProcess === proc)
+                svc._resolveProcess = null
+            const resolvedPath = (proc.stdout?.text ?? "").trim()
+            if (code === 0 && resolvedPath
+                    && svc.configuredWallpaperUrl === requestedUrl)
+                svc._applyWallpaperUrl("file://" + resolvedPath)
+            else if (svc.configuredWallpaperUrl === requestedUrl)
+                console.warn("[WallpaperPalette] package image resolve failed "
+                    + requestedUrl)
+            proc.destroy()
+        })
+        proc.running = true
+    }
 
     function _readWallpaperText(content) {
         const containmentScreens = ({})
@@ -67,12 +121,12 @@ QtObject {
         }
 
         if (nextUrl) {
-            if (wallpaperUrl.toString() === nextUrl)
+            if (configuredWallpaperUrl === nextUrl)
                 return
-            console.log("[WallpaperPalette] sampling screen=" + preferredScreen
-                + " " + nextUrl)
-            wallpaperUrl = nextUrl
+            configuredWallpaperUrl = nextUrl
+            _resolveWallpaperUrl(nextUrl)
         } else {
+            configuredWallpaperUrl = ""
             wallpaperUrl = ""
             console.warn("[WallpaperPalette] no image wallpaper found")
         }
@@ -144,6 +198,14 @@ QtObject {
                 console.log("[WallpaperPalette] primary=" + palette.primary
                     + " secondary=" + palette.secondary)
             }
+        }
+    }
+
+    property Connections _themeWatch: Connections {
+        target: ThemeService
+        function onIsDarkChanged() {
+            if (svc.configuredWallpaperUrl.endsWith("/"))
+                svc._resolveWallpaperUrl(svc.configuredWallpaperUrl)
         }
     }
 
