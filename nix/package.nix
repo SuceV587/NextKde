@@ -55,9 +55,7 @@ stdenv.mkDerivation {
     runHook preInstall
 
     mkdir -p $out/share/kos-desktop
-    cp -r shell.qml $out/share/kos-desktop/
-    cp -r desktop $out/share/kos-desktop/
-    cp -r shared $out/share/kos-desktop/
+    cp -r shell/ $out/share/kos-desktop/
 
     mkdir -p $out/share/applications
     substitute packaging/desktop/kos-settings.desktop.in \
