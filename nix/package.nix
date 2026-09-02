@@ -60,7 +60,7 @@ stdenv.mkDerivation {
     mkdir -p $out/share/applications
     substitute packaging/desktop/kos-settings.desktop.in \
       $out/share/applications/kos-settings.desktop \
-      --replace-fail '@CMAKE_INSTALL_FULL_BINDIR@' "${kos-settings}/bin"
+      --replace-fail 'kos-settings' "${kos-settings}/bin/kos-settings"
 
     mkdir -p $out/lib/quickshell
     ln -s ${shell-data-service}/lib/quickshell/shell-data-service \
