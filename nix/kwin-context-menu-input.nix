@@ -26,7 +26,7 @@ stdenv.mkDerivation {
 
   meta = with lib; {
     description = "KWin effect for context menu outside-click dismiss";
-    homepage = "https://github.com/SuceV587/NextKde";
+    homepage = "https://gitee.com/xiaoyintx_ciallo/test";
     license = licenses.gpl3;
     platforms = platforms.linux;
   };

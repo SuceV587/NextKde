@@ -33,7 +33,7 @@ stdenv.mkDerivation {
 
   meta = with lib; {
     description = "C++ D-Bus bridge for KWin window enumeration";
-    homepage = "https://github.com/SuceV587/NextKde";
+    homepage = "https://gitee.com/xiaoyintx_ciallo/test";
     license = licenses.gpl3;
     platforms = platforms.linux;
   };

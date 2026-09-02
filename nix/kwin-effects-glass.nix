@@ -7,9 +7,9 @@
 }:
 
 stdenv.mkDerivation {
-  pname = "kwin-dock-window-animation";
+  pname = "kwin-glass";
   version = "unstable";
-  src = "${src}/integrations/kwin-dock-window-animation";
+  src = "${src}/vendor/kwin-effects-glass";
 
   nativeBuildInputs = [
     cmake
@@ -18,15 +18,14 @@ stdenv.mkDerivation {
 
   buildInputs = [
     kdePackages.kwin
-    kdePackages.kconfig
-    kdePackages.qtbase
+    kdePackages.qttools
   ];
 
   cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" ];
   dontWrapQtApps = true;
 
   meta = with lib; {
-    description = "iPadOS-style scale/genie window animation for KWin";
+    description = "Fork of the KWin Blur effect for KDE Plasma 6 with glass/refraction features";
     homepage = "https://gitee.com/xiaoyintx_ciallo/test";
     license = licenses.gpl3;
     platforms = platforms.linux;

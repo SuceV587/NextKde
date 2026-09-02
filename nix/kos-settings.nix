@@ -30,7 +30,7 @@ stdenv.mkDerivation {
 
   meta = with lib; {
     description = "KOS Desktop Shell settings application";
-    homepage = "https://github.com/SuceV587/NextKde";
+    homepage = "https://gitee.com/xiaoyintx_ciallo/test";
     license = licenses.gpl3;
     platforms = platforms.linux;
   };

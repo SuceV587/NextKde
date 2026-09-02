@@ -7,26 +7,25 @@
 }:
 
 stdenv.mkDerivation {
-  pname = "kwin-dock-window-animation";
+  pname = "kos-platform";
   version = "unstable";
-  src = "${src}/integrations/kwin-dock-window-animation";
+  src = "${src}/platform";
 
   nativeBuildInputs = [
     cmake
-    kdePackages.extra-cmake-modules
   ];
 
   buildInputs = [
-    kdePackages.kwin
-    kdePackages.kconfig
     kdePackages.qtbase
+    kdePackages.qtdeclarative
+    kdePackages.kiconthemes
   ];
 
   cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" ];
   dontWrapQtApps = true;
 
   meta = with lib; {
-    description = "iPadOS-style scale/genie window animation for KWin";
+    description = "KOS platform integration daemon (D-Bus bridge for KWin, network, audio, etc.)";
     homepage = "https://gitee.com/xiaoyintx_ciallo/test";
     license = licenses.gpl3;
     platforms = platforms.linux;
