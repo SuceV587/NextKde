@@ -12,6 +12,7 @@
 #include "settings.h"
 
 #include "core/pixelgrid.h"
+#include "cursor.h"
 #ifndef GLASS_X11
 #include "core/region.h"
 #endif
@@ -207,6 +208,62 @@ BlurEffect::BlurEffect()
 
     connect(effects, &EffectsHandler::windowAdded, this, &BlurEffect::slotWindowAdded);
     connect(effects, &EffectsHandler::windowDeleted, this, &BlurEffect::slotWindowDeleted);
+#if defined(GLASS_KWIN_67) && !defined(GLASS_X11)
+    connect(effects, &EffectsHandler::mouseChanged, this,
+            [this](const QPointF &pos, const QPointF &oldPos,
+                   Qt::MouseButtons, Qt::MouseButtons,
+                   Qt::KeyboardModifiers, Qt::KeyboardModifiers) {
+        Cursor *cursor = Cursors::self() ? Cursors::self()->mouse() : nullptr;
+        RectF currentCursor = cursor ? cursor->geometry() : RectF(pos.x() - 32, pos.y() - 32, 64, 64);
+        if (currentCursor.isEmpty()) {
+            currentCursor = RectF(pos.x() - 32, pos.y() - 32, 64, 64);
+        }
+        const RectF oldCursor = currentCursor.translated(oldPos - pos);
+        const RectF cursorDamage = currentCursor.united(oldCursor).marginsAdded(QMarginsF(2, 2, 2, 2));
+
+        const auto isQuickshell = [](const QString &value) {
+            return value.contains(QLatin1String("quickshell"), Qt::CaseInsensitive);
+        };
+        QList<LogicalOutput *> affectedOutputs;
+        for (const auto &[window, blurData] : m_windows) {
+            Q_UNUSED(blurData)
+            if (!window->screen() || window->isDock()) {
+                continue;
+            }
+            if (!isQuickshell(window->window()->resourceClass())
+                && !isQuickshell(window->window()->resourceName())) {
+                continue;
+            }
+
+            const Rect outputGeometry = window->screen()->geometry();
+            const RectF windowGeometry = window->frameGeometry();
+            const bool outputSpanningBackdrop =
+                windowGeometry.width() >= outputGeometry.width() * 0.9
+                && windowGeometry.height() >= outputGeometry.height() * 0.75;
+            if (!outputSpanningBackdrop) {
+                continue;
+            }
+
+            const RectF blurBounds = RectF(blurRegion(window).boundingRect()).translated(window->pos());
+            if (blurBounds.intersects(cursorDamage) && !affectedOutputs.contains(window->screen())) {
+                affectedOutputs.append(window->screen());
+            }
+        }
+        if (affectedOutputs.isEmpty()) {
+            return;
+        }
+
+        // Cursor/overlay damage is collected after window damage in KWin 6.7.
+        // Mirror the old and new cursor rectangles onto the desktop item first
+        // so BackgroundEffectItem sees an ordinary lower-window repaint and
+        // expands it through the blur backdrop in the same frame.
+        for (EffectWindow *window : effects->stackingOrder()) {
+            if (window->isDesktop() && affectedOutputs.contains(window->screen())) {
+                window->addLayerRepaint(cursorDamage);
+            }
+        }
+    });
+#endif
 #ifdef GLASS_X11
     connect(effects, &EffectsHandler::screenRemoved, this, &BlurEffect::slotOutputRemoved);
 #else
@@ -969,27 +1026,9 @@ void BlurEffect::prePaintWindow(EffectWindow *w, WindowPrePaintData &data, std::
 }
 #else
 #ifdef GLASS_KWIN_67
-// KWin 6.7: prePaintWindow is intentionally NOT overridden.
-//
-// Previously this called data.setTranslucent() for blurred windows, which
-// marks them as non-opaque in paintSimpleScreen's occlusion cull.  That
-// prevents visible -= deviceOpaque for the dock, so the WALL keeps painting
-// behind it -- but it also means the dock's own drawWindow() uses
-// PAINT_WINDOW_TRANSLUCENT, so effects->drawWindow() composites the dock
-// semi-transparently over whatever is already in the renderTarget.
-//
-// When a popup appears/disappears, the screen damage is narrow (the popup's
-// footprint).  The dock's deviceRegion shrinks to that sliver, so
-// renderTarget is NOT cleared outside it -- it retains the previous frame's
-// (blur + dock) content.  The blur onscreen pass then uses GL_BLEND to
-// composite over that stale content, producing a double-rendered flicker.
-//
-// Upstream KDE 6.7.3 blur does not override prePaintWindow.  Instead it
-// relies on BackgroundEffectItem + setPixelsToExpandRepaintsBelowOpaqueRegions
-// to expand the repaint region via the forceTranslucent mechanism in
-// collectDamage(), which subtracts the blur area from the dock's opaque
-// region so the WALL repaints behind it -- without marking the dock
-// translucent for compositing.
+// KWin 6.7 uses BackgroundEffectItem for paint-region expansion. Cursor
+// damage is mirrored to the desktop item in the constructor above so the
+// normal mechanism can see it without changing this window's paint mask.
 #else
 void BlurEffect::prePaintWindow(RenderView *view, EffectWindow *w, WindowPrePaintData &data, std::chrono::milliseconds presentTime)
 {
@@ -1305,28 +1344,41 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     }
 
     if (smoothQuickshellCard) {
-        // Only use the full-card smooth path when the repaint region covers the
-        // entire card.  When a popup appears/disappears, deviceRegion is a narrow
-        // strip and dirtyRegion only covers part of the card -- rendering the full
-        // area would blur stale framebuffer[0] content and flicker.  In that case
-        // keep the deviceRegion-clipped effectiveContentShape so the onscreen pass
-        // only touches the region that was actually updated.
-        RectF eeBounds;
-        for (const auto &r : effectiveEffectShape) {
-            eeBounds = eeBounds.united(r);
-        }
-        const bool fullCoverage = eeBounds.width() >= scaledBackgroundRect.width() * 0.99
-            && eeBounds.height() >= scaledBackgroundRect.height() * 0.99;
-        if (fullCoverage) {
-            effectiveContentShape.clear();
+        // Keep the full-card SDF for partial repaints too, but limit the
+        // onscreen geometry to the exact device damage.  Falling back to the
+        // protocol's rectangle-union shape exposes its stair-step rounded
+        // edge; painting the complete card, on the other hand, samples stale
+        // framebuffer content when only a narrow region was refreshed.
+        // Clipping the damage against the card's bounding rectangle avoids
+        // both failure modes: only valid pixels are drawn and the shader owns
+        // the anti-aliased rounded boundary.
+        effectiveContentShape.clear();
 #ifdef GLASS_X11
+        const QRectF localCardRect(0, 0, scaledBackgroundRect.width(), scaledBackgroundRect.height());
+        if (deviceRegion == infiniteRegion()) {
             effectiveContentShape.append(QRectF(0, 0, scaledBackgroundRect.width(), scaledBackgroundRect.height()));
-#else
-            effectiveContentShape.append(RectF(0, 0, scaledBackgroundRect.width(), scaledBackgroundRect.height()));
-#endif
         } else {
-            smoothQuickshellCard = false;
+            for (const QRect &clipRect : deviceRegion) {
+                const QRectF localDamage = snapToPixelGridF(scaledRect(clipRect, viewport.scale()))
+                                               .translated(-deviceBackgroundRect.topLeft());
+                if (const QRectF clipped = localDamage.intersected(localCardRect); !clipped.isEmpty()) {
+                    effectiveContentShape.append(clipped);
+                }
+            }
         }
+#else
+        const RectF localCardRect(0, 0, scaledBackgroundRect.width(), scaledBackgroundRect.height());
+        if (deviceRegion == Region::infinite()) {
+            effectiveContentShape.append(RectF(0, 0, scaledBackgroundRect.width(), scaledBackgroundRect.height()));
+        } else {
+            for (const Rect &clipRect : deviceRegion.rects()) {
+                const RectF localDamage = clipRect.translated(-deviceBackgroundRect.topLeft());
+                if (const RectF clipped = localDamage.intersected(localCardRect); !clipped.isEmpty()) {
+                    effectiveContentShape.append(clipped);
+                }
+            }
+        }
+#endif
     }
 
     // Maybe reallocate offscreen render targets. Keep in mind that the first one contains
