@@ -25,6 +25,12 @@ Whether to apply the glass effect to window decorations, including borders. Enab
 
 This option will override the blur region specified by the decoration.
 
+The force-blur scope only applies to windows that did not request blur on
+their own. Applications publishing an explicit KDE blur-behind region, and
+decorations that declare their own blur region, keep that region even when
+“Only Quickshell” is enabled. A frame created only by “Apply effects to window
+decorations as well” remains subject to the configured force-blur scope.
+
 # Rounded corners
 ### Use declared corner radius
 When enabled, Glass uses the corner radius reported by the window instead of overriding it with the settings below.

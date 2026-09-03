@@ -55,40 +55,68 @@ find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS
 )
 
 if(GLASS_WAYLAND)
-    find_package(KWin COMPONENTS
-        kwineffects
-    )
-    if (${KWin_FOUND})
-        find_package(KWinDBusInterface CONFIG REQUIRED)
+    # A KWin config file can be present while one of its transitive development
+    # dependencies (for example Vulkan headers) is not.  Treat the complete
+    # imported target as the capability check instead of assuming that finding
+    # KWinConfig.cmake is sufficient.
+    find_package(KWin QUIET COMPONENTS kwineffects)
+    if(KWin_FOUND AND TARGET KWin::kwin)
+        if(KWin_VERSION VERSION_LESS 6.4)
+            message(FATAL_ERROR "Glass does not support your Plasma version (${KWin_VERSION}). See the README for more information.")
+        endif()
+        if(KWin_VERSION VERSION_GREATER_EQUAL 6.7)
+            set(GLASS_KWIN_67 ON)
+        endif()
     else()
+        message(STATUS "Glass Wayland effect disabled: KWin development dependencies are unavailable")
         set(GLASS_WAYLAND OFF)
     endif()
 endif()
+
 if(GLASS_X11)
-    find_package(X11 REQUIRED)
-    find_package(XCB REQUIRED COMPONENTS XCB)
-    find_package(KWinX11 COMPONENTS
-        kwineffects
-    )
-    if (${KWinX11_FOUND})
-        find_package(KWinX11DBusInterface CONFIG REQUIRED)
-        set(KWin_VERSION ${KWinX11_VERSION})
+    find_package(X11 QUIET)
+    find_package(XCB QUIET COMPONENTS XCB)
+    find_package(KWinX11 QUIET COMPONENTS kwineffects)
+    if(X11_FOUND AND TARGET XCB::XCB AND KWinX11_FOUND AND TARGET KWinX11::kwin)
+        if(KWinX11_VERSION VERSION_LESS 6.4)
+            message(FATAL_ERROR "Glass does not support your Plasma version (${KWinX11_VERSION}). See the README for more information.")
+        endif()
     else()
+        message(STATUS "Glass X11 effect disabled: X11, XCB, or KWin X11 development dependencies are unavailable")
         set(GLASS_X11 OFF)
     endif()
 endif()
 
-if(${KWin_VERSION} VERSION_LESS 6.4)
-    message(FATAL_ERROR "Glass does not support your Plasma version (${KWin_VERSION}). See the README for more information.")
+set(GLASS_BUILD_KCM OFF)
+if(GLASS_WAYLAND OR GLASS_X11)
+    find_package(KDecoration3 QUIET)
+    if(NOT KDecoration3_FOUND OR NOT TARGET KDecoration3::KDecoration)
+        message(STATUS "Glass effects disabled: KDecoration3 development dependencies are unavailable")
+        set(GLASS_WAYLAND OFF)
+        set(GLASS_X11 OFF)
+    endif()
 endif()
 
-if(${KWin_VERSION} VERSION_GREATER_EQUAL 6.7)
-    set(GLASS_KWIN_67 ON)
+if(GLASS_WAYLAND OR GLASS_X11)
+    # The KCM needs KWin's D-Bus XML only to generate its reconfigure proxy.
+    # Keep that optional so the effect itself can still be built when a distro
+    # splits the interface metadata into a separate development package.
+    if(GLASS_WAYLAND)
+        find_package(KWinDBusInterface CONFIG QUIET)
+    elseif(GLASS_X11)
+        find_package(KWinX11DBusInterface CONFIG QUIET)
+    endif()
+
+    if(KWIN_EFFECTS_INTERFACE AND EXISTS "${KWIN_EFFECTS_INTERFACE}")
+        set(GLASS_BUILD_KCM ON)
+    else()
+        message(STATUS "Glass settings module disabled: KWin's Effects D-Bus interface is unavailable")
+    endif()
+
+    add_subdirectory(src)
+else()
+    message(WARNING "No supported KWin backend is available; Glass effect targets will be skipped")
 endif()
-
-find_package(KDecoration3 REQUIRED)
-
-add_subdirectory(src)
 
 ki18n_install(po)
 

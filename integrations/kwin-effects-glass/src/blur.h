@@ -48,6 +48,11 @@ struct BlurRenderData
 
 struct BlurEffectData
 {
+    /// True when the client or its decoration explicitly opted into blur.
+    /// Forced-blur policy must not masquerade as an application request,
+    /// otherwise class filters cannot distinguish the two paths.
+    bool hasExplicitBlurRequest = false;
+
     /// The region that should be blurred behind the window
     std::optional<BlurRegion> content;
 
@@ -224,6 +229,9 @@ private:
 
     BlurSettings m_settings;
     bool m_valid = false;
+#ifdef GLASS_KWIN_67
+    bool m_blurCapabilityRegistered = false;
+#endif
 #if KWIN_BUILD_X11
     long net_wm_blur_region = 0;
 #endif

@@ -4,11 +4,19 @@ set(kwin_glass_config_SRCS
     blur_config.qrc
 )
 
+# This directory is normally gated by GLASS_BUILD_KCM in its parent.  Keep a
+# local guard as well so direct or downstream inclusion never calls Qt's D-Bus
+# generator with an empty interface path.
+if(NOT KWIN_EFFECTS_INTERFACE OR NOT EXISTS "${KWIN_EFFECTS_INTERFACE}")
+    message(STATUS "Glass settings module disabled: KWin's Effects D-Bus interface is unavailable")
+    return()
+endif()
+
 ki18n_wrap_ui(kwin_glass_config_SRCS blur_config.ui)
 kconfig_add_kcfg_files(kwin_glass_config_SRCS ../blurconfig.kcfgc)
 
 # This will only work as long as KWin and KWin X11 have the same interface
-qt_add_dbus_interface(kwin_glass_config_SRCS ${KWIN_EFFECTS_INTERFACE} kwineffects_interface)
+qt_add_dbus_interface(kwin_glass_config_SRCS "${KWIN_EFFECTS_INTERFACE}" kwineffects_interface)
 
 add_library(kwin_glass_config MODULE ${kwin_glass_config_SRCS})
 target_link_libraries(kwin_glass_config

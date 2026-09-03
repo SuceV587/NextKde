@@ -1,7 +1,9 @@
 # Add the localization domain
 add_definitions(-DTRANSLATION_DOMAIN="kwin_effects_glass")
 
-add_subdirectory(kcm)
+if(GLASS_BUILD_KCM)
+    add_subdirectory(kcm)
+endif()
 
 # Read compat preambles
 file(READ shaders/compat_core.glsl COMPAT_CORE)
