@@ -1,4 +1,5 @@
 import QtQuick
+import qs.desktop.modules.common
 
 // iPadOS widgets rely on distinct, calm colour fields instead of a common
 // translucent panel. The colours stay dark enough for white text to remain
@@ -11,7 +12,7 @@ Rectangle {
     property color endColor: "transparent"
     property bool showSurface: true
 
-    radius: 26
+    radius: AppearanceTokens.widget.radius
     color: "transparent"
     clip: true
 
