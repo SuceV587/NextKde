@@ -28,8 +28,17 @@ add_custom_target(kos-shell-data-service-build ALL
     DEPENDS ${KOS_SHELL_DATA_SERVICE_EXECUTABLE}
 )
 
+configure_file(
+    systemd/shell-data-service.service.in
+    ${CMAKE_CURRENT_BINARY_DIR}/shell-data-service.service
+    @ONLY
+)
+
 install(PROGRAMS ${KOS_SHELL_DATA_SERVICE_EXECUTABLE}
     DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/shell-data-service.service
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/systemd/user
 )
 
 if(BUILD_TESTING)
