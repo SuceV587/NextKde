@@ -141,6 +141,7 @@ BlurEffect::BlurEffect()
         m_roundedOnscreenPass.highlightWidthPxLocation = m_roundedOnscreenPass.shader->uniformLocation("highlightWidthPx");
         m_roundedOnscreenPass.highlightAngleLocation = m_roundedOnscreenPass.shader->uniformLocation("highlightAngle");
         m_roundedOnscreenPass.surfaceScaleLocation = m_roundedOnscreenPass.shader->uniformLocation("surfaceScale");
+        m_roundedOnscreenPass.lensStrengthScaleLocation = m_roundedOnscreenPass.shader->uniformLocation("lensStrengthScale");
         m_roundedOnscreenPass.refractionStrengthLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionStrength");
         m_roundedOnscreenPass.refractionNormalPowLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionNormalPow");
         m_roundedOnscreenPass.refractionRGBFringingLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionRGBFringing");
@@ -350,15 +351,26 @@ void BlurEffect::reconfigure(ReconfigureFlags flags)
         m_settings.general.dockBlurStrength,
         m_settings.general.dockNoiseStrength
     );
+    // AppearanceConfig maps 0..1 to 15 stored levels with
+    // round(1 + strength * 14), then settings.cpp converts that to the
+    // zero-based pipeline index. 30% therefore maps to index 4.
+    constexpr int fullScreenLauncherMinimumBlurIndex = 4;
+    m_fullScreenLauncherBlurSettings = pipelineSettingsForStrength(
+        std::max(m_settings.general.blurStrength,
+                 fullScreenLauncherMinimumBlurIndex),
+        m_settings.general.noiseStrength
+    );
     m_maxIterationCount = std::max({
         m_contentBlurSettings.iterationCount,
         m_decorationBlurSettings.iterationCount,
         m_dockBlurSettings.iterationCount,
+        m_fullScreenLauncherBlurSettings.iterationCount,
     });
     m_expandSize = std::max({
         m_contentBlurSettings.expandSize,
         m_decorationBlurSettings.expandSize,
         m_dockBlurSettings.expandSize,
+        m_fullScreenLauncherBlurSettings.expandSize,
     });
     m_blurRadius = m_settings.general.blurRadius;
     m_upsampleOffset = m_settings.general.upsampleOffset;
@@ -1172,7 +1184,19 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     const BlurRegion effectShape = transformShape(blurRegion(w, &cornerRadius));
     const BlurRegion contentShape = transformShape(contentRegion(w, &cornerRadius));
     const BlurRegion frameShape = effectShape - contentShape;
-    const BlurPipelineSettings &contentBlurSettings = w->isDock() ? m_dockBlurSettings : m_contentBlurSettings;
+    // LayerShellV1Window's namespace is private to KWin. Reuse the stable
+    // geometry signature used below for the full-screen Launchpad highlight:
+    // a large surface beginning at the output's top edge. This excludes the
+    // Dock and QuickSearch, leaving every other blur preference untouched.
+    const QRectF launcherFrame = w->frameGeometry();
+    const bool isFullScreenLauncher = !w->isDock()
+        && launcherFrame.width() > 1500.0
+        && launcherFrame.height() > 300.0
+        && w->pos().y() < 10.0;
+    const BlurPipelineSettings &contentBlurSettings = w->isDock()
+        ? m_dockBlurSettings
+        : (isFullScreenLauncher ? m_fullScreenLauncherBlurSettings
+                                : m_contentBlurSettings);
     const BlurPipelineSettings &combinedBlurSettings =
         (contentShape.isEmpty() && !frameShape.isEmpty()) ? m_decorationBlurSettings : contentBlurSettings;
     const bool splitBlurSettings = !frameShape.isEmpty() &&
@@ -1631,8 +1655,8 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     if (w->isDock()) {
         effectiveHighlightAngle = 45.0f;   // top-left + bottom-right
     } else {
-        const qreal wgt = w->frameGeometry().width();
-        const qreal hgt = w->frameGeometry().height();
+        const qreal wgt = launcherFrame.width();
+        const qreal hgt = launcherFrame.height();
         const qreal y = w->pos().y();
         if (wgt > 1500.0 && hgt > 300.0) {
             // Full-screen panels. applauncher reaches the very top of the
@@ -1662,6 +1686,14 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
                              : (w->isNotification() || w->isOnScreenDisplay()) ? 0.5f
                              : 1.0f;
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.surfaceScaleLocation, surfaceScale);
+    // Dock, menus, notifications and OSD stay visually stable while the
+    // content behind them moves. Reserve the full lens for small transient
+    // controls and previews, where a stronger refraction communicates touch.
+    const float lensStrengthScale = w->isDock() ? 0.45f
+                                  : (w->isMenu() || w->isDropdownMenu() || w->isPopupMenu()) ? 0.55f
+                                  : (w->isNotification() || w->isOnScreenDisplay()) ? 0.35f
+                                  : 1.0f;
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.lensStrengthScaleLocation, lensStrengthScale);
     auto tintStrengthForRegion = [&](bool decorationRegion) {
         if (w->isDock() && m_settings.general.excludeDocks) {
             return 0.0f;

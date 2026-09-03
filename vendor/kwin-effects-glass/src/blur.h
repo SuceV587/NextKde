@@ -177,6 +177,7 @@ private:
         int highlightWidthPxLocation;
         int highlightAngleLocation;
         int surfaceScaleLocation;
+        int lensStrengthScaleLocation;
         int refractionStrengthLocation;
         int refractionNormalPowLocation;
         int refractionRGBFringingLocation;
@@ -239,6 +240,7 @@ private:
     BlurPipelineSettings m_contentBlurSettings{};
     BlurPipelineSettings m_decorationBlurSettings{};
     BlurPipelineSettings m_dockBlurSettings{};
+    BlurPipelineSettings m_fullScreenLauncherBlurSettings{};
     QStringList m_windowClasses;
     bool m_whitelist;
 
