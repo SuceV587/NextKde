@@ -1,0 +1,75 @@
+# Add the localization domain
+add_definitions(-DTRANSLATION_DOMAIN="kwin_effects_glass")
+
+if(GLASS_BUILD_KCM)
+    add_subdirectory(kcm)
+endif()
+
+# Read compat preambles
+file(READ shaders/compat_core.glsl COMPAT_CORE)
+#file(READ shaders/compat_legacy.glsl COMPAT_LEGACY)
+file(READ shaders/oklab.glsl OKLAB_SHADER)
+file(READ shaders/snells-glass.glsl SNELLS_GLASS_SHADER)
+file(READ shaders/glass.glsl GLASS_SHADER)
+
+# Pre-expand snells-glass.glsl into glass.glsl
+string(REPLACE "#include \"snells-glass.glsl\"" "${SNELLS_GLASS_SHADER}" GLASS_SHADER "${GLASS_SHADER}")
+
+# Generate a core shader variant from a single .glsl source.
+# Output goes into generated/ to keep source shaders/ clean.
+function(generate_shader_variants input_glsl output_base)
+    file(READ "${input_glsl}" SHADER_SRC)
+
+    # Expand helper-shader includes
+    string(REPLACE "#include \"oklab.glsl\"" "${OKLAB_SHADER}" SHADER_SRC_EXPANDED "${SHADER_SRC}")
+    string(REPLACE "#include \"glass.glsl\"" "${GLASS_SHADER}" SHADER_SRC_EXPANDED "${SHADER_SRC_EXPANDED}")
+
+    # Core variant
+    file(WRITE "generated/${output_base}${ARGN}" "${COMPAT_CORE}\n${SHADER_SRC_EXPANDED}")
+endfunction()
+
+# Generate vertex shaders
+generate_shader_variants(shaders/vertex.glsl vertex .vert)
+generate_shader_variants(shaders/onscreen_rounded_vertex.glsl onscreen_rounded .vert)
+
+# Generate fragment shaders
+generate_shader_variants(shaders/downsample.glsl downsample .frag)
+generate_shader_variants(shaders/upsample.glsl upsample .frag)
+generate_shader_variants(shaders/noise.glsl noise .frag)
+generate_shader_variants(shaders/onscreen_rounded.glsl onscreen_rounded .frag)
+
+set(glass_SOURCES
+    blur.cpp
+    settings.cpp
+    blur.qrc
+    main.cpp
+)
+
+kconfig_add_kcfg_files(glass_SOURCES
+    blurconfig.kcfgc
+)
+
+if(GLASS_WAYLAND)
+    add_library(glass MODULE ${glass_SOURCES})
+    target_link_libraries(glass PRIVATE
+        KDecoration3::KDecoration
+        KF6::ConfigGui
+        KWin::kwin
+        XCB::XCB
+    )
+    if(GLASS_KWIN_67)
+        target_compile_definitions(glass PRIVATE GLASS_KWIN_67)
+    endif()
+    install(TARGETS glass DESTINATION ${KDE_INSTALL_PLUGINDIR}/kwin/effects/plugins)
+endif()
+if(GLASS_X11)
+    add_library(glass_x11 MODULE ${glass_SOURCES})
+    target_link_libraries(glass_x11 PRIVATE
+        KDecoration3::KDecoration
+        KF6::ConfigGui
+        KWinX11::kwin
+        XCB::XCB
+    )
+    target_compile_definitions(glass_x11 PRIVATE GLASS_X11)
+    install(TARGETS glass_x11 DESTINATION ${KDE_INSTALL_PLUGINDIR}/kwin-x11/effects/plugins)
+endif()
