@@ -1342,7 +1342,12 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
 
         glClearColor(0, 0, 0, 0);
         for (size_t i = 0; i <= m_maxIterationCount; ++i) {
-            auto texture = GLTexture::allocate(textureFormat, backgroundRect.size() / (1 << i));
+            // Dual Kawase halves each level. Very thin blur regions (for
+            // example KOS's 6 px dock reveal handle) eventually truncate to
+            // zero in one dimension. Keep those levels valid without skipping
+            // the window's early animation frames altogether.
+            const QSize textureSize = (backgroundRect.size() / (1 << i)).expandedTo(QSize(1, 1));
+            auto texture = GLTexture::allocate(textureFormat, textureSize);
             if (!texture) {
                 qCWarning(KWIN_BLUR) << "Failed to allocate an offscreen texture";
                 return;
