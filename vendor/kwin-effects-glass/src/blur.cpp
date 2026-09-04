@@ -356,8 +356,8 @@ void BlurEffect::reconfigure(ReconfigureFlags flags)
     );
     // AppearanceConfig maps 0..1 to 15 stored levels with
     // round(1 + strength * 14), then settings.cpp converts that to the
-    // zero-based pipeline index. 30% therefore maps to index 4.
-    constexpr int fullScreenLauncherMinimumBlurIndex = 4;
+    // zero-based pipeline index. 15% therefore maps to index 2.
+    constexpr int fullScreenLauncherMinimumBlurIndex = 2;
     m_fullScreenLauncherBlurSettings = pipelineSettingsForStrength(
         std::max(m_settings.general.blurStrength,
                  fullScreenLauncherMinimumBlurIndex),
@@ -1211,10 +1211,6 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     const BlurRegion effectShape = transformShape(blurRegion(w, &cornerRadius));
     const BlurRegion contentShape = transformShape(contentRegion(w, &cornerRadius));
     const BlurRegion frameShape = effectShape - contentShape;
-    // LayerShellV1Window's namespace is private to KWin. Reuse the stable
-    // geometry signature used below for the full-screen Launchpad highlight:
-    // a large surface beginning at the output's top edge. This excludes the
-    // Dock and QuickSearch, leaving every other blur preference untouched.
     const QRectF launcherFrame = w->frameGeometry();
     const bool isFullScreenLauncher = !w->isDock()
         && launcherFrame.width() > 1500.0
