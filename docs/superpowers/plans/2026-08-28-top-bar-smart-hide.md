@@ -1,5 +1,7 @@
 # 顶部状态栏智能隐藏功能实施计划 (Top Bar Smart Hide Implementation Plan)
 
+> 状态：已实现；本文保留为历史实施计划，当前行为以 `AppearanceArchitecture.md` 和代码为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 为 NextKde 顶部状态栏（Bar）实现三档显示与智能隐藏模式（始终显示 / 智能隐藏 / 持续隐藏），包含触顶隐形呼出、防抖动滞后计算、交互抑制器保护以及在设置中心（kos-settings）中的可视化配置。

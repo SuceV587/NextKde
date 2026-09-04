@@ -1,7 +1,7 @@
 # 启动台、Dock 与 Bar 统一模糊逻辑及独立/继承调节设计规范
 
 - **日期**: 2026-08-29
-- **状态**: Approved
+- **状态**: 已废弃（2026-08-31）；当前实现只提供全局 Glass 强度，本文保留为历史设计记录
 - **作者**: Antigravity Pair Programming Assistant
 
 ---
