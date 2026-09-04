@@ -131,6 +131,7 @@ function calculateInitialPlacement(windowRect, minimumSize, safeArea) {
 
 let shellLayouts = {};
 let placementTimers = [];
+let initialPlacementState = {};
 
 function keepPlacementTimer(timer) {
     placementTimers.push(timer);
@@ -139,6 +140,21 @@ function keepPlacementTimer(timer) {
         if (index >= 0)
             placementTimers.splice(index, 1);
     });
+}
+
+function finishInitialPlacement(window) {
+    const id = windowId(window);
+    if (id)
+        initialPlacementState[id] = "done";
+}
+
+function schedulePlacementAttempt(window, attempt, delay) {
+    const timer = new QTimer();
+    timer.interval = delay;
+    timer.singleShot = true;
+    timer.timeout.connect(function() { placeInitialWindow(window, attempt); });
+    keepPlacementTimer(timer);
+    timer.start();
 }
 
 function updateLayout(command) {
@@ -190,30 +206,44 @@ function eligibleForInitialPlacement(window) {
 }
 
 function placeInitialWindow(window, attempt) {
-    if (!eligibleForInitialPlacement(window))
+    const id = windowId(window);
+    if (!id || initialPlacementState[id] === "done")
         return;
+    if (!eligibleForInitialPlacement(window)) {
+        finishInitialPlacement(window);
+        return;
+    }
     const layout = layoutForWindow(window);
-    if (!layout)
+    if (!layout) {
+        if (attempt < 3)
+            schedulePlacementAttempt(window, attempt + 1, 40);
+        else
+            finishInitialPlacement(window);
         return;
+    }
     const frame = frameGeometry(window);
     if (!frame || frame.width <= 1 || frame.height <= 1) {
-        if (attempt < 3) {
-            const retry = new QTimer();
-            retry.interval = 40;
-            retry.repeat = false;
-            retry.timeout.connect(function() { placeInitialWindow(window, attempt + 1); });
-            keepPlacementTimer(retry);
-            retry.start();
-        }
+        if (attempt < 3)
+            schedulePlacementAttempt(window, attempt + 1, 40);
+        else
+            finishInitialPlacement(window);
         return;
     }
     const minimum = propertyValue(window, "minSize", { width: 1, height: 1 });
     const target = calculateInitialPlacement(frame, minimum, safeAreaForLayout(layout));
-    if (!target)
+    if (!target) {
+        finishInitialPlacement(window);
         return;
+    }
     if (target.x === frame.x && target.y === frame.y
-            && target.width === frame.width && target.height === frame.height)
+            && target.width === frame.width && target.height === frame.height) {
+        finishInitialPlacement(window);
         return;
+    }
+    // Mark the request complete before assigning geometry. KWin emits
+    // synchronous geometry signals during this write; no later event may
+    // reinterpret a maximize or user drag as another initial placement.
+    finishInitialPlacement(window);
     try {
         window.frameGeometry = target;
         print("[QuickshellWindowBridge] placed new window id=" + windowId(window)
@@ -225,12 +255,11 @@ function placeInitialWindow(window, attempt) {
 }
 
 function scheduleInitialPlacement(window) {
-    const timer = new QTimer();
-    timer.interval = 0;
-    timer.repeat = false;
-    timer.timeout.connect(function() { placeInitialWindow(window, 0); });
-    keepPlacementTimer(timer);
-    timer.start();
+    const id = windowId(window);
+    if (!id || initialPlacementState[id])
+        return;
+    initialPlacementState[id] = "pending";
+    schedulePlacementAttempt(window, 0, 0);
 }
 
 // Runtime-dependent bridge helpers start here. Tests evaluate the pure layout
@@ -360,7 +389,7 @@ function snapshot() {
 // stopped moving before it could notice that the Dock boundary was crossed.
 const snapshotTimer = new QTimer();
 snapshotTimer.interval = 120;
-snapshotTimer.repeat = false;
+snapshotTimer.singleShot = true;
 snapshotTimer.timeout.connect(snapshot);
 
 function scheduleSnapshot() {
@@ -373,7 +402,7 @@ function scheduleSnapshot() {
 // frameGeometry when the timer fires.
 const geometrySnapshotTimer = new QTimer();
 geometrySnapshotTimer.interval = 24;
-geometrySnapshotTimer.repeat = false;
+geometrySnapshotTimer.singleShot = true;
 let geometrySnapshotPending = false;
 geometrySnapshotTimer.timeout.connect(function() {
     geometrySnapshotPending = false;
@@ -522,6 +551,7 @@ function handleCommand(serialized) {
 function watchWindow(window) {
     if (!window)
         return;
+    const watchedId = windowId(window);
     window.captionChanged.connect(scheduleSnapshot);
     window.desktopFileNameChanged.connect(scheduleSnapshot);
     window.activeChanged.connect(scheduleSnapshot);
@@ -537,7 +567,11 @@ function watchWindow(window) {
     try { window.maximizedChanged.connect(scheduleSnapshot); } catch (error) {}
     try { window.maximizeModeChanged.connect(scheduleSnapshot); } catch (error) {}
     try { window.desktopsChanged.connect(scheduleSnapshot); } catch (error) {}
-    window.closed.connect(scheduleSnapshot);
+    window.closed.connect(function() {
+        if (watchedId)
+            delete initialPlacementState[watchedId];
+        scheduleSnapshot();
+    });
 }
 
 // Runtime wiring.
@@ -582,7 +616,7 @@ const commandTimer = new QTimer();
 // Commands are UI actions, so 100 ms keeps the Dock responsive while cutting
 // idle D-Bus traffic from 40 polls per second to 10.
 commandTimer.interval = 100;
-commandTimer.repeat = true;
+commandTimer.singleShot = false;
 let commandPollInFlight = false;
 commandTimer.timeout.connect(function() {
     if (commandPollInFlight)
