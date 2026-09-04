@@ -10,6 +10,9 @@ uniform float edgeSizePixels;
 uniform float highlightWidthPx;
 uniform float highlightAngle;
 uniform float surfaceScale;
+// Optical distortion belongs to small, directly manipulated controls.  Large
+// persistent surfaces keep the material treatment but use a quieter lens.
+uniform float lensStrengthScale;
 uniform float refractionStrength;
 uniform float refractionNormalPow;
 uniform float refractionRGBFringing;
@@ -104,7 +107,8 @@ GlassFragment glassRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadiu
     // (circleMap) and concaveFactor attenuate it toward the interior. How
     // strong the bend reads is a parameter choice (RefractionStrength), not a
     // shader constant.
-    float finalStrength = min(0.4 * concaveFactor * refractionStrength, 1.0) * lens;
+    float finalStrength = min(0.4 * concaveFactor * refractionStrength, 1.0)
+        * lens * lensStrengthScale;
 
     // Corner-weighted chromatic aberration (Kyant0): a real rectangular lens
     // fringes most at its corners and not at all on the axes, so the colour
@@ -113,7 +117,8 @@ GlassFragment glassRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadiu
     // parameter-driven via refractionRGBFringing.
     vec2 centeredNorm = position / halfBlurSize;
     float cornerWeight = abs(centeredNorm.x * centeredNorm.y);
-    float fringingFactor = refractionRGBFringing * 0.3 * (0.3 + 0.7 * cornerWeight);
+    float fringingFactor = refractionRGBFringing * 0.3
+        * (0.3 + 0.7 * cornerWeight) * lensStrengthScale;
 
     vec2 refractOffsetG = -normal.xy * finalStrength;
     vec2 refractOffsetR = -normal.xy * finalStrength;
@@ -211,10 +216,10 @@ vec3 applyGlassTint(vec3 backdrop)
 {
     const vec3 grayscaleWeights = vec3(0.299, 0.587, 0.114);
     float luma = dot(backdrop, grayscaleWeights);
-    // Content-adaptive chroma: dark surfaces get a richer boost, bright ones
-    // a subtle dip (iOS vibrancy), with a constant +6% global lift so the
-    // backdrop reads colour-saturated through the glass.
-    float adaptive = mix(1.18, 0.9, luma) * 1.06;
+    // Keep the background recognisable rather than globally increasing its
+    // saturation. Dark backdrops receive only a small chroma recovery after
+    // blur; bright backdrops are very slightly restrained for legibility.
+    float adaptive = mix(1.10, 0.96, luma);
     vec3 lifted = mix(vec3(luma), backdrop, adaptive);
     float strength = adjustedTintStrength(tintStrength, lifted);
     vec3 tintCol = bidirectionalTintColor(lifted, tintColor);

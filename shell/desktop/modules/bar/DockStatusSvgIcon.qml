@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Effects
+import qs.desktop.modules.common
 import qs.desktop.modules.dock
 
 // Project-owned status SVG renderer. The source artwork is white and acts as
@@ -11,14 +12,11 @@ Item {
     id: root
 
     property url source
-    property bool useDockTint: false
-    readonly property color iconColor: useDockTint
-        && ConfigService.iconMode === "tint"
-        ? ConfigService.styledDockIconColor()
+    readonly property color iconColor: IconAppearanceService.mode === "tint"
+        ? IconAppearanceService.styledSymbolicColor()
         : (ThemeService.isDark ? ThemeService.foregroundColor : "#000000")
-    readonly property real appearanceOpacity: useDockTint
-        && ConfigService.iconMode !== "color"
-        ? ConfigService.iconOpacity : 1.0
+    readonly property real appearanceOpacity: IconAppearanceService.mode !== "color"
+        ? IconAppearanceService.opacity : 1.0
 
     implicitWidth: 16
     implicitHeight: 16
@@ -36,7 +34,7 @@ Item {
         layer.effect: MultiEffect {
             colorization: 1.0
             colorizationColor: root.iconColor
-            shadowEnabled: root.useDockTint || ThemeService.isDark
+            shadowEnabled: IconAppearanceService.mode !== "color" || ThemeService.isDark
             shadowColor: Qt.rgba(0, 0, 0, 0.82)
             shadowOpacity: 0.62
             shadowBlur: 0.32
