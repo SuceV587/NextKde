@@ -204,6 +204,7 @@ BlurEffect::BlurEffect()
 
 #ifdef GLASS_KWIN_67
     waylandServer()->backgroundEffectManager()->addBlurCapability();
+    m_blurCapabilityRegistered = true;
 #endif
 
     connect(effects, &EffectsHandler::windowAdded, this, &BlurEffect::slotWindowAdded);
@@ -272,8 +273,10 @@ BlurEffect::~BlurEffect()
     }
 #endif
 
-#ifdef GLASS_WIN_67
-    waylandServer()->backgroundEffectManager()->removeBlurCapability();
+#ifdef GLASS_KWIN_67
+    if (m_blurCapabilityRegistered) {
+        waylandServer()->backgroundEffectManager()->removeBlurCapability();
+    }
 #endif
 }
 
@@ -392,6 +395,17 @@ void BlurEffect::reconfigure(ReconfigureFlags flags)
     m_whitelist = (m_settings.forceBlur.windowClassMatchingMode == WindowClassMatchingMode::Whitelist);
     m_windowClasses = m_settings.forceBlur.windowClasses;
 
+    // forceBlur.blurDecorations is materialized into each window's frame
+    // region. Refresh from the compositor's stable stacking-order snapshot so
+    // toggling it applies immediately and updateBlurRegion may safely erase
+    // entries from m_windows. Initial construction uses slotWindowAdded below.
+    if (m_valid) {
+        const auto stackingOrder = effects->stackingOrder();
+        for (EffectWindow *window : stackingOrder) {
+            updateBlurRegion(window);
+        }
+    }
+
     // Update all windows for the blur to take effect
     effects->addRepaintFull();
 }
@@ -421,6 +435,7 @@ void BlurEffect::updateBlurRegion(EffectWindow *w)
     std::optional<BlurRegion> frame;
     std::optional<qreal> saturation;
     std::optional<qreal> contrast;
+    bool hasExplicitBlurRequest = false;
 
 #ifdef GLASS_X11
     if (net_wm_blur_region != XCB_ATOM_NONE) {
@@ -442,6 +457,7 @@ void BlurEffect::updateBlurRegion(EffectWindow *w)
         }
         if (!value.isNull()) {
             content = region;
+            hasExplicitBlurRequest = true;
         }
     }
 #endif
@@ -455,10 +471,12 @@ void BlurEffect::updateBlurRegion(EffectWindow *w)
                 region += rect.toAlignedRect();
             }
             content = region;
+            hasExplicitBlurRequest = true;
         }
 #else
         if (surface->blur()) {
             content = surface->blur()->region();
+            hasExplicitBlurRequest = true;
         }
         if (surface->contrast()) {
             saturation = surface->contrast()->saturation();
@@ -471,11 +489,13 @@ void BlurEffect::updateBlurRegion(EffectWindow *w)
         const auto property = internal->property("kwin_blur");
         if (property.isValid()) {
             content = property.value<BlurRegion>();
+            hasExplicitBlurRequest = true;
         }
     }
 
     if (w->decorationHasAlpha() && decorationSupportsBlurBehind(w)) {
         frame = decorationBlurRegion(w);
+        hasExplicitBlurRequest = true;
     }
 
     if (
@@ -497,6 +517,7 @@ void BlurEffect::updateBlurRegion(EffectWindow *w)
 
     if (content.has_value() || frame.has_value()) {
         BlurEffectData &data = m_windows[w];
+        data.hasExplicitBlurRequest = hasExplicitBlurRequest;
         data.content = content;
         data.frame = frame;
         data.colorMatrix = colorTransformMatrix(saturation.value_or(1.0), contrast.value_or(1.0), 1.0);
@@ -1048,11 +1069,16 @@ bool BlurEffect::shouldBlur(const EffectWindow *w, int mask, const WindowPaintDa
 
     const auto windowClass = w->window()->resourceClass();
     const auto resourceName = w->window()->resourceName();
+    const auto blurData = m_windows.find(const_cast<EffectWindow *>(w));
+    const bool explicitlyRequestedBlur = blurData != m_windows.end()
+        && blurData->second.hasExplicitBlurRequest;
 
     // Layer-shell clients may expose either "quickshell" or an application
     // id such as "org.quickshell".  Match both resource fields instead of
-    // relying on a single exact, user-maintained window-class entry.
-    if (m_settings.forceBlur.onlyQuickshell) {
+    // relying on a single exact, user-maintained window-class entry. These
+    // filters govern forced blur only: a normal application that explicitly
+    // publishes a blur-behind region must retain the standard KDE contract.
+    if (!explicitlyRequestedBlur && m_settings.forceBlur.onlyQuickshell) {
         const auto isQuickshell = [](const QString &value) {
             return value.contains(QLatin1String("quickshell"), Qt::CaseInsensitive);
         };
@@ -1070,7 +1096,8 @@ bool BlurEffect::shouldBlur(const EffectWindow *w, int mask, const WindowPaintDa
 
     const auto matches = classes.contains(windowClass) || classes.contains(resourceName);
 
-    if ((m_whitelist && !matches) || (!m_whitelist && matches)) {
+    if (!explicitlyRequestedBlur
+        && ((m_whitelist && !matches) || (!m_whitelist && matches))) {
         return false;
     }
 
