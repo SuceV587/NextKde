@@ -11,7 +11,7 @@
 为顶部 Bar 引入与 Dock 架构一致的自适应显示控制器（Auto-Hide Controller），实现：
 1. **三种显示模式**：
    - `always` (始终显示)：独占屏幕顶部 35px 区域（`exclusiveZone = 35`），最大化窗口不遮挡。
-   - `smart` (智能隐藏)：在桌面无冲突窗口时保持常驻；当有窗口靠近/重叠顶部状态栏区域或窗口全屏时，平滑向上收起隐藏；`exclusiveZone = 0`，最大化窗口扩展至屏幕顶端。
+   - `smart` (智能隐藏)：在桌面无冲突窗口时保持常驻；当有窗口靠近/重叠顶部状态栏区域或窗口全屏时，平滑向上收起隐藏；开始显示时立即设置排他区，完全隐藏后才释放。
    - `persistent` (持续隐藏)：默认向上收起隐藏，仅在鼠标触顶或交互时呼出。
 2. **隐形触顶感应**：
    - 隐藏状态下，顶部保留极窄感应区（y ≤ 2px），鼠标移至最顶端停留（100ms）后平滑展开，移出后延时 300ms 收起。
@@ -54,7 +54,8 @@
 
 ### 2.3 窗口层与输入裁切 (`shell/desktop/modules/bar/BarWindow.qml`)
 - **Exclusive Zone**：
-  - `exclusiveZone = (mode === "always" && barEnabled) ? barHeight : 0`
+  - `always` 始终占位；`smart` / `persistent` 在 `Showing` 边界立即占位，并贯穿 `Shown`、`Held`、`HidePending`、`Hiding`，仅进入 `Hidden` 后释放。排他区不跟随动画进度逐帧变化。
+  - 浮动 Bar 的占位包含顶部外边距和工作区呼吸间距。
 - **触顶隐形热区**：
   - 顶部 2px 高度的透明感应区域，捕获鼠标悬停信号 `onEntered` / `onExited`。
 - **Mask 遮罩**：
