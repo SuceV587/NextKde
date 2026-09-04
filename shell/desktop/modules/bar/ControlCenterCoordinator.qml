@@ -51,9 +51,10 @@ QtObject {
         _motion.open()
     }
 
-    function closeAll() {
+    function closeAll(preserveModal) {
         open = false
-        modalActive = false
+        if (!preserveModal)
+            modalActive = false
         _motion.close()
     }
 
