@@ -45,10 +45,12 @@ function frameGeometry(window) {
     }
 }
 
-// KWin versions expose maximization differently: older as a bool, newer as an
-// object of horizontal/vertical flags. Normalise to a single boolean meaning
-// "maximised in both axes". Always defensive.
+// KWin 6 exposes maximizeMode as a flag set: vertical=1, horizontal=2. Read it
+// first; the older `maximized` shapes remain only as a compatibility fallback.
 function isMaximized(window) {
+    const mode = Number(propertyValue(window, "maximizeMode", 0));
+    if (Number.isFinite(mode) && (mode & 3) === 3)
+        return true;
     const raw = propertyValue(window, "maximized", false);
     if (raw === null || raw === false || raw === undefined)
         return false;
@@ -63,6 +65,177 @@ function isMaximized(window) {
         return false;
     }
 }
+
+function normalizedRect(value) {
+    if (!value)
+        return null;
+    const rect = {
+        x: Number(value.x),
+        y: Number(value.y),
+        width: Number(value.width),
+        height: Number(value.height)
+    };
+    if (!Number.isFinite(rect.x) || !Number.isFinite(rect.y)
+            || !Number.isFinite(rect.width) || !Number.isFinite(rect.height)
+            || rect.width <= 0 || rect.height <= 0)
+        return null;
+    return rect;
+}
+
+function safeAreaForLayout(layout) {
+    const output = normalizedRect(layout && layout.outputRect);
+    const dock = normalizedRect(layout && layout.dockRect);
+    if (!output || !dock)
+        return null;
+
+    const gap = Math.max(0, Number(layout.workspaceGap) || 0);
+    const reserved = Math.max(0, Number(layout.barReservedHeight) || 0);
+    let left = output.x;
+    let top = output.y + Math.min(output.height, reserved);
+    let right = output.x + output.width;
+    let bottom = output.y + output.height;
+    if (layout.dockPosition === "left")
+        left = Math.max(left, dock.x + dock.width + gap);
+    else if (layout.dockPosition === "right")
+        right = Math.min(right, dock.x - gap);
+    else
+        bottom = Math.min(bottom, dock.y - gap);
+
+    return {
+        x: left,
+        y: top,
+        width: Math.max(1, right - left),
+        height: Math.max(1, bottom - top)
+    };
+}
+
+// Pure placement function kept free of KWin objects so its negative-output,
+// oversized-window and minimum-size behaviour can be exercised by Node tests.
+function calculateInitialPlacement(windowRect, minimumSize, safeArea) {
+    const frame = normalizedRect(windowRect);
+    const safe = normalizedRect(safeArea);
+    if (!frame || !safe)
+        return null;
+    const minWidth = Math.max(1, Number(minimumSize && minimumSize.width) || 1);
+    const minHeight = Math.max(1, Number(minimumSize && minimumSize.height) || 1);
+    const width = Math.max(minWidth, Math.min(frame.width, safe.width));
+    const height = Math.max(minHeight, Math.min(frame.height, safe.height));
+    const maxX = safe.x + safe.width - width;
+    const maxY = safe.y + safe.height - height;
+    return {
+        x: width > safe.width ? safe.x : Math.max(safe.x, Math.min(frame.x, maxX)),
+        y: height > safe.height ? safe.y : Math.max(safe.y, Math.min(frame.y, maxY)),
+        width: width,
+        height: height
+    };
+}
+
+let shellLayouts = {};
+let placementTimers = [];
+
+function keepPlacementTimer(timer) {
+    placementTimers.push(timer);
+    timer.timeout.connect(function() {
+        const index = placementTimers.indexOf(timer);
+        if (index >= 0)
+            placementTimers.splice(index, 1);
+    });
+}
+
+function updateLayout(command) {
+    const name = String(command.outputName || "");
+    const safeArea = safeAreaForLayout(command);
+    if (!name || !safeArea)
+        return false;
+    shellLayouts[name] = {
+        outputName: name,
+        outputRect: normalizedRect(command.outputRect),
+        barReservedHeight: Math.max(0, Number(command.barReservedHeight) || 0),
+        dockPosition: String(command.dockPosition || "bottom"),
+        dockRect: normalizedRect(command.dockRect),
+        workspaceGap: Math.max(0, Number(command.workspaceGap) || 0)
+    };
+    return true;
+}
+
+function layoutForWindow(window) {
+    const direct = outputName(window);
+    if (direct && shellLayouts[direct])
+        return shellLayouts[direct];
+    const frame = frameGeometry(window);
+    if (!frame)
+        return null;
+    const centerX = frame.x + frame.width / 2;
+    const centerY = frame.y + frame.height / 2;
+    for (const name in shellLayouts) {
+        const output = shellLayouts[name].outputRect;
+        if (centerX >= output.x && centerX < output.x + output.width
+                && centerY >= output.y && centerY < output.y + output.height)
+            return shellLayouts[name];
+    }
+    return null;
+}
+
+function eligibleForInitialPlacement(window) {
+    return !!window && !window.deleted
+        && !!propertyValue(window, "normalWindow", false)
+        && !propertyValue(window, "specialWindow", false)
+        && !propertyValue(window, "dialog", false)
+        && !propertyValue(window, "modal", false)
+        && !propertyValue(window, "transient", false)
+        && !propertyValue(window, "transientFor", null)
+        && !propertyValue(window, "fullScreen", false)
+        && !isMaximized(window)
+        && propertyValue(window, "moveable", true) !== false
+        && propertyValue(window, "resizeable", true) !== false;
+}
+
+function placeInitialWindow(window, attempt) {
+    if (!eligibleForInitialPlacement(window))
+        return;
+    const layout = layoutForWindow(window);
+    if (!layout)
+        return;
+    const frame = frameGeometry(window);
+    if (!frame || frame.width <= 1 || frame.height <= 1) {
+        if (attempt < 3) {
+            const retry = new QTimer();
+            retry.interval = 40;
+            retry.repeat = false;
+            retry.timeout.connect(function() { placeInitialWindow(window, attempt + 1); });
+            keepPlacementTimer(retry);
+            retry.start();
+        }
+        return;
+    }
+    const minimum = propertyValue(window, "minSize", { width: 1, height: 1 });
+    const target = calculateInitialPlacement(frame, minimum, safeAreaForLayout(layout));
+    if (!target)
+        return;
+    if (target.x === frame.x && target.y === frame.y
+            && target.width === frame.width && target.height === frame.height)
+        return;
+    try {
+        window.frameGeometry = target;
+        print("[QuickshellWindowBridge] placed new window id=" + windowId(window)
+              + " output=" + layout.outputName);
+    } catch (error) {
+        print("[QuickshellWindowBridge] initial placement failed id=" + windowId(window)
+              + " error=" + error);
+    }
+}
+
+function scheduleInitialPlacement(window) {
+    const timer = new QTimer();
+    timer.interval = 0;
+    timer.repeat = false;
+    timer.timeout.connect(function() { placeInitialWindow(window, 0); });
+    keepPlacementTimer(timer);
+    timer.start();
+}
+
+// Runtime-dependent bridge helpers start here. Tests evaluate the pure layout
+// and placement helpers above this marker without a live KWin workspace.
 
 // Preferred output for a window. Some KWin scripting versions do not expose
 // `window.output`; fall back to empty so foreign-side collisions can fall back
@@ -284,6 +457,10 @@ function handleCommand(serialized) {
         publishDesktops();
         return;
     }
+    if (command.action === "update-layout") {
+        publishAction(command, updateLayout(command));
+        return;
+    }
     if (command.action === "switch-desktop") {
         const desktop = findDesktop(command.id);
         if (!desktop) {
@@ -359,16 +536,19 @@ function watchWindow(window) {
     try { window.frameGeometryChanged.connect(scheduleGeometrySnapshot); } catch (error) {}
     try { window.outputChanged.connect(scheduleGeometrySnapshot); } catch (error) {}
     try { window.maximizedChanged.connect(scheduleSnapshot); } catch (error) {}
+    try { window.maximizeModeChanged.connect(scheduleSnapshot); } catch (error) {}
     try { window.desktopsChanged.connect(scheduleSnapshot); } catch (error) {}
     window.closed.connect(scheduleSnapshot);
 }
 
+// Runtime wiring.
 const initial = workspace.windowList();
 for (let i = 0; i < initial.length; i++)
     watchWindow(initial[i]);
 
 workspace.windowAdded.connect(function(window) {
     watchWindow(window);
+    scheduleInitialPlacement(window);
     scheduleSnapshot();
 });
 workspace.windowRemoved.connect(scheduleSnapshot);
