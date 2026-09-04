@@ -1,6 +1,7 @@
 #pragma once
 
 #include <effect/effect.h>
+#include <QVariant>
 
 #include <memory>
 
@@ -16,10 +17,14 @@ class ContextMenuPointerSpy;
 class ContextMenuInputEffect final : public Effect
 {
     Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.kos.KWin.ContextMenuInput")
 
 public:
     ContextMenuInputEffect();
     ~ContextMenuInputEffect() override;
+
+public slots:
+    QVariantMap activeApplicationMenu() const;
 
 private:
     friend class ContextMenuPointerSpy;

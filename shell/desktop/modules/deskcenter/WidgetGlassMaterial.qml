@@ -55,8 +55,10 @@ Item {
         baseColor: root.adaptiveBase
         ambientPrimary: root.pigmentPrimary
         ambientSecondary: root.pigmentSecondary
+        // Tint is a subtle ambient reflection, not an opaque colour card.
+        // Keep it markedly lighter than full-colour wallpaper pigment.
         ambientStrength: root.appearanceMode === "grayscale" ? 0.0
-            : 0.42 * root.strength
+            : (root.appearanceMode === "tint" ? 0.18 : 0.42) * root.strength
         ambientTransitionDuration: 2800
         adaptiveDarkScrim: root.wallpaperLuminance > 0.54
         bottomEdgeVisible: true

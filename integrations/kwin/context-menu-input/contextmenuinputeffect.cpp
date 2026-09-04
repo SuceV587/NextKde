@@ -4,6 +4,7 @@
 #include <input_event.h>
 #include <input_event_spy.h>
 #include <window.h>
+#include <workspace.h>
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDateTime>
@@ -36,11 +37,30 @@ private:
 
 ContextMenuInputEffect::ContextMenuInputEffect()
 {
+    QDBusConnection::sessionBus().registerObject(
+        QStringLiteral("/KOSContextMenuInput"), this,
+        QDBusConnection::ExportAllSlots);
     m_pointerSpy = std::make_unique<ContextMenuPointerSpy>(this);
     installPointerSpy();
 }
 
-ContextMenuInputEffect::~ContextMenuInputEffect() = default;
+ContextMenuInputEffect::~ContextMenuInputEffect()
+{
+    QDBusConnection::sessionBus().unregisterObject(QStringLiteral("/KOSContextMenuInput"));
+}
+
+QVariantMap ContextMenuInputEffect::activeApplicationMenu() const
+{
+    Window *window = Workspace::self() ? Workspace::self()->activeWindow() : nullptr;
+    if (!window || !window->hasApplicationMenu())
+        return {{QStringLiteral("available"), false}};
+
+    const QString service = window->applicationMenuServiceName();
+    const QString path = window->applicationMenuObjectPath();
+    return {{QStringLiteral("available"), !service.isEmpty() && !path.isEmpty()},
+            {QStringLiteral("service"), service},
+            {QStringLiteral("path"), path}};
+}
 
 void ContextMenuInputEffect::installPointerSpy()
 {
