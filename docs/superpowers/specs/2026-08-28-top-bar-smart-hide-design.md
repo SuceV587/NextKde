@@ -37,8 +37,8 @@
   }
   ```
 - **滞后回差算法 (Hysteresis)**：
-  - `avoidanceRect`：向外扩展 8px，窗口进入时触发冲突（`hasConflict = true`）。
-  - `releaseRect`：向外扩展 16px，已处于冲突状态时，窗口需彻底离开 16px 外才清除冲突（`hasConflict = false`）。
+  - 顶栏以实际可见矩形判断，不再在其下方保留不可见触发带。
+  - Dock 需向内稳定重叠约 12px、持续 200ms 后隐藏；窗口离开 Dock 实际矩形后即可恢复，避免边缘放置时的一像素误触发。
 - **窗口资格过滤 (`windowEligible`)**：
   - 过滤最小化窗口、非当前工作区窗口及尺寸为 0 的异常窗口。
   - 当前屏幕全屏窗口（`isFullscreen`）无条件触发冲突。
@@ -55,7 +55,7 @@
 ### 2.3 窗口层与输入裁切 (`shell/desktop/modules/bar/BarWindow.qml`)
 - **Exclusive Zone**：
   - `always` 始终占位；`smart` / `persistent` 在 `Showing` 边界立即占位，并贯穿 `Shown`、`Held`、`HidePending`、`Hiding`，仅进入 `Hidden` 后释放。排他区不跟随动画进度逐帧变化。
-  - 浮动 Bar 的占位包含顶部外边距和工作区呼吸间距。
+  - 浮动 Bar 的占位只包含可见高度与顶部外边距，不在窗口与 Bar 之间增加额外呼吸间距。
 - **触顶隐形热区**：
   - 顶部 2px 高度的透明感应区域，捕获鼠标悬停信号 `onEntered` / `onExited`。
 - **Mask 遮罩**：

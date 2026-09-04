@@ -88,18 +88,17 @@ function safeAreaForLayout(layout) {
     if (!output || !dock)
         return null;
 
-    const gap = Math.max(0, Number(layout.workspaceGap) || 0);
     const reserved = Math.max(0, Number(layout.barReservedHeight) || 0);
     let left = output.x;
     let top = output.y + Math.min(output.height, reserved);
     let right = output.x + output.width;
     let bottom = output.y + output.height;
     if (layout.dockPosition === "left")
-        left = Math.max(left, dock.x + dock.width + gap);
+        left = Math.max(left, dock.x + dock.width);
     else if (layout.dockPosition === "right")
-        right = Math.min(right, dock.x - gap);
+        right = Math.min(right, dock.x);
     else
-        bottom = Math.min(bottom, dock.y - gap);
+        bottom = Math.min(bottom, dock.y);
 
     return {
         x: left,
