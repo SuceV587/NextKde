@@ -109,7 +109,7 @@ export function windowEligible(window, targetScreen, currentDesktopId) {
         const current = String(currentDesktopId || "");
         if (current) {
             const onCurrent = Array.isArray(window.desktopIds)
-                && window.desktopIds.indexOf(current) >= 0;
+                && (window.desktopIds.length === 0 || window.desktopIds.indexOf(current) >= 0);
             if (!onCurrent)
                 return false;
         } else if (window.isVisible === false) {

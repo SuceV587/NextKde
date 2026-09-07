@@ -597,11 +597,12 @@ QtObject {
         _kwinSubscribePending = true
         PlatformClient.request("kwin.subscribe", {}, function(response) {
             _kwinSubscribePending = false
-            if (!response?.ok)
+            if (!response?.ok) {
                 console.warn("[WindowService] KWin subscription failed: "
                     + (response?.error?.message || "platform unavailable"))
-            else
+            } else {
                 svc._sendKwinCommand({ action: "desktops" })
+            }
         })
     }
 

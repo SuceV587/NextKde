@@ -109,6 +109,7 @@ QtObject {
                     name: identity.name || dockItem.appId,
                     icon: windows[0]?.iconSource ?? identity.iconSource,
                     isRunning: windows.length > 0,
+                    isUrgent: windows.some(window => !!window.isUrgent),
                     windowCount: windows.length,
                 });
                 continue;
@@ -126,6 +127,7 @@ QtObject {
                     && item.name === prev.name
                     && item.icon === prev.icon
                     && item.isRunning === prev.isRunning
+                    && item.isUrgent === prev.isUrgent
                     && item.windowCount === prev.windowCount;
             });
         if (!same) {

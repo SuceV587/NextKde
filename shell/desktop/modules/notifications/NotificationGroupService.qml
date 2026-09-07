@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell.Services.Notifications
 import qs.desktop.modules.bar
+import qs.desktop.modules.common
 
 // Groups tracked notifications by desktopEntry (fallback appName) into a
 // ListModel that the popup and history views consume. Quickshell's
@@ -259,6 +260,10 @@ QtObject {
                     model.setProperty(i, key, g[key])
             }
         }
+        // Feed the dock badge service so DockIcon can react to per-app
+        // notification counts. Passes the primitive fields only (the live
+        // Notification objects must not cross this boundary).
+        AppNotificationService.updateFromGroups(nextGroups)
     }
 
     function _rebuild() {

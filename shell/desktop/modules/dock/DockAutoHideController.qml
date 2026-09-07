@@ -79,7 +79,7 @@ Item {
         const s = ctl.targetScreen
         if (!s || s.x === undefined || s.width === undefined)
             return { x: 0, y: 0, width: 1, height: 1 }
-        return { x: s.x, y: s.y, width: s.width, height: s.height }
+        return { x: s.x, y: s.y, width: s.width, height: s.height, name: s.name || "" }
     }
 
     function _windowCandidates() {
@@ -204,7 +204,7 @@ Item {
     function _setPhase(next) {
         if (ctl.phase === next)
             return
-        console.log("[DockAutoHide] " + ctl.phase + " -> " + next
+        console.info("[DockAutoHide] " + ctl.phase + " -> " + next
             + " mode=" + ctl.mode + " conflict=" + ctl.hasWindowConflict
             + " inhibit=" + ctl.hasInhibitor)
         ctl.phase = next

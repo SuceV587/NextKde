@@ -505,13 +505,14 @@ Item {
             vertical: container.vertical
             iconSize: container.iconSize
             activeBackgroundGap: container.activeBackgroundGap
-            iconSource: AppPresentationService.iconSource("user-trash")
+            iconSource: DockTrashService.hasItems
+                ? AppPresentationService.iconSource("user-trash-full")
+                : AppPresentationService.iconSource("user-trash")
             displayName: "回收站"
             showContextMenu: false
             customContextMenu: true
             allowEdit: false
             isPinnedItem: false
-            statusBadge: DockTrashService.hasItems
             onActivate: {
                 if (container.isEditing) {
                     container.editMode = false
@@ -707,6 +708,7 @@ Item {
                                 isRunning: pinnedItemLoader.itemData.isRunning ?? false
                                 isActivated: DockModelService.isAppActivated(
                                     pinnedItemLoader.itemData.appId ?? "")
+                                isUrgent: pinnedItemLoader.itemData.isUrgent ?? false
                                 appId: pinnedItemLoader.itemData.appId ?? ""
                                 isWindowItem: false
                                 isPinnedItem: true

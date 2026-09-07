@@ -110,12 +110,10 @@ PanelWindow {
             : dockContainer.height + root.edgeMargin + root.workspaceGap)
         : 0
 
-    // The custom KWin glass effect consumes this region for both backdrop
-    // blur and liquid refraction. Keep publishing it when either channel is
-    // active; gating only on blur makes a liquid-only Dock fully transparent.
+    // Only publish blurRegion when backdrop blur is active. Liquid finish is
+    // rendered directly by QML LiquidGlassSurface.
     BackgroundEffect.blurRegion: (root.visible
-        && (AppearanceConfigService.effectiveDockBlur > 0.005
-            || AppearanceConfigService.effectiveDockLiquid > 0.005))
+        && AppearanceConfigService.effectiveDockBlur > 0.005)
         ? dockBlurRegionHolder : null
 
     Region {
@@ -198,6 +196,24 @@ PanelWindow {
         transformOrigin: root.vertical
             ? (root.position === "right" ? Item.Right : Item.Left)
             : Item.Bottom
+
+        LiquidGlassSurface {
+            id: dockGlassSurface
+            anchors.fill: parent
+            radius: dockContainer.pillRadius
+            baseColor: ThemeService.backgroundColor
+            surfaceOpacity: 1.0
+            blurStrength: AppearanceConfigService.effectiveDockBlur
+            liquidStrength: AppearanceConfigService.effectiveDockLiquid
+            ambientPrimary: WallpaperPaletteService.primary
+            ambientSecondary: WallpaperPaletteService.secondary
+            ambientStrength: 0.35 * AppearanceTokens.glass.ambientMultiplier
+            material: "regular"
+            border.width: (AppearanceConfigService.effectiveDockBlur > 0.005
+                || AppearanceConfigService.effectiveDockLiquid > 0.005) ? 1 : 0
+            border.color: Qt.rgba(1, 1, 1, 0.20 * Math.max(dockGlassSurface.normalizedBlurStrength,
+                dockGlassSurface.normalizedLiquidStrength))
+        }
 
         DockContainer {
             id: dockContainer

@@ -1038,7 +1038,7 @@ Item {
         managedByCoordinator: false
         offsetTop: 20
         offsetRight: 20
-        cardRadius: 22
+        cardRadius: 28
         cardWidth: 296
         cardHeight: panel.pendingConfirmAction === "" ? 278 : 180
         cardBorderColor: ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.10)

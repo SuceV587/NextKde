@@ -72,15 +72,9 @@ PopupWindow {
 
     Region {
         id: networkBlurRegionHolder
-        x: panel.blurRadius
-        y: 0
-        width: 310 - panel.blurRadius
-        height: 1
-        Region {
-            x: 0
-            y: 1
-            width: 310
-            height: 365 - 1
+        RoundedBlurRegion {
+            item: panelSurface
+            radius: panel.blurRadius
         }
     }
 

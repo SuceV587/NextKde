@@ -83,9 +83,13 @@ Item {
     // icons intentionally leave it false.
     property bool   editMode: false
     property bool   isDragging: false
-    // A small neutral marker for persistent shell-control state, currently
-    // used by the Trash icon while it contains recoverable items.
-    property bool   statusBadge: false
+
+    // ── macOS App Notification Badge ──
+    // Unread count comes from the desktop notification center (grouped by
+    // app), while urgency covers apps that only flash their window or tray
+    // icon (WeChat/QQ) without posting notifications.
+    readonly property int unreadCount: AppNotificationService.countForApp(icon.appId, icon.displayName)
+    readonly property bool hasUrgentOrNotification: (icon.unreadCount > 0 || icon.isUrgent) && !icon.editMode
     // This is proportional to iconSize (3px when iconSize is 44px). It is
     // also included in AdaptiveMath, so the active background never overlaps
     // a neighbour or makes the real Row wider than the calculated width.
@@ -303,6 +307,7 @@ Item {
     }
     readonly property bool _hasWindows: _appWindows.length > 0
     readonly property string _previewWindowId: _hasWindows ? _appWindows[0].windowId : (icon.windowId || "")
+    readonly property int _effectiveWindowCount: _hasWindows ? _appWindows.length : (icon.isRunning ? 1 : 0)
 
     Behavior on scale {
         NumberAnimation {
@@ -495,31 +500,69 @@ Item {
         }
     }
 
+    // ── macOS App Notification Badge ──
+    // A red pill with the unread count sits at the icon's top-right corner.
+    // When only the urgency flag is set (no countable notifications), it
+    // degrades to a small red dot, matching macOS behavior.
     Rectangle {
-        width: Math.max(5, Math.round(icon.iconSize * 0.15))
-        height: width
-        anchors { right: parent.right; top: parent.top; rightMargin: 2; topMargin: 2 }
-        radius: width / 2
-        color: Qt.rgba(1, 1, 1, 0.88)
-        border { width: 1; color: Qt.rgba(0, 0, 0, 0.48) }
-        opacity: icon.statusBadge ? 1 : 0
+        id: notificationBadge
+        readonly property bool hasCount: icon.unreadCount > 0
+        readonly property real badgeHeight: hasCount
+            ? Math.max(16, Math.round(icon.iconSize * 0.36))
+            : Math.max(9, Math.round(icon.iconSize * 0.20))
+        readonly property real badgeWidth: hasCount
+            ? Math.max(badgeHeight, badgeText.implicitWidth + Math.round(badgeHeight * 0.55))
+            : badgeHeight
+
+        width: badgeWidth
+        height: badgeHeight
+        radius: badgeHeight / 2
+        anchors.top: iconRenderer.top
+        anchors.right: iconRenderer.right
+        anchors.topMargin: hasCount ? -Math.round(icon.iconSize * 0.06) : -Math.round(icon.iconSize * 0.02)
+        anchors.rightMargin: hasCount ? -Math.round(icon.iconSize * 0.06) : -Math.round(icon.iconSize * 0.02)
+        rotation: icon.vertical ? -90 : 0
+        transformOrigin: Item.Center
+        z: 3
+
+        color: "#ff3b30"
+        border.width: 1.5
+        border.color: Qt.rgba(1, 1, 1, 0.95)
+
+        opacity: icon.hasUrgentOrNotification ? 1.0 : 0.0
+        scale: icon.hasUrgentOrNotification ? 1.0 : 0.0
         visible: opacity > 0.01
-        z: 2
+
         Behavior on opacity {
             NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
         }
+        Behavior on scale {
+            NumberAnimation { duration: 160; easing.type: Easing.OutBack }
+        }
+
+        Text {
+            id: badgeText
+            anchors.centerIn: parent
+            visible: notificationBadge.hasCount
+            text: icon.unreadCount > 99 ? "99+" : String(icon.unreadCount)
+            color: "#ffffff"
+            font {
+                pixelSize: Math.max(9, Math.round(notificationBadge.badgeHeight * 0.62))
+                bold: true
+            }
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
     }
 
-    // Keep the fixed-size indicator used by the previous main branch. A row
-    // of per-window dots expands after the side Dock rotates its content and
-    // can visibly escape the icon slot on left/right edges.
-    Rectangle {
+
+
+    // Style-driven running indicator: macOS uses dots (single dot for 1 window,
+    // multi-dot for multiple windows), Windows a longer underline, and Material a shorter tonal pill.
+    Item {
         id: runningIndicator
-        width: icon.runningIndicatorWidth
+        width: indicatorRow.implicitWidth
         height: icon.runningIndicatorHeight
-        radius: width / 2
-        color: icon.dotIndicator ? Qt.rgba(1, 1, 1, 0.95)
-            : ThemeService.accentColor
         opacity: icon.isRunning ? 1 : 0
         visible: opacity > 0.01
         z: 2
@@ -533,6 +576,32 @@ Item {
 
         Behavior on opacity {
             NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+        }
+        Row {
+            id: indicatorRow
+            anchors.centerIn: parent
+            spacing: icon._effectiveWindowCount >= 3 ? 2 : 2.5
+
+            Repeater {
+                model: icon.dotIndicator
+                    ? Math.min(3, Math.max(1, icon._effectiveWindowCount))
+                    : 1
+                delegate: Rectangle {
+                    required property int index
+                    readonly property real dotSize: icon._effectiveWindowCount >= 3
+                        ? Math.max(3, icon.runningIndicatorWidth * 0.82)
+                        : icon.runningIndicatorWidth
+                    width: icon.dotIndicator ? dotSize : icon.runningIndicatorWidth
+                    height: icon.dotIndicator ? dotSize : icon.runningIndicatorHeight
+                    radius: width / 2
+                    color: icon.dotIndicator ? ThemeService.dotIndicatorColor
+                        : ThemeService.accentColor
+                    border {
+                        width: icon.dotIndicator ? 0.5 : 0
+                        color: ThemeService.isDark ? Qt.rgba(0, 0, 0, 0.40) : Qt.rgba(1, 1, 1, 0.35)
+                    }
+                }
+            }
         }
     }
 

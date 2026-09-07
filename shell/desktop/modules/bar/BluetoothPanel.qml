@@ -47,15 +47,9 @@ PopupWindow {
 
     Region {
         id: bluetoothBlurRegionHolder
-        x: panel.blurRadius
-        y: 0
-        width: 300 - panel.blurRadius
-        height: 1
-        Region {
-            x: 0
-            y: 1
-            width: 300
-            height: 340 - 1
+        RoundedBlurRegion {
+            item: surface
+            radius: panel.blurRadius
         }
     }
 
