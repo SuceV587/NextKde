@@ -6,4 +6,4 @@ Exec=@KOS_PLATFORM_EXEC@ daemon
 Icon=preferences-system
 NoDisplay=true
 Terminal=false
-X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
+X-KDE-DBUS-Restricted-Interfaces=org.kde.kwin.Screenshot,org.kde.KWin.ScreenShot2

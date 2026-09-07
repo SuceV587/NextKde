@@ -87,6 +87,78 @@ public:
             QString::number(strength, 'f', 3)}));
     }
 
+    Q_INVOKABLE QVariantMap updateDockBlurStrength(double strength) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateDockBlurStrength"),
+            QString::number(strength, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockLiquidStrength(double strength) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateDockLiquidStrength"),
+            QString::number(strength, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockBlurInherit(bool enabled) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateDockBlurInherit"),
+            enabled ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
+    Q_INVOKABLE QVariantMap updateBarBlurStrength(double strength) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateBarBlurStrength"),
+            QString::number(strength, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateBarLiquidStrength(double strength) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateBarLiquidStrength"),
+            QString::number(strength, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateBarBlurInherit(bool enabled) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateBarBlurInherit"),
+            enabled ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
+    Q_INVOKABLE QVariantMap updateControlCenterBlurStrength(double strength) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateControlCenterBlurStrength"),
+            QString::number(strength, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateControlCenterLiquidStrength(double strength) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateControlCenterLiquidStrength"),
+            QString::number(strength, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateControlCenterBlurInherit(bool enabled) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateControlCenterBlurInherit"),
+            enabled ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
+    Q_INVOKABLE QVariantMap updateLauncherBlurStrength(double strength) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateLauncherBlurStrength"),
+            QString::number(strength, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateLauncherLiquidStrength(double strength) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateLauncherLiquidStrength"),
+            QString::number(strength, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateLauncherBlurInherit(bool enabled) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateLauncherBlurInherit"),
+            enabled ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
     Q_INVOKABLE QVariantMap updateGlobalIconMode(const QString &mode) {
         return appearanceSnapshotFromReply(callAppearance({
             QStringLiteral("updateGlobalIconMode"), mode}));
@@ -178,6 +250,104 @@ public:
             QStringLiteral("resetProfile"), mode}));
     }
 
+    static QString readKdeConfig(const QString &file, const QString &group, const QString &key) {
+        QProcess proc;
+        proc.start(QStringLiteral("kreadconfig6"), {
+            QStringLiteral("--file"), file,
+            QStringLiteral("--group"), group,
+            QStringLiteral("--key"), key
+        });
+        if (proc.waitForStarted(1000) && proc.waitForFinished(2000) && proc.exitCode() == 0) {
+            return QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+        }
+        return {};
+    }
+
+    static QStringList listInstalledLookAndFeels() {
+        QProcess proc;
+        proc.start(QStringLiteral("plasma-apply-lookandfeel"), {QStringLiteral("-l")});
+        if (proc.waitForStarted(1000) && proc.waitForFinished(3000) && proc.exitCode() == 0) {
+            const QString output = QString::fromUtf8(proc.readAllStandardOutput());
+            QStringList list;
+            const auto lines = output.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            for (const QString &line : lines) {
+                const QString trimmed = line.trimmed();
+                if (!trimmed.isEmpty()) {
+                    list.append(trimmed);
+                }
+            }
+            return list;
+        }
+        return {};
+    }
+
+    static QString resolveThemePartner(const QString &currentTheme, bool targetDark, const QStringList &installed) {
+        if (currentTheme.isEmpty())
+            return {};
+        QStringList candidates;
+
+        if (targetDark) {
+            if (currentTheme.endsWith(QStringLiteral("-w")))
+                candidates.append(currentTheme.chopped(2) + QStringLiteral("-d"));
+            if (currentTheme.endsWith(QStringLiteral("_w")))
+                candidates.append(currentTheme.chopped(2) + QStringLiteral("_d"));
+            if (currentTheme.endsWith(QStringLiteral("Light")))
+                candidates.append(currentTheme.chopped(5) + QStringLiteral("Dark"));
+            if (currentTheme.endsWith(QStringLiteral("-Light")))
+                candidates.append(currentTheme.chopped(6) + QStringLiteral("-Dark"));
+            if (currentTheme.endsWith(QStringLiteral("_Light")))
+                candidates.append(currentTheme.chopped(6) + QStringLiteral("_Dark"));
+            if (currentTheme.contains(QStringLiteral("light"), Qt::CaseInsensitive)) {
+                QString c = currentTheme;
+                candidates.append(c.replace(QStringLiteral("light"), QStringLiteral("dark"), Qt::CaseInsensitive));
+            }
+            if (currentTheme.endsWith(QStringLiteral(".desktop"))) {
+                const QString base = currentTheme.chopped(8);
+                candidates.append(base + QStringLiteral("dark.desktop"));
+                candidates.append(base + QStringLiteral("-dark.desktop"));
+                candidates.append(base + QStringLiteral("Dark.desktop"));
+            }
+            candidates.append(currentTheme + QStringLiteral("-Dark"));
+            candidates.append(currentTheme + QStringLiteral("Dark"));
+            candidates.append(currentTheme + QStringLiteral("-d"));
+        } else {
+            if (currentTheme.endsWith(QStringLiteral("-d")))
+                candidates.append(currentTheme.chopped(2) + QStringLiteral("-w"));
+            if (currentTheme.endsWith(QStringLiteral("_d")))
+                candidates.append(currentTheme.chopped(2) + QStringLiteral("_w"));
+            if (currentTheme.endsWith(QStringLiteral("Dark"))) {
+                candidates.append(currentTheme.chopped(4) + QStringLiteral("Light"));
+                candidates.append(currentTheme.chopped(4));
+            }
+            if (currentTheme.endsWith(QStringLiteral("-Dark"))) {
+                candidates.append(currentTheme.chopped(5) + QStringLiteral("-Light"));
+                candidates.append(currentTheme.chopped(5));
+            }
+            if (currentTheme.endsWith(QStringLiteral("_Dark"))) {
+                candidates.append(currentTheme.chopped(5) + QStringLiteral("-Light"));
+                candidates.append(currentTheme.chopped(5));
+            }
+            if (currentTheme.contains(QStringLiteral("dark"), Qt::CaseInsensitive)) {
+                QString c = currentTheme;
+                candidates.append(c.replace(QStringLiteral("dark"), QStringLiteral("light"), Qt::CaseInsensitive));
+                QString c2 = currentTheme;
+                candidates.append(c2.remove(QStringLiteral("dark"), Qt::CaseInsensitive));
+            }
+            if (currentTheme.endsWith(QStringLiteral("dark.desktop"), Qt::CaseInsensitive)) {
+                candidates.append(currentTheme.chopped(12) + QStringLiteral(".desktop"));
+                candidates.append(currentTheme.chopped(12) + QStringLiteral("light.desktop"));
+            }
+        }
+
+        for (const QString &cand : candidates) {
+            for (const QString &inst : installed) {
+                if (inst.compare(cand, Qt::CaseInsensitive) == 0)
+                    return inst;
+            }
+        }
+        return {};
+    }
+
     Q_INVOKABLE bool applySystemAppearance(bool dark) {
         QJsonParseError parseError;
         const QJsonDocument document = QJsonDocument::fromJson(
@@ -240,6 +410,8 @@ public:
         result.insert(QStringLiteral("kwinAvailable"), effects.isValid());
         result.insert(QStringLiteral("glassLoaded"),
                       loadedEffects.contains(QStringLiteral("glass")));
+        result.insert(QStringLiteral("blurLoaded"),
+                      loadedEffects.contains(QStringLiteral("blur")));
         result.insert(QStringLiteral("dockAnimationLoaded"),
                       loadedEffects.contains(QStringLiteral("kos_dock_window_animation")));
         result.insert(QStringLiteral("contextMenuInputLoaded"),
@@ -325,12 +497,66 @@ private:
         return {
             {QStringLiteral("globalBlurStrength"), globalBlur},
             {QStringLiteral("globalLiquidStrength"), globalLiquid},
-            {QStringLiteral("effectiveDockBlur"), globalBlur},
-            {QStringLiteral("effectiveDockLiquid"), globalLiquid},
-            {QStringLiteral("effectiveBarBlur"), globalBlur},
-            {QStringLiteral("effectiveBarLiquid"), globalLiquid},
-            {QStringLiteral("effectiveLauncherBlur"), globalBlur},
-            {QStringLiteral("effectiveLauncherLiquid"), globalLiquid},
+            {QStringLiteral("effectiveDockBlur"),
+                object.contains(QStringLiteral("effectiveDockBlur"))
+                    ? object.value(QStringLiteral("effectiveDockBlur")).toDouble() : globalBlur},
+            {QStringLiteral("effectiveDockLiquid"),
+                object.contains(QStringLiteral("effectiveDockLiquid"))
+                    ? object.value(QStringLiteral("effectiveDockLiquid")).toDouble() : globalLiquid},
+            {QStringLiteral("effectiveBarBlur"),
+                object.contains(QStringLiteral("effectiveBarBlur"))
+                    ? object.value(QStringLiteral("effectiveBarBlur")).toDouble() : globalBlur},
+            {QStringLiteral("effectiveBarLiquid"),
+                object.contains(QStringLiteral("effectiveBarLiquid"))
+                    ? object.value(QStringLiteral("effectiveBarLiquid")).toDouble() : globalLiquid},
+            {QStringLiteral("effectiveControlCenterBlur"),
+                object.contains(QStringLiteral("effectiveControlCenterBlur"))
+                    ? object.value(QStringLiteral("effectiveControlCenterBlur")).toDouble() : globalBlur},
+            {QStringLiteral("effectiveControlCenterLiquid"),
+                object.contains(QStringLiteral("effectiveControlCenterLiquid"))
+                    ? object.value(QStringLiteral("effectiveControlCenterLiquid")).toDouble() : globalLiquid},
+            {QStringLiteral("effectiveLauncherBlur"),
+                object.contains(QStringLiteral("effectiveLauncherBlur"))
+                    ? object.value(QStringLiteral("effectiveLauncherBlur")).toDouble() : globalBlur},
+            {QStringLiteral("effectiveLauncherLiquid"),
+                object.contains(QStringLiteral("effectiveLauncherLiquid"))
+                    ? object.value(QStringLiteral("effectiveLauncherLiquid")).toDouble() : globalLiquid},
+            {QStringLiteral("dockBlurStrength"),
+                object.contains(QStringLiteral("dockBlurStrength"))
+                    ? object.value(QStringLiteral("dockBlurStrength")).toDouble() : globalBlur},
+            {QStringLiteral("dockLiquidStrength"),
+                object.contains(QStringLiteral("dockLiquidStrength"))
+                    ? object.value(QStringLiteral("dockLiquidStrength")).toDouble() : globalLiquid},
+            {QStringLiteral("dockBlurInherit"),
+                object.contains(QStringLiteral("dockBlurInherit"))
+                    ? object.value(QStringLiteral("dockBlurInherit")).toBool() : true},
+            {QStringLiteral("barBlurStrength"),
+                object.contains(QStringLiteral("barBlurStrength"))
+                    ? object.value(QStringLiteral("barBlurStrength")).toDouble() : globalBlur},
+            {QStringLiteral("barLiquidStrength"),
+                object.contains(QStringLiteral("barLiquidStrength"))
+                    ? object.value(QStringLiteral("barLiquidStrength")).toDouble() : globalLiquid},
+            {QStringLiteral("barBlurInherit"),
+                object.contains(QStringLiteral("barBlurInherit"))
+                    ? object.value(QStringLiteral("barBlurInherit")).toBool() : true},
+            {QStringLiteral("controlCenterBlurStrength"),
+                object.contains(QStringLiteral("controlCenterBlurStrength"))
+                    ? object.value(QStringLiteral("controlCenterBlurStrength")).toDouble() : globalBlur},
+            {QStringLiteral("controlCenterLiquidStrength"),
+                object.contains(QStringLiteral("controlCenterLiquidStrength"))
+                    ? object.value(QStringLiteral("controlCenterLiquidStrength")).toDouble() : globalLiquid},
+            {QStringLiteral("controlCenterBlurInherit"),
+                object.contains(QStringLiteral("controlCenterBlurInherit"))
+                    ? object.value(QStringLiteral("controlCenterBlurInherit")).toBool() : true},
+            {QStringLiteral("launcherBlurStrength"),
+                object.contains(QStringLiteral("launcherBlurStrength"))
+                    ? object.value(QStringLiteral("launcherBlurStrength")).toDouble() : globalBlur},
+            {QStringLiteral("launcherLiquidStrength"),
+                object.contains(QStringLiteral("launcherLiquidStrength"))
+                    ? object.value(QStringLiteral("launcherLiquidStrength")).toDouble() : globalLiquid},
+            {QStringLiteral("launcherBlurInherit"),
+                object.contains(QStringLiteral("launcherBlurInherit"))
+                    ? object.value(QStringLiteral("launcherBlurInherit")).toBool() : true},
             {QStringLiteral("blurStrength"), globalBlur},
             {QStringLiteral("liquidStrength"), globalLiquid},
             {QStringLiteral("iconMode"), object.value(QStringLiteral("iconMode")).toString(QStringLiteral("color"))},
@@ -464,52 +690,70 @@ private:
         const QString source = QStringLiteral(SETTINGS_SHELL_DIR);
         if (QFileInfo::exists(QDir(source).filePath(QStringLiteral("shell.qml"))))
             return source;
+        if (QFileInfo::exists(QDir(source).filePath(QStringLiteral("shell/shell.qml"))))
+            return QDir(source).filePath(QStringLiteral("shell"));
 
         const QString installed = QStandardPaths::writableLocation(
             QStandardPaths::ConfigLocation) + QStringLiteral("/quickshell/kos");
         return installed;
     }
 
+    static QList<QStringList> candidateConnectArgs(const QString &preferredShellPath) {
+        QList<QStringList> candidates;
+        const QString installed = QStandardPaths::writableLocation(
+            QStandardPaths::ConfigLocation) + QStringLiteral("/quickshell/kos");
+        const QString source = QStringLiteral(SETTINGS_SHELL_DIR);
+        const QString sourceShell = QDir(source).filePath(QStringLiteral("shell"));
+
+        auto addCandidate = [&](const QStringList &args) {
+            if (!candidates.contains(args))
+                candidates.append(args);
+        };
+
+        if (preferredShellPath == installed)
+            addCandidate({QStringLiteral("-c"), QStringLiteral("kos")});
+        else if (!preferredShellPath.isEmpty())
+            addCandidate({QStringLiteral("--path"), preferredShellPath});
+
+        if (QFileInfo::exists(QDir(source).filePath(QStringLiteral("shell.qml"))))
+            addCandidate({QStringLiteral("--path"), source});
+        if (QFileInfo::exists(QDir(source).filePath(QStringLiteral("shell/shell.qml"))))
+            addCandidate({QStringLiteral("--path"), sourceShell});
+        addCandidate({QStringLiteral("-c"), QStringLiteral("kos")});
+
+        return candidates;
+    }
+
     QString callShell(const QString &target, const QStringList &arguments,
                       const QString &fallbackError) {
         const QString shellPath = shellDirectory();
         QString failure;
-        // Quickshell tracks instances by how they identify their config: a
-        // Shell launched as `-c kos` is NOT matched by `--path <same dir>`.
-        // The installed session runs as `-c kos`, so address it by name;
-        // development sessions (`-p <dir>`) take the explicit path.
-        const QString installed = QStandardPaths::writableLocation(
-            QStandardPaths::ConfigLocation) + QStringLiteral("/quickshell/kos");
-        QStringList connectArgs;
-        if (shellPath == installed)
-            connectArgs = {QStringLiteral("-c"), QStringLiteral("kos")};
-        else
-            connectArgs = {QStringLiteral("--path"), shellPath};
-        // The Shell can still be registering IPC targets during the first
-        // moments of a development launch. Retry once instead of turning that
-        // brief race into a permanent, opaque Settings error.
-        for (int attempt = 0; attempt < 2; ++attempt) {
-            QProcess process;
-            QStringList command = connectArgs;
-            command << QStringLiteral("ipc") << QStringLiteral("call") << target;
-            command.append(arguments);
-            process.start(QStringLiteral("quickshell"), command);
-            if (!process.waitForStarted(1500)) {
-                failure = QStringLiteral("无法启动 Quickshell IPC");
-            } else if (!process.waitForFinished(5000)) {
-                process.kill();
-                process.waitForFinished();
-                failure = QStringLiteral("桌面环境没有响应（超过 5 秒）");
-            } else if (process.exitStatus() == QProcess::NormalExit
-                       && process.exitCode() == 0) {
-                return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
-            } else {
-                failure = QString::fromUtf8(process.readAllStandardError()).trimmed();
-                if (failure.isEmpty())
-                    failure = fallbackError;
+        const auto candidates = candidateConnectArgs(shellPath);
+
+        for (const QStringList &connectArgs : candidates) {
+            for (int attempt = 0; attempt < 2; ++attempt) {
+                QProcess process;
+                QStringList command = connectArgs;
+                command << QStringLiteral("ipc") << QStringLiteral("call") << target;
+                command.append(arguments);
+                process.start(QStringLiteral("quickshell"), command);
+                if (!process.waitForStarted(1500)) {
+                    failure = QStringLiteral("无法启动 Quickshell IPC");
+                } else if (!process.waitForFinished(5000)) {
+                    process.kill();
+                    process.waitForFinished();
+                    failure = QStringLiteral("桌面环境没有响应（超过 5 秒）");
+                } else if (process.exitStatus() == QProcess::NormalExit
+                           && process.exitCode() == 0) {
+                    return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+                } else {
+                    failure = QString::fromUtf8(process.readAllStandardError()).trimmed();
+                    if (failure.isEmpty())
+                        failure = fallbackError;
+                }
+                if (attempt == 0)
+                    QThread::msleep(80);
             }
-            if (attempt == 0)
-                QThread::msleep(120);
         }
         setLastError(QStringLiteral("%1（IPC：%2；Shell：%3）")
                          .arg(failure, target, shellPath));

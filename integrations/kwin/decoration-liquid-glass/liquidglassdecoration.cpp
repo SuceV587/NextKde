@@ -353,8 +353,8 @@ void LiquidGlassDecoration::paintTitleBar(QPainter *painter)
         return QColor(255, 255, 255, qRound(alpha * liquid));
     };
     QLinearGradient specular(bar.topLeft(), bar.bottomLeft());
-    specular.setColorAt(0.0, reflection(dark ? 26 : 88));
-    specular.setColorAt(0.45, reflection(dark ? 8 : 25));
+    specular.setColorAt(0.0, reflection(dark ? 31 : 107));
+    specular.setColorAt(0.45, reflection(dark ? 10 : 31));
     specular.setColorAt(1.0, QColor(255, 255, 255, 0));
     painter->setBrush(specular);
     painter->drawPath(path);

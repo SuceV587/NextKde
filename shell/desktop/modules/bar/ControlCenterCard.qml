@@ -96,33 +96,21 @@ PopupWindow {
         Math.round(root.cardRadius),
         Math.floor(Math.min(root.cardWidth, root.cardHeight) / 2)))
 
-    property real blurStrength: AppearanceConfigService.effectiveBarBlur
-    property real liquidStrength: AppearanceConfigService.effectiveBarLiquid
+    property real blurStrength: AppearanceConfigService.effectiveControlCenterBlur
+    property real liquidStrength: AppearanceConfigService.effectiveControlCenterLiquid
     readonly property real effectiveBlur: Math.max(0.0, Math.min(1.0, blurStrength))
     readonly property real effectiveLiquid: Math.max(0.0, Math.min(1.0, liquidStrength))
 
-    // Blur region with the radius encoded explicitly, instead of
-    // RoundedBlurRegion's ellipse scanlines (whose top-row inset is corrupted
-    // by DPR scaling, making the plugin recover a smaller radius than QML
-    // draws). The top scanline starts at x=blurRadius - the plugin's
-    // smoothQuickshellCard reads exactly this inset as the corner radius.
-    // Everything below it is full-width so the card blurs completely and the
-    // SDF mask rounds the corners to blurRadius.
+    // Rounded blur region matching QuickSearch (Meta+V) and Dock windows.
     BackgroundEffect.blurRegion: (root.visible
-        && (root.effectiveBlur > 0.005 || root.effectiveLiquid > 0.005))
+        && root.effectiveBlur > 0.005)
         ? cardBlurRegionHolder : null
 
     Region {
         id: cardBlurRegionHolder
-        x: root.blurRadius
-        y: 0
-        width: root.cardWidth - root.blurRadius
-        height: 1
-        Region {
-            x: 0
-            y: 1
-            width: root.cardWidth
-            height: root.cardHeight - 1
+        RoundedBlurRegion {
+            item: cardGlass
+            radius: root.blurRadius
         }
     }
 
@@ -140,7 +128,7 @@ PopupWindow {
         ambientSecondary: WallpaperPaletteService.secondary
         ambientStrength: 0.35 * AppearanceTokens.glass.ambientMultiplier
         material: "regular"
-        border.width: 1
+        border.width: (root.effectiveBlur > 0.005 || root.effectiveLiquid > 0.005) ? 1 : 0
         border.color: root.cardBorderColor
         scale: root.popupScale
         transformOrigin: Item.TopRight

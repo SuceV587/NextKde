@@ -18,6 +18,20 @@ ApplicationWindow {
     property int currentPage: 0
     property string searchText: ""
 
+    Component.onCompleted: {
+        const arguments = Qt.application.arguments
+        const pageArgument = arguments.indexOf("--page")
+        if (pageArgument >= 0) {
+            const requested = arguments[pageArgument + 1]
+            if (requested === "desktop")
+                currentPage = 5
+            else if (requested === "shortcuts")
+                currentPage = 6
+            else if (requested === "integration")
+                currentPage = 7
+        }
+    }
+
     // Qt updates SystemPalette when the desktop colour scheme changes. We use
     // it only to select the system appearance, then apply the matching iPadOS
     // palette so both modes keep a coherent Settings visual language.
@@ -160,6 +174,59 @@ ApplicationWindow {
         labelFontWeight: Font.DemiBold
     }
 
+    component SettingsIconButton: ToolButton {
+        required property string symbol
+        property string description: ""
+        implicitWidth: 30
+        implicitHeight: 30
+        hoverEnabled: true
+        contentItem: Text {
+            text: parent.symbol
+            color: parent.enabled ? theme.primaryText : theme.tertiaryText
+            font.pixelSize: 15
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+        background: Rectangle {
+            radius: 8
+            color: parent.down ? theme.divider
+                : (parent.hovered ? theme.sidebarHover : "transparent")
+        }
+        ToolTip.visible: hovered && description.length > 0
+        ToolTip.text: description
+        ToolTip.delay: 450
+    }
+
+    component CompactStepper: RowLayout {
+        id: stepper
+        property int value: 0
+        property int from: 0
+        property int to: 10
+        signal valueRequested(int value)
+        spacing: 2
+
+        SettingsIconButton {
+            symbol: "−"
+            description: "减小"
+            enabled: stepper.enabled && stepper.value > stepper.from
+            onClicked: stepper.valueRequested(stepper.value - 1)
+        }
+        Text {
+            Layout.preferredWidth: 24
+            text: stepper.value
+            color: stepper.enabled ? theme.primaryText : theme.tertiaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            horizontalAlignment: Text.AlignHCenter
+        }
+        SettingsIconButton {
+            symbol: "+"
+            description: "增大"
+            enabled: stepper.enabled && stepper.value < stepper.to
+            onClicked: stepper.valueRequested(stepper.value + 1)
+        }
+    }
+
     component SettingRow: Item {
         required property var row
         width: ListView.view ? ListView.view.width : parent.width
@@ -264,8 +331,11 @@ ApplicationWindow {
             { icon: "N", tint: "#ff9500", title: "通知接管",
                 label: notification.label, color: notification.color,
                 detail: notification.detail },
-            statusRow("G", "#64d2ff", "Glass 特效", !!snapshot.glassLoaded,
-                "已加载", "KWin 模糊与液态玻璃效果"),
+            (snapshot.glassLoaded
+                ? statusRow("G", "#64d2ff", "Glass 特效", true, "已加载", "KWin 增强液态玻璃效果")
+                : (snapshot.blurLoaded
+                    ? statusRow("G", "#64d2ff", "合成器模糊", true, "官方稳定模式", "KWin 原生毛玻璃背景模糊 (安全双层管线)")
+                    : statusRow("G", "#64d2ff", "Glass 特效", false, "已加载", "KWin 合成器未加载背景模糊特效"))),
             statusRow("A", "#ff375f", "Dock 窗口动画",
                 !!snapshot.dockAnimationLoaded, "已加载", "KWin Dock 缩放／Genie 动画"),
             statusRow("I", "#bf5af2", "桌面输入桥接",
@@ -1206,13 +1276,13 @@ ApplicationWindow {
             font.weight: Font.DemiBold
             Layout.leftMargin: 13
             Layout.topMargin: 14
-            visible: false
+            visible: true
         }
 
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: dockBlurCol.implicitHeight
-            visible: false
+            visible: true
             radius: 18
             color: theme.card
 
@@ -1240,7 +1310,9 @@ ApplicationWindow {
                                 font.weight: Font.DemiBold
                             }
                             Text {
-                                text: "关闭后可为 Dock 单独自定义背景模糊与液态强度"
+                                text: dockPage.dockBlurInherit
+                                    ? ("已跟随系统外观 (模糊 " + dockPage.percentage(dockPage.dockBlurStrength) + " · 液态 " + dockPage.percentage(dockPage.dockLiquidStrength) + ")")
+                                    : "已开启 Dock 自定义材质"
                                 color: theme.secondaryText
                                 font.pixelSize: 11
                             }
@@ -2158,6 +2230,12 @@ ApplicationWindow {
         property real barLiquidStrength: 1.0
         property bool barBlurDirty: false
         property bool barLiquidDirty: false
+
+        property bool controlCenterBlurInherit: true
+        property real controlCenterBlurStrength: 0.42
+        property real controlCenterLiquidStrength: 1.0
+        property bool controlCenterBlurDirty: false
+        property bool controlCenterLiquidDirty: false
         property string errorText: ""
 
         function percentage(value) {
@@ -2186,6 +2264,15 @@ ApplicationWindow {
             barLiquidStrength = Number.isFinite(Number(state.barLiquidStrength)) ? Number(state.barLiquidStrength) : 1.0
             barBlurDirty = false
             barLiquidDirty = false
+
+            controlCenterBlurInherit = state.controlCenterBlurInherit !== undefined
+                ? Boolean(state.controlCenterBlurInherit) : true
+            controlCenterBlurStrength = Number.isFinite(Number(state.controlCenterBlurStrength))
+                ? Number(state.controlCenterBlurStrength) : 0.42
+            controlCenterLiquidStrength = Number.isFinite(Number(state.controlCenterLiquidStrength))
+                ? Number(state.controlCenterLiquidStrength) : 1.0
+            controlCenterBlurDirty = false
+            controlCenterLiquidDirty = false
             errorText = ""
         }
 
@@ -2290,6 +2377,73 @@ ApplicationWindow {
                 return
             barLiquidDirty = false
             applyState(bridge.updateBarLiquidStrength(barLiquidStrength))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function setControlCenterBlurInherit(enabled) {
+            if (!bridge) return
+            applyState(bridge.updateControlCenterBlurInherit(enabled))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        Timer {
+            id: liveControlCenterBlurDebounce
+            interval: 60
+            repeat: false
+            onTriggered: {
+                if (barPage.bridge && barPage.controlCenterBlurDirty) {
+                    barPage.bridge.updateControlCenterBlurStrength(barPage.controlCenterBlurStrength)
+                }
+            }
+        }
+
+        Timer {
+            id: liveControlCenterLiquidDebounce
+            interval: 60
+            repeat: false
+            onTriggered: {
+                if (barPage.bridge && barPage.controlCenterLiquidDirty) {
+                    barPage.bridge.updateControlCenterLiquidStrength(barPage.controlCenterLiquidStrength)
+                }
+            }
+        }
+
+        function previewControlCenterBlur(value) {
+            const clamped = Math.max(0, Math.min(1, value))
+            if (Math.abs(controlCenterBlurStrength - clamped) < 0.005)
+                return
+            controlCenterBlurStrength = clamped
+            controlCenterBlurDirty = true
+            liveControlCenterBlurDebounce.restart()
+        }
+
+        function commitControlCenterBlur() {
+            liveControlCenterBlurDebounce.stop()
+            if (!controlCenterBlurDirty || !bridge)
+                return
+            controlCenterBlurDirty = false
+            applyState(bridge.updateControlCenterBlurStrength(controlCenterBlurStrength))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function previewControlCenterLiquid(value) {
+            const clamped = Math.max(0, Math.min(1, value))
+            if (Math.abs(controlCenterLiquidStrength - clamped) < 0.005)
+                return
+            controlCenterLiquidStrength = clamped
+            controlCenterLiquidDirty = true
+            liveControlCenterLiquidDebounce.restart()
+        }
+
+        function commitControlCenterLiquid() {
+            liveControlCenterLiquidDebounce.stop()
+            if (!controlCenterLiquidDirty || !bridge)
+                return
+            controlCenterLiquidDirty = false
+            applyState(bridge.updateControlCenterLiquidStrength(controlCenterLiquidStrength))
             if (bridge.lastError)
                 errorText = bridge.lastError
         }
@@ -2433,19 +2587,19 @@ ApplicationWindow {
         }
 
         Text {
-            text: "外观与模糊效果".toUpperCase()
+            text: "顶栏外观与模糊效果".toUpperCase()
             color: theme.secondaryText
             font.pixelSize: 12
             font.weight: Font.DemiBold
             Layout.leftMargin: 13
             Layout.topMargin: 4
-            visible: false
+            visible: true
         }
 
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: barBlurCol.implicitHeight
-            visible: false
+            visible: true
             radius: 18
             color: theme.card
 
@@ -2473,7 +2627,9 @@ ApplicationWindow {
                                 font.weight: Font.DemiBold
                             }
                             Text {
-                                text: "关闭后可为顶栏及控制中心单独自定义背景模糊与液态强度"
+                                text: barPage.barBlurInherit
+                                    ? ("已跟随系统外观 (模糊 " + barPage.percentage(barPage.barBlurStrength) + " · 液态 " + barPage.percentage(barPage.barLiquidStrength) + ")")
+                                    : "已开启顶栏自定义材质"
                                 color: theme.secondaryText
                                 font.pixelSize: 11
                             }
@@ -2573,6 +2729,155 @@ ApplicationWindow {
                                 barPage.previewBarLiquid(position)
                             }
                             onCommitRequested: barPage.commitBarLiquid()
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: "控制中心外观与模糊效果".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 14
+            visible: true
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: controlCenterBlurCol.implicitHeight
+            visible: true
+            radius: 18
+            color: theme.card
+
+            Column {
+                id: controlCenterBlurCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+
+                Item {
+                    width: parent.width
+                    height: 54
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "⎘"; tint: "#30d158" }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "跟随显示设置"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: barPage.controlCenterBlurInherit
+                                    ? ("已跟随系统外观 (模糊 " + barPage.percentage(barPage.controlCenterBlurStrength) + " · 液态 " + barPage.percentage(barPage.controlCenterLiquidStrength) + ")")
+                                    : "已开启控制中心自定义材质"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                            }
+                        }
+                        LiquidControls.LiquidGlassSwitch {
+                            checked: barPage.controlCenterBlurInherit
+                            accentColor: "#30d158"
+                            trackColor: theme.divider
+                            onToggled: function(checked) {
+                                barPage.setControlCenterBlurInherit(checked)
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    visible: !barPage.controlCenterBlurInherit
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 53
+                    height: 1
+                    color: theme.separator
+                }
+
+                Item {
+                    visible: !barPage.controlCenterBlurInherit
+                    width: parent.width
+                    height: 48
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "◌"; tint: "#5ac8fa" }
+                        Text {
+                            text: "控制中心模糊强度"
+                            color: theme.primaryText
+                            font.pixelSize: 14
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: barPage.percentage(barPage.controlCenterBlurStrength)
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 38
+                            horizontalAlignment: Text.AlignRight
+                        }
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 190
+                            value: barPage.controlCenterBlurStrength
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                barPage.previewControlCenterBlur(position)
+                            }
+                            onCommitRequested: barPage.commitControlCenterBlur()
+                        }
+                    }
+                }
+
+                Rectangle {
+                    visible: !barPage.controlCenterBlurInherit
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 53
+                    height: 1
+                    color: theme.separator
+                }
+
+                Item {
+                    visible: !barPage.controlCenterBlurInherit
+                    width: parent.width
+                    height: 48
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "≈"; tint: "#af52de" }
+                        Text {
+                            text: "控制中心液态强度"
+                            color: theme.primaryText
+                            font.pixelSize: 14
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: barPage.percentage(barPage.controlCenterLiquidStrength)
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 38
+                            horizontalAlignment: Text.AlignRight
+                        }
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 190
+                            value: barPage.controlCenterLiquidStrength
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                barPage.previewControlCenterLiquid(position)
+                            }
+                            onCommitRequested: barPage.commitControlCenterLiquid()
                         }
                     }
                 }
@@ -2905,6 +3210,92 @@ ApplicationWindow {
         property int fontWeightIndex: 0
         property string errorText: ""
 
+        property bool launcherBlurInherit: true
+        property real launcherBlurStrength: 0.42
+        property real launcherLiquidStrength: 1.0
+        property bool launcherBlurDirty: false
+        property bool launcherLiquidDirty: false
+
+        function percentage(value) {
+            return Math.round(value * 100) + "%"
+        }
+
+        function setLauncherBlurInherit(enabled) {
+            if (!bridge) return
+            applyAppearanceState(bridge.updateLauncherBlurInherit(enabled))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        Timer {
+            id: liveLauncherBlurDebounce
+            interval: 60
+            repeat: false
+            onTriggered: {
+                if (launcherPage.bridge && launcherPage.launcherBlurDirty) {
+                    launcherPage.bridge.updateLauncherBlurStrength(launcherPage.launcherBlurStrength)
+                }
+            }
+        }
+
+        Timer {
+            id: liveLauncherLiquidDebounce
+            interval: 60
+            repeat: false
+            onTriggered: {
+                if (launcherPage.bridge && launcherPage.launcherLiquidDirty) {
+                    launcherPage.bridge.updateLauncherLiquidStrength(launcherPage.launcherLiquidStrength)
+                }
+            }
+        }
+
+        function previewLauncherBlur(value) {
+            const clamped = Math.max(0, Math.min(1, value))
+            if (Math.abs(launcherBlurStrength - clamped) < 0.005)
+                return
+            launcherBlurStrength = clamped
+            launcherBlurDirty = true
+            liveLauncherBlurDebounce.restart()
+        }
+
+        function commitLauncherBlur() {
+            liveLauncherBlurDebounce.stop()
+            if (!launcherBlurDirty || !bridge)
+                return
+            launcherBlurDirty = false
+            applyAppearanceState(bridge.updateLauncherBlurStrength(launcherBlurStrength))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function previewLauncherLiquid(value) {
+            const clamped = Math.max(0, Math.min(1, value))
+            if (Math.abs(launcherLiquidStrength - clamped) < 0.005)
+                return
+            launcherLiquidStrength = clamped
+            launcherLiquidDirty = true
+            liveLauncherLiquidDebounce.restart()
+        }
+
+        function commitLauncherLiquid() {
+            liveLauncherLiquidDebounce.stop()
+            if (!launcherLiquidDirty || !bridge)
+                return
+            launcherLiquidDirty = false
+            applyAppearanceState(bridge.updateLauncherLiquidStrength(launcherLiquidStrength))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function applyAppearanceState(state) {
+            if (!state) return
+            launcherBlurInherit = state.launcherBlurInherit !== undefined ? Boolean(state.launcherBlurInherit) : true
+            launcherBlurStrength = Number.isFinite(Number(state.launcherBlurStrength)) ? Number(state.launcherBlurStrength) : 0.42
+            launcherLiquidStrength = Number.isFinite(Number(state.launcherLiquidStrength)) ? Number(state.launcherLiquidStrength) : 1.0
+            launcherBlurDirty = false
+            launcherLiquidDirty = false
+        }
+
         function applySnapshot(snapshot) {
             if (!snapshot) return
             if (snapshot.displayMode !== undefined) {
@@ -2928,6 +3319,7 @@ ApplicationWindow {
             if (!bridge) return
             const snap = bridge.launcherSnapshot()
             applySnapshot(snap)
+            applyAppearanceState(bridge.appearanceSnapshot())
             if (bridge.lastError)
                 errorText = bridge.lastError
         }
@@ -3213,6 +3605,153 @@ ApplicationWindow {
         }
 
         Text {
+            text: "启动台外观与模糊效果".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 14
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: launcherBlurCol.implicitHeight
+            radius: 18
+            color: theme.card
+
+            Column {
+                id: launcherBlurCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+
+                Item {
+                    width: parent.width
+                    height: 54
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "⎘"; tint: "#30d158" }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "跟随显示设置"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: launcherPage.launcherBlurInherit
+                                    ? ("已跟随系统外观 (模糊 " + launcherPage.percentage(launcherPage.launcherBlurStrength) + " · 液态 " + launcherPage.percentage(launcherPage.launcherLiquidStrength) + ")")
+                                    : "已开启启动台自定义材质"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                            }
+                        }
+                        LiquidControls.LiquidGlassSwitch {
+                            checked: launcherPage.launcherBlurInherit
+                            accentColor: "#30d158"
+                            trackColor: theme.divider
+                            onToggled: function(checked) {
+                                launcherPage.setLauncherBlurInherit(checked)
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    visible: !launcherPage.launcherBlurInherit
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 53
+                    height: 1
+                    color: theme.separator
+                }
+
+                Item {
+                    visible: !launcherPage.launcherBlurInherit
+                    width: parent.width
+                    height: 48
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "◌"; tint: "#5ac8fa" }
+                        Text {
+                            text: "启动台模糊强度"
+                            color: theme.primaryText
+                            font.pixelSize: 14
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: launcherPage.percentage(launcherPage.launcherBlurStrength)
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 38
+                            horizontalAlignment: Text.AlignRight
+                        }
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 190
+                            value: launcherPage.launcherBlurStrength
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                launcherPage.previewLauncherBlur(position)
+                            }
+                            onCommitRequested: launcherPage.commitLauncherBlur()
+                        }
+                    }
+                }
+
+                Rectangle {
+                    visible: !launcherPage.launcherBlurInherit
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 53
+                    height: 1
+                    color: theme.separator
+                }
+
+                Item {
+                    visible: !launcherPage.launcherBlurInherit
+                    width: parent.width
+                    height: 48
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "≈"; tint: "#af52de" }
+                        Text {
+                            text: "启动台液态强度"
+                            color: theme.primaryText
+                            font.pixelSize: 14
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: launcherPage.percentage(launcherPage.launcherLiquidStrength)
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 38
+                            horizontalAlignment: Text.AlignRight
+                        }
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 190
+                            value: launcherPage.launcherLiquidStrength
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                launcherPage.previewLauncherLiquid(position)
+                            }
+                            onCommitRequested: launcherPage.commitLauncherLiquid()
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
             Layout.fillWidth: true
             Layout.leftMargin: 13
             Layout.rightMargin: 13
@@ -3342,7 +3881,6 @@ ApplicationWindow {
                     navSymbol: "✓"
                     navTint: "#30d158"
                 }
-
                 Item {
                     Layout.fillHeight: true
                 }
@@ -3427,7 +3965,6 @@ ApplicationWindow {
                     IntegrationStatusPage {
                         visible: window.currentPage === 6
                     }
-
                     DockSettingsPage {
                         visible: window.currentPage === 3
                     }

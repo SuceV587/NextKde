@@ -8,9 +8,9 @@ QtObject {
     id: launcher
 
     readonly property string settingsBinary:
-        Quickshell.shellDir + "/../apps/settings/build/kos-settings"
+        Quickshell.shellDir + "/apps/settings/build/kos-settings"
 
-    function openSettings() {
+    function openSettings(page) {
         Quickshell.execDetached([
             "sh", "-c",
             // Settings talks back to its Shell over Quickshell IPC. Preserve
@@ -20,14 +20,18 @@ QtObject {
             // limited to the one canonical in-tree artifact plus the
             // installed copy: a second build tree would drift and open a
             // Settings build that does not match the running Shell.
-            "export KOS_SHELL_DIR=\"$2\"; "
-            + "if [ -x \"$1\" ]; then exec \"$1\"; fi; "
-            + "if command -v kos-settings >/dev/null 2>&1; then exec kos-settings; fi; "
-            + "if [ -x \"$HOME/.local/bin/kos-settings\" ]; then exec \"$HOME/.local/bin/kos-settings\"; fi; "
+            "export KOS_SHELL_DIR=\"$2\"; page=\"$3\"; set --; "
+            + "if [ -n \"$page\" ]; then set -- --page \"$page\"; fi; "
+            + "if [ -x \"$2/apps/settings/build/kos-settings\" ]; then exec \"$2/apps/settings/build/kos-settings\" \"$@\"; fi; "
+            + "if [ -x \"$2/../apps/settings/build/kos-settings\" ]; then exec \"$2/../apps/settings/build/kos-settings\" \"$@\"; fi; "
+            + "if [ -x \"$1\" ]; then exec \"$1\" \"$@\"; fi; "
+            + "if command -v kos-settings >/dev/null 2>&1; then exec kos-settings \"$@\"; fi; "
+            + "if [ -x \"$HOME/.local/bin/kos-settings\" ]; then exec \"$HOME/.local/bin/kos-settings\" \"$@\"; fi; "
             + "echo 'kos-settings is not built; run ./tools/kosctl build' >&2; exit 1",
             "kos-settings-launch",
             launcher.settingsBinary,
-            Quickshell.shellDir
+            Quickshell.shellDir,
+            String(page ?? "")
         ])
     }
 }

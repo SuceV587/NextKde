@@ -130,10 +130,32 @@ Item {
                 effectiveDockLiquid: AppearanceConfigService.effectiveDockLiquid,
                 effectiveBarBlur: AppearanceConfigService.effectiveBarBlur,
                 effectiveBarLiquid: AppearanceConfigService.effectiveBarLiquid,
+                effectiveControlCenterBlur:
+                    AppearanceConfigService.effectiveControlCenterBlur,
+                effectiveControlCenterLiquid:
+                    AppearanceConfigService.effectiveControlCenterLiquid,
                 effectiveLauncherBlur:
                     AppearanceConfigService.effectiveLauncherBlur,
                 effectiveLauncherLiquid:
                     AppearanceConfigService.effectiveLauncherLiquid,
+                dockBlurStrength: AppearanceConfigService.dockBlurStrength,
+                dockLiquidStrength: AppearanceConfigService.dockLiquidStrength,
+                dockBlurInherit: AppearanceConfigService.dockBlurInherit,
+                barBlurStrength: AppearanceConfigService.barBlurStrength,
+                barLiquidStrength: AppearanceConfigService.barLiquidStrength,
+                barBlurInherit: AppearanceConfigService.barBlurInherit,
+                controlCenterBlurStrength:
+                    AppearanceConfigService.controlCenterBlurStrength,
+                controlCenterLiquidStrength:
+                    AppearanceConfigService.controlCenterLiquidStrength,
+                controlCenterBlurInherit:
+                    AppearanceConfigService.controlCenterBlurInherit,
+                launcherBlurStrength:
+                    AppearanceConfigService.launcherBlurStrength,
+                launcherLiquidStrength:
+                    AppearanceConfigService.launcherLiquidStrength,
+                launcherBlurInherit:
+                    AppearanceConfigService.launcherBlurInherit,
                 blurStrength: AppearanceConfigService.globalBlurStrength,
                 liquidStrength: AppearanceConfigService.globalLiquidStrength,
                 iconMode: IconAppearanceService.mode,
@@ -160,6 +182,66 @@ Item {
 
         function updateGlobalLiquidStrength(value: real): string {
             AppearanceConfigService.updateGlobalLiquidStrength(value)
+            return snapshot()
+        }
+
+        function updateDockBlurStrength(value: real): string {
+            AppearanceConfigService.updateDockBlurStrength(value)
+            return snapshot()
+        }
+
+        function updateDockLiquidStrength(value: real): string {
+            AppearanceConfigService.updateDockLiquidStrength(value)
+            return snapshot()
+        }
+
+        function updateDockBlurInherit(enabled: bool): string {
+            AppearanceConfigService.updateDockBlurInherit(enabled)
+            return snapshot()
+        }
+
+        function updateBarBlurStrength(value: real): string {
+            AppearanceConfigService.updateBarBlurStrength(value)
+            return snapshot()
+        }
+
+        function updateBarLiquidStrength(value: real): string {
+            AppearanceConfigService.updateBarLiquidStrength(value)
+            return snapshot()
+        }
+
+        function updateBarBlurInherit(enabled: bool): string {
+            AppearanceConfigService.updateBarBlurInherit(enabled)
+            return snapshot()
+        }
+
+        function updateControlCenterBlurStrength(value: real): string {
+            AppearanceConfigService.updateControlCenterBlurStrength(value)
+            return snapshot()
+        }
+
+        function updateControlCenterLiquidStrength(value: real): string {
+            AppearanceConfigService.updateControlCenterLiquidStrength(value)
+            return snapshot()
+        }
+
+        function updateControlCenterBlurInherit(enabled: bool): string {
+            AppearanceConfigService.updateControlCenterBlurInherit(enabled)
+            return snapshot()
+        }
+
+        function updateLauncherBlurStrength(value: real): string {
+            AppearanceConfigService.updateLauncherBlurStrength(value)
+            return snapshot()
+        }
+
+        function updateLauncherLiquidStrength(value: real): string {
+            AppearanceConfigService.updateLauncherLiquidStrength(value)
+            return snapshot()
+        }
+
+        function updateLauncherBlurInherit(enabled: bool): string {
+            AppearanceConfigService.updateLauncherBlurInherit(enabled)
             return snapshot()
         }
 
@@ -305,7 +387,6 @@ Item {
             })
         }
     }
-
     // The KWin effect observes pointer presses at compositor scope and routes
     // them through WindowService's existing local bridge. Keep the policy here
     // so individual desktop, Dock, and tray surfaces need no outside-click
