@@ -37,12 +37,10 @@ Item {
     property string phase: "Bootstrapping"
     property real revealProgress: 0.0
     readonly property bool hidden: ctl.phase === "Hidden"
-    // Reserve as soon as reveal begins, keep the reservation throughout the
-    // hide animation, and release it only at the Hidden boundary. This avoids
-    // resizing maximized windows on every animation frame.
+    // Only permanently visible mode reserves workspace. Auto-hide modes keep
+    // the zone at 0 so windows do not reflow when the Bar reveals or hides,
+    // allowing the Bar to float on top of content (在图层上).
     readonly property bool workspaceReserved: ctl.mode === "always"
-        || (ctl.phase !== "Bootstrapping" && ctl.phase !== "Hidden"
-            && ctl.phase !== "RevealPending")
     readonly property bool handleActive: ctl.mode !== "always"
     property bool hasWindowConflict: false
     readonly property bool policyWantsHidden:
@@ -62,7 +60,7 @@ Item {
         const s = ctl.targetScreen
         if (!s || s.x === undefined || s.width === undefined)
             return { x: 0, y: 0, width: 1, height: 1 }
-        return { x: s.x, y: s.y, width: s.width, height: s.height }
+        return { x: s.x, y: s.y, width: s.width, height: s.height, name: s.name || "" }
     }
 
     function _windowCandidates() {
@@ -193,7 +191,7 @@ Item {
     function _setPhase(next) {
         if (ctl.phase === next)
             return
-        console.log("[BarAutoHide] " + ctl.phase + " -> " + next
+        console.info("[BarAutoHide] " + ctl.phase + " -> " + next
             + " mode=" + ctl.mode + " conflict=" + ctl.hasWindowConflict
             + " inhibit=" + ctl.hasInhibitor)
         ctl.phase = next

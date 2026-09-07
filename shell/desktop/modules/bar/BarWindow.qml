@@ -36,12 +36,16 @@ PanelWindow {
         barHeight: root.implicitHeight
         edgeMargin: 15
         pointerInsideBar: contentHoverHandler.hovered
-        popupOpen: barContentLoader.item?.statusArea?.anyPanelOpen ?? false
+        popupOpen: (barContentLoader.item?.statusArea?.anyPanelOpen ?? false)
+            || (barContentLoader.item?.globalMenu?.menuOpen ?? false)
         launcherOpen: AppLauncherService.open
     }
 
+    // Only "always" mode reserves a permanent top workspace strip.
+    // In "smart" or "persistent" modes, exclusiveZone stays at 0 so
+    // maximised windows extend to the top of the screen and the Bar floats over content (在图层上).
     readonly property int reservedWorkspaceHeight: (root.barEnabled
-        && hide.workspaceReserved)
+        && AppearanceConfigService.barVisibilityMode === "always")
         ? Math.round(implicitHeight + margins.top) : 0
     exclusiveZone: root.reservedWorkspaceHeight
     visible: root.barEnabled
@@ -52,9 +56,8 @@ PanelWindow {
         right: true
     }
     margins {
-        top: (AppearanceConfigService.barLayoutMode === "floating")
-            ? (AppearanceConfigService.barVisibilityMode !== "always" ? 8 : 6)
-            : 0
+        top: (AppearanceConfigService.barLayoutMode === "floating"
+            && AppearanceConfigService.barVisibilityMode === "always") ? 6 : 0
         left: (AppearanceConfigService.barLayoutMode === "floating") ? 15 : 0
         right: (AppearanceConfigService.barLayoutMode === "floating") ? 15 : 0
     }
@@ -70,11 +73,10 @@ PanelWindow {
     Component.onCompleted: publishWorkspaceReservation()
 
     // The transparent layout deliberately leaves only the content: it must not
-    // register a backdrop region, otherwise KWin adds blur/refraction behind
-    // it. Other Bar layouts still use the regular compositor glass pipeline.
+    // register a backdrop region, otherwise KWin adds blur behind it.
+    // Only publish blurRegion when backdrop blur is active.
     BackgroundEffect.blurRegion: (!root.transparentMode && root.visible
-        && (AppearanceConfigService.effectiveBarBlur > 0.005
-            || AppearanceConfigService.effectiveBarLiquid > 0.005))
+        && AppearanceConfigService.effectiveBarBlur > 0.005)
         ? barBlurRegionHolder : null
 
     Region {
@@ -104,6 +106,8 @@ PanelWindow {
             id: contentHoverHandler
         }
 
+
+
         Loader {
             id: barContentLoader
             anchors.fill: parent
@@ -114,6 +118,7 @@ PanelWindow {
                 Item {
                     id: barContentItem
                     readonly property alias statusArea: barStatusArea
+                    readonly property alias globalMenu: barGlobalMenu
 
                     BarDateStatus {
                         id: barDateStatus
@@ -128,6 +133,7 @@ PanelWindow {
                     // integrated into the Dock, so the Dock never owns or
                     // fetches an application menu.
                     GlobalMenu {
+                        id: barGlobalMenu
                         anchors.left: barDateStatus.right
                         anchors.leftMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
@@ -147,13 +153,13 @@ PanelWindow {
     }
 
     // ── Touch-top invisible trigger ──
-    // A 8px hit area at the screen top to reveal Bar when hovered in hide modes.
+    // A 2px hit area at the screen top to reveal Bar when hovered in hide modes.
     Item {
         id: topTriggerArea
         x: 0
         y: 0
         width: root.width
-        height: hide.handleActive ? 8 : 0
+        height: hide.handleActive ? 2 : 0
         visible: hide.handleActive
 
         HoverHandler {
@@ -189,7 +195,7 @@ PanelWindow {
         x: 0
         y: 0
         width: root.width
-        height: hide.handleActive ? 8 : 0
+        height: hide.handleActive ? 2 : 0
         visible: false
     }
 

@@ -26,6 +26,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: Qt.formatDateTime(clock.date, "h:mm")
             color: ThemeService.foregroundColor
+            renderType: Text.NativeRendering
             font {
                 family: "SF Pro Display, Noto Sans CJK SC, sans-serif"
                 pixelSize: 14
@@ -37,8 +38,9 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: Qt.formatDateTime(clock.date, "M月d日 dddd")
             color: ThemeService.foregroundColor
+            renderType: Text.NativeRendering
             font {
-                family: "Noto Sans CJK SC, sans-serif"
+                family: "SF Pro Display, Noto Sans CJK SC, sans-serif"
                 pixelSize: 14
                 weight: Font.DemiBold
             }
