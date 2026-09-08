@@ -284,55 +284,26 @@ vec3 glassOutline(vec2 position, GlassFragment s, vec4 cornerRadius)
     float n2dLen = max(length(hGrad), 1e-5);
     vec2 n2d = hGrad / n2dLen;              // unit 2D rim normal (points inward)
 
-    // Inner shadow (container lip): a soft dark band just inside the rim,
-    // mirroring the recessed lip of iOS glass. It multiplies the *base*
-    // colour only, before any highlight is added, so the highlights layer on
-    // top of it instead of being swallowed by it. The band starts just off
-    // the very edge (0.35zR) and extends past the highlight band (to 1.6zR),
-    // so the outer edge stays a bright highlight line while the lip shades.
-    // Inner shadow (container lip), directional like iOS: the glass is lit
-    // from above, so the lip shadow is strongest just under the bright top
-    // edge and fades toward the bottom (which the bevel already dims) and
-    // the sides. Not a uniform all-around band. The band eases in from the
-    // edge and dissolves progressively inward, so it reads as a recessed lip
-    // rather than a hard ring.
-    float shadowW = zR * 1.6;
-    float topWeight = smoothstep(0.35, -0.35, position.y / halfBlurSize.y);
-    float innerShadow = smoothstep(0.0, zR * 0.3, -s.dist)
-                      * (1.0 - smoothstep(shadowW * 0.5, shadowW, -s.dist))
-                      * mix(0.25, 1.0, topWeight);
-
-    vec3 rgb = baseColor * (1.0 - innerShadow * 0.15);
+    // A dark inner lip makes every small surface read as embossed plastic.
+    // Let refraction and the backdrop supply thickness instead; the surface
+    // starts as a continuous material, not as an inset tray.
+    vec3 rgb = baseColor;
     vec3 highlight = getHighlightColor(baseColor, 1.0);
 
-    // ── Stable edge highlight ──────────────────────────────────────────
-    // Use one fixed, screen-space light source instead of the mirrored
-    // diagonal arcs used by the earlier material. The upper edge carries the
-    // readable specular line and the lower edge catches only a quiet secondary
-    // reflection. This stays stable as a surface or pointer moves.
+    // ── One-sided environmental reflection ─────────────────────────────
+    // The Dock should first read as the blurred scene beneath it.  A uniform
+    // Fresnel ring or a lower-edge highlight instead reads as a painted
+    // outline, particularly on a very wide capsule. Keep all specular energy
+    // on the upper, light-facing rim; the lower edge receives no separate
+    // white reflection.
     float topFacing = max(n2d.y, 0.0);
-    float bottomFacing = max(-n2d.y, 0.0);
-    float focused = smoothstep(0.18, 1.0, topFacing)
-                  + smoothstep(0.35, 1.0, bottomFacing) * 0.28;
+    float upperRim = smoothstep(0.20, 1.0, topFacing) * fresnel;
+    rgb += highlight * upperRim * 0.15 * surfaceScale;
 
-    // Faint all-around fresnel keeps the rim visible on dark backdrops, but
-    // deliberately low so the arc reads as the light source, not a ring.
-    rgb += highlight * fresnel * 0.05 * surfaceScale;
-    // The upper line is crisp but restrained; the lower reflection should be
-    // felt as thickness rather than read as a second outline.
-    rgb += highlight * fresnel * focused * 0.24 * surfaceScale;
-
-    // Synthetic bevel: the top edge catches light while the bottom shades
-    // (n2d.y > 0 on the top edge), giving the material a physical thickness.
-    // Kept independent of the diagonal arc - it is the "3D slab" cue, the arc
-    // is the liquid reflection.
-    float bevelGradient = n2d.y * 0.15;
-    rgb += highlight * (bevelGradient * fresnel) * surfaceScale;
-
-    // A narrow sheen follows the same fixed top/bottom lighting model.
-    float directional = topFacing * sqrt(topFacing) * 0.55
-                      + bottomFacing * sqrt(bottomFacing) * 0.10;
-    float brightnessRaw = (directional + 0.02) * fresnel * 0.4 * surfaceScale;
+    // A small, soft shoulder keeps the top from becoming a hard line while
+    // staying strictly absent on the lower edge.
+    float brightnessRaw = topFacing * sqrt(topFacing) * fresnel
+        * 0.16 * surfaceScale;
     float brightness = brightnessRaw / (1.0 + brightnessRaw);
     rgb = mix(rgb, highlight, brightness);
 

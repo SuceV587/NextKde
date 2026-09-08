@@ -1733,19 +1733,21 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.tintColorLocation, tintVec);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.tintGrayLocation, static_cast<float>(0.299 * tint.redF() + 0.587 * tint.greenF() + 0.114 * tint.blueF()));
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.autoTintAlphaLocation, m_settings.general.autoTintAlpha ? 1 : 0);
-    // Per-surface material strength: the always-visible dock gets a more
-    // pronounced glassy rim, transient popups stay subtle.
-    const float surfaceScale = w->isDock() ? 1.3f
-                             : (w->isNotification() || w->isOnScreenDisplay()) ? 0.5f
-                             : 1.0f;
+    // One optical material for every KOS shell region. Surface-specific
+    // presentation belongs to the client's pigment layer; compositor window
+    // classification must not silently change Dock, launcher, search, or
+    // control-center glass. Preserve the established policy for other apps.
+    const bool isQuickshellMaterial =
+        w->window()->resourceClass().contains(QLatin1String("quickshell"), Qt::CaseInsensitive)
+        || w->window()->resourceName().contains(QLatin1String("quickshell"), Qt::CaseInsensitive);
+    const float surfaceScale = isQuickshellMaterial ? 1.0f
+        : (w->isDock() ? 1.3f
+        : (w->isNotification() || w->isOnScreenDisplay()) ? 0.5f : 1.0f);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.surfaceScaleLocation, surfaceScale);
-    // Dock, menus, notifications and OSD stay visually stable while the
-    // content behind them moves. Reserve the full lens for small transient
-    // controls and previews, where a stronger refraction communicates touch.
-    const float lensStrengthScale = w->isDock() ? 0.45f
-                                  : (w->isMenu() || w->isDropdownMenu() || w->isPopupMenu()) ? 0.55f
-                                  : (w->isNotification() || w->isOnScreenDisplay()) ? 0.35f
-                                  : 1.0f;
+    const float lensStrengthScale = isQuickshellMaterial ? 0.45f
+        : (w->isDock() ? 0.45f
+        : (w->isMenu() || w->isDropdownMenu() || w->isPopupMenu()) ? 0.55f
+        : (w->isNotification() || w->isOnScreenDisplay()) ? 0.35f : 1.0f);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.lensStrengthScaleLocation, lensStrengthScale);
     auto tintStrengthForRegion = [&](bool decorationRegion) {
         if (w->isDock() && m_settings.general.excludeDocks) {

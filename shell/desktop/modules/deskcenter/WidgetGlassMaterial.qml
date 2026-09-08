@@ -48,6 +48,7 @@ Item {
 
     LiquidGlassSurface {
         anchors.fill: parent
+        compositorManaged: false
         radius: root.cornerRadius
         material: "regular"
         materialDepth: 0.35
@@ -61,8 +62,6 @@ Item {
             : (root.appearanceMode === "tint" ? 0.18 : 0.42) * root.strength
         ambientTransitionDuration: 2800
         adaptiveDarkScrim: root.wallpaperLuminance > 0.54
-        bottomEdgeVisible: true
-        bottomShadeVisible: true
     }
 
     // This horizontal component combines with LiquidGlassSurface's existing
