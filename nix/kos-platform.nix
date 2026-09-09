@@ -21,6 +21,7 @@ stdenv.mkDerivation {
         kdePackages.qtdeclarative
         kdePackages.kiconthemes
         kdePackages.kglobalaccel
+        kdePackages.kio
     ];
 
     cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" ];
