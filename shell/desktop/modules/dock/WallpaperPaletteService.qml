@@ -16,10 +16,7 @@ QtObject {
     readonly property int preferredScreen: Quickshell.screens.length > 1 ? 1 : 0
     property url wallpaperUrl: ""
     property string configuredWallpaperUrl: ""
-    // Keep a QML-owned reference to each read process. A local JavaScript
-    // reference can be collected before its exit callback on some reloads,
-    // which leaves the old boolean guard permanently set.
-    property var _refreshProcess: null
+    // Keep a QML-owned reference while resolving a wallpaper package.
     property var _resolveProcess: null
     readonly property color primary: palette.primary
     readonly property color secondary: palette.secondary
@@ -133,40 +130,17 @@ QtObject {
     }
 
     function refresh() {
-        if (_refreshProcess)
-            return
-        const proc = _processFactory.createObject(svc, {
-            command: ["sh", "-c", "cat \"$1\"", "wallpaper-palette-read", configPath],
-        })
-        _refreshProcess = proc
-        _refreshWatchdog.restart()
-        proc.exited.connect(function(code) {
-            svc._refreshWatchdog.stop()
-            if (svc._refreshProcess === proc)
-                svc._refreshProcess = null
-            const output = proc.stdout?.text ?? ""
-            if (code === 0)
-                svc._readWallpaperText(output)
-            else
-                console.warn("[WallpaperPalette] config read failed code=" + code)
-            proc.destroy()
-        })
-        proc.running = true
+        _configFile.reload()
     }
 
-    property Timer _refreshWatchdog: Timer {
-        interval: 1500
-        repeat: false
-        onTriggered: {
-            const proc = svc._refreshProcess
-            if (!proc)
-                return
-            console.warn("[WallpaperPalette] config reader stalled; retrying")
-            svc._refreshProcess = null
-            proc.running = false
-            proc.destroy()
-            svc.refresh()
-        }
+    property FileView _configFile: FileView {
+        path: svc.configPath
+        preload: true
+        // Keep the existing periodic reload: atomic replacement must not
+        // depend on a watch of the old inode. Failed reads retain the palette.
+        watchChanges: false
+        onLoaded: svc._readWallpaperText(text())
+        onLoadFailed: error => console.warn("[WallpaperPalette] config read failed error=" + error)
     }
 
     property Component _processFactory: Component {
@@ -209,5 +183,4 @@ QtObject {
         }
     }
 
-    Component.onCompleted: refresh()
 }
