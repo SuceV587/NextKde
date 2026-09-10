@@ -72,12 +72,14 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: height / 2
-            color: "white"
+            color: AppearanceTokens.isMaterial
+                ? AppearanceTokens.colors.primary : "white"
         }
         // Glass-shell top highlight.
         Rectangle {
             anchors.fill: parent
             radius: height / 2
+            visible: !AppearanceTokens.isMaterial
             gradient: Gradient {
                 orientation: Gradient.Vertical
                 GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.85) }
@@ -91,7 +93,12 @@ Item {
             radius: height / 2
             color: "transparent"
             border.width: 1
-            border.color: Qt.rgba(1, 1, 1, root._dragging ? 0.45 : 0.0)
+            border.color: AppearanceTokens.isMaterial
+                ? Qt.rgba(AppearanceTokens.colors.primary.r,
+                    AppearanceTokens.colors.primary.g,
+                    AppearanceTokens.colors.primary.b,
+                    root._dragging ? 0.45 : 0.0)
+                : Qt.rgba(1, 1, 1, root._dragging ? 0.45 : 0.0)
             Behavior on border.color {
                 ColorAnimation { duration: 150 }
             }

@@ -28,6 +28,7 @@ QtObject {
         console.log("[WallpaperPalette] sampling screen=" + preferredScreen
             + " " + nextUrl)
         wallpaperUrl = nextUrl
+        MaterialThemeService.generateFromWallpaper(nextUrl)
     }
 
     function _resolveWallpaperUrl(nextUrl) {
