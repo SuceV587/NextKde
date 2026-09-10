@@ -18,10 +18,18 @@ Item {
         + (cpuSlot.visible ? statusArea.spacing : 0)
 
     property bool controlCenterLoaded: false
+    property bool controlCenterOpening: false
     readonly property var controlCenter: controlCenterLoader.item
     readonly property bool controlCenterOpen: controlCenter?.isOpen ?? false
     readonly property bool anyPanelOpen: (networkPanel?.visible ?? false)
         || (bluetoothPanel?.visible ?? false) || root.controlCenterOpen
+
+    onControlCenterOpenChanged: {
+        if (!controlCenterOpen) {
+            controlCenterOpening = false
+            controlCenterUnloadTimer.restart()
+        }
+    }
 
     function toggleControlCenter(anchorItem) {
         controlCenterUnloadTimer.stop()
@@ -30,10 +38,12 @@ Item {
             return
         }
         controlCenterLoaded = true
+        controlCenterOpening = true
         Qt.callLater(function() {
             if (controlCenterLoaded && controlCenter
                     && !controlCenter.isOpen)
                 controlCenter.toggle(anchorItem)
+            controlCenterOpening = false
         })
     }
 

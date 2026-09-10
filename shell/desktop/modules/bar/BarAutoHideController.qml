@@ -58,8 +58,8 @@ Item {
     function _targetRect() {
         const s = ctl.targetScreen
         if (!s || s.x === undefined || s.width === undefined)
-            return { x: 0, y: 0, width: 1, height: 1 }
-        return { x: s.x, y: s.y, width: s.width, height: s.height }
+            return { x: 0, y: 0, width: 1, height: 1, name: "" }
+        return { x: s.x, y: s.y, width: s.width, height: s.height, name: s.name || "" }
     }
 
     function _windowCandidates() {
@@ -190,7 +190,7 @@ Item {
     function _setPhase(next) {
         if (ctl.phase === next)
             return
-        console.log("[BarAutoHide] " + ctl.phase + " -> " + next
+        console.info("[BarAutoHide] " + ctl.phase + " -> " + next
             + " mode=" + ctl.mode + " conflict=" + ctl.hasWindowConflict
             + " inhibit=" + ctl.hasInhibitor)
         ctl.phase = next
@@ -380,6 +380,7 @@ Item {
     onTargetScreenChanged: { ctl._recomputeConflict(); ctl._scheduleEvaluate() }
     onBarHeightChanged: { ctl._recomputeConflict(); ctl._scheduleEvaluate() }
     onPointerInsideBarChanged: ctl._scheduleEvaluate()
+    on_HandleHoveredChanged: ctl._scheduleEvaluate()
     onPopupOpenChanged: {
         if (ctl.popupOpen && ctl.mode !== "always" && ctl.revealProgress < 1.0) {
             ctl._anim.stop()
@@ -388,6 +389,7 @@ Item {
         }
         ctl._scheduleEvaluate()
     }
+    onLauncherOpenChanged: ctl._scheduleEvaluate()
     onConfigReadyChanged: ctl._tryResolveBoot(false)
     onWindowDataReadyChanged: { ctl._recomputeConflict(); ctl._scheduleEvaluate() }
 

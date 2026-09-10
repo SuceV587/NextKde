@@ -71,6 +71,11 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/shell/desktop/modules/dock/test_wallpaper_palette.mjs
         )
         set_tests_properties(kos-shell.wallpaper-palette PROPERTIES TIMEOUT 10)
+        add_test(NAME kos-shell.bar-autohide
+            COMMAND ${KOS_NODE_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/shell/desktop/modules/bar/test_bar_autohide.mjs
+        )
+        set_tests_properties(kos-shell.bar-autohide PROPERTIES TIMEOUT 10)
         find_program(KOS_QUICKSHELL_EXECUTABLE NAMES quickshell)
         if(KOS_QUICKSHELL_EXECUTABLE)
             add_test(NAME kos-shell.static-work-runtime

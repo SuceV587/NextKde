@@ -37,7 +37,7 @@ PanelWindow {
         edgeMargin: 15
         pointerInsideBar: contentHoverHandler.hovered
         popupOpen: (barContentLoader.item?.statusArea?.anyPanelOpen ?? false)
-            || (barContentLoader.item?.statusArea?.controlCenterLoaded ?? false)
+            || (barContentLoader.item?.statusArea?.controlCenterOpening ?? false)
             || (barContentLoader.item?.globalMenu?.menuOpen ?? false)
         launcherOpen: AppLauncherService.open
     }
@@ -150,18 +150,18 @@ PanelWindow {
     }
 
     // ── Touch-top invisible trigger ──
-    // A 8px hit area at the screen top to reveal Bar when hovered in hide modes.
+    // A 2px hit area at the screen top to reveal Bar when hovered in hide modes.
     Item {
         id: topTriggerArea
         x: 0
         y: 0
         width: root.width
-        height: hide.handleActive ? 8 : 0
+        height: (hide.handleActive && (hide.hidden || hide.phase === "RevealPending")) ? 2 : 0
         visible: hide.handleActive
 
         HoverHandler {
             id: topHoverHandler
-            enabled: hide.handleActive
+            enabled: hide.handleActive && (hide.hidden || hide.phase === "RevealPending")
             onHoveredChanged: {
                 if (hovered) {
                     hide.handleEntered()
@@ -172,7 +172,7 @@ PanelWindow {
         }
 
         TapHandler {
-            enabled: hide.handleActive
+            enabled: hide.handleActive && (hide.hidden || hide.phase === "RevealPending")
             onTapped: hide.handleClicked()
         }
     }
@@ -192,7 +192,7 @@ PanelWindow {
         x: 0
         y: 0
         width: root.width
-        height: hide.handleActive ? 8 : 0
+        height: (hide.handleActive && (hide.hidden || hide.phase === "RevealPending")) ? 2 : 0
         visible: false
     }
 
