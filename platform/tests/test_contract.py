@@ -72,10 +72,49 @@ def test_bridge_trace_is_opt_in() -> None:
     assert publish.index("if (traceEvents)") < publish.index("QJsonDocument(event).toJson")
 
 
+def test_brightness_contract() -> None:
+    source = (ROOT / "platform/src/daemon/PlatformServer.cpp").read_text()
+    assert "openScreenBrightness" in source
+    assert "org.kde.ScreenBrightness" in source
+    assert "DisplaysDBusNames" in source
+    assert "org.kde.ScreenBrightness.Display" in source
+    assert "MaxBrightness" in source
+    assert "IsInternal" in source
+    assert "org.kde.Solid.PowerManagement.Actions.BrightnessControl" in source
+
+    # setKdeBrightness must verify DBus ReplyMessage and never blindly return true
+    set_func = source[source.index("bool setKdeBrightness(int percent)"):]
+    set_func = set_func[:set_func.index("QJsonObject readSysfsBrightness()")]
+    assert "bool success = false;" in set_func
+    assert "reply.type() == QDBusMessage::ReplyMessage" in set_func
+    assert "dReply.type() == QDBusMessage::ReplyMessage" in set_func
+    assert "return success;" in set_func
+
+    # Operation dispatch: check payload parameter parsing and fallback order
+    get_handler = source[source.index('if (op == QStringLiteral("display.brightness.get"))'):]
+    get_handler = get_handler[:get_handler.index('if (op == QStringLiteral("display.brightness.set"))')]
+    assert "readKdeBrightness()" in get_handler
+    assert "brightnessctl" in get_handler
+    assert "readSysfsBrightness()" in get_handler
+    assert get_handler.index("readKdeBrightness()") < get_handler.index("brightnessctl")
+    assert get_handler.index("brightnessctl") < get_handler.index("readSysfsBrightness()")
+
+    set_handler = source[source.index('if (op == QStringLiteral("display.brightness.set"))'):]
+    set_handler = set_handler[:set_handler.index('if (op == QStringLiteral("theme.reconfigure"))')]
+    assert 'payload.value(QStringLiteral("percent"))' in set_handler
+    assert "setKdeBrightness(value)" in set_handler
+    assert "brightnessctl" in set_handler
+    assert "login1" in set_handler
+    assert set_handler.index("setKdeBrightness(value)") < set_handler.index("brightnessctl")
+    assert set_handler.index("brightnessctl") < set_handler.index("login1")
+
+
 if __name__ == "__main__":
     test_shortcuts_service_defaults()
     test_platform_contract_mentions_socket_and_errors()
     test_application_launch_uses_kde_launcher_without_arbitrary_commands()
     test_theme_toggle_uses_the_safe_palette_path()
     test_bridge_trace_is_opt_in()
+    test_brightness_contract()
     print("platform contracts: ok")
+

@@ -11,6 +11,7 @@
 #include <QDBusMessage>
 #include <QDBusObjectPath>
 #include <QDBusPendingCallWatcher>
+#include <QDBusReply>
 #include <QDBusVariant>
 #include <QDateTime>
 #include <QDir>
@@ -533,6 +534,171 @@ QJsonObject parseBluetooth(const QByteArray &output, int exitCode)
     return QJsonObject{{QStringLiteral("available"), exitCode == 0 && powerMatch.hasMatch()},
                        {QStringLiteral("powered"), powerMatch.hasMatch() && powerMatch.captured(1).toLower() == QStringLiteral("yes")},
                        {QStringLiteral("devices"), devices}};
+}
+
+std::unique_ptr<QDBusInterface> openScreenBrightness(QString &outService)
+{
+    auto primary = std::make_unique<QDBusInterface>(QStringLiteral("org.kde.ScreenBrightness"),
+                                                    QStringLiteral("/org/kde/ScreenBrightness"),
+                                                    QStringLiteral("org.kde.ScreenBrightness"),
+                                                    QDBusConnection::sessionBus());
+    if (primary->isValid()) {
+        outService = QStringLiteral("org.kde.ScreenBrightness");
+        return primary;
+    }
+    auto fallback = std::make_unique<QDBusInterface>(QStringLiteral("org.kde.Solid.PowerManagement"),
+                                                     QStringLiteral("/org/kde/ScreenBrightness"),
+                                                     QStringLiteral("org.kde.ScreenBrightness"),
+                                                     QDBusConnection::sessionBus());
+    if (fallback->isValid()) {
+        outService = QStringLiteral("org.kde.Solid.PowerManagement");
+        return fallback;
+    }
+    return nullptr;
+}
+
+QJsonObject readKdeBrightness()
+{
+    // 1. KDE Plasma 6 multi-display interface (org.kde.ScreenBrightness)
+    // Supports external DDC/CI monitors, DisplayPort, and internal laptop panels.
+    QString screenServiceName;
+    auto screenBrightness = openScreenBrightness(screenServiceName);
+
+    if (screenBrightness) {
+        const QStringList displays = screenBrightness->property("DisplaysDBusNames").toStringList();
+        QJsonArray displayList;
+        QJsonObject chosenDisplay;
+        const QString currentSeat = qEnvironmentVariable("XDG_SEAT").trimmed();
+        const bool preferExternal = (!currentSeat.isEmpty() && currentSeat != QStringLiteral("seat0"));
+
+        for (const QString &d : displays) {
+            QString path = d;
+            if (!path.startsWith(QLatin1Char('/')))
+                path = QStringLiteral("/org/kde/ScreenBrightness/") + d;
+
+            QDBusInterface display(screenServiceName,
+                                   path,
+                                   QStringLiteral("org.kde.ScreenBrightness.Display"),
+                                   QDBusConnection::sessionBus());
+            if (!display.isValid())
+                continue;
+
+            const int maxB = display.property("MaxBrightness").toInt();
+            if (maxB <= 0)
+                continue;
+
+            const int curB = display.property("Brightness").toInt();
+            const bool isInternal = display.property("IsInternal").toBool();
+            const QString label = display.property("Label").toString();
+            const int percent = qRound(qBound(0.0, curB * 100.0 / maxB, 100.0));
+
+            const QJsonObject dispObj{
+                {QStringLiteral("name"), d},
+                {QStringLiteral("label"), label},
+                {QStringLiteral("isInternal"), isInternal},
+                {QStringLiteral("percent"), percent},
+                {QStringLiteral("brightness"), curB},
+                {QStringLiteral("maximum"), maxB}
+            };
+            displayList.append(dispObj);
+
+            if (chosenDisplay.isEmpty()) {
+                chosenDisplay = dispObj;
+            } else if (preferExternal && !isInternal && chosenDisplay.value(QStringLiteral("isInternal")).toBool()) {
+                chosenDisplay = dispObj;
+            } else if (!preferExternal && isInternal && !chosenDisplay.value(QStringLiteral("isInternal")).toBool()) {
+                chosenDisplay = dispObj;
+            }
+        }
+
+        if (!chosenDisplay.isEmpty()) {
+            const QString devName = !chosenDisplay.value(QStringLiteral("label")).toString().isEmpty()
+                ? chosenDisplay.value(QStringLiteral("label")).toString()
+                : chosenDisplay.value(QStringLiteral("name")).toString();
+            return QJsonObject{
+                {QStringLiteral("available"), true},
+                {QStringLiteral("percent"), chosenDisplay.value(QStringLiteral("percent")).toInt()},
+                {QStringLiteral("device"), devName},
+                {QStringLiteral("maximum"), chosenDisplay.value(QStringLiteral("maximum")).toInt()},
+                {QStringLiteral("displays"), displayList}
+            };
+        }
+    }
+
+    // 2. Fall back to single-display / internal panel interface: org.kde.Solid.PowerManagement.Actions.BrightnessControl
+    QDBusInterface kde(QStringLiteral("org.kde.Solid.PowerManagement"),
+                       QStringLiteral("/org/kde/Solid/PowerManagement/Actions/BrightnessControl"),
+                       QStringLiteral("org.kde.Solid.PowerManagement.Actions.BrightnessControl"),
+                       QDBusConnection::sessionBus());
+    if (kde.isValid()) {
+        const QDBusReply<int> maxReply = kde.call(QStringLiteral("brightnessMax"));
+        if (maxReply.isValid() && maxReply.value() > 0) {
+            const int maximum = maxReply.value();
+            const QDBusReply<int> curReply = kde.call(QStringLiteral("brightness"));
+            if (curReply.isValid()) {
+                const int current = curReply.value();
+                const int percent = qRound(qBound(0.0, current * 100.0 / maximum, 100.0));
+                return QJsonObject{
+                    {QStringLiteral("available"), true},
+                    {QStringLiteral("percent"), percent},
+                    {QStringLiteral("device"), QStringLiteral("kde-solid")},
+                    {QStringLiteral("maximum"), maximum}
+                };
+            }
+        }
+    }
+
+    return QJsonObject{{QStringLiteral("available"), false}};
+}
+
+bool setKdeBrightness(int percent)
+{
+    bool success = false;
+
+    // 1. Try org.kde.ScreenBrightness for all active displays
+    QString screenServiceName;
+    auto screenBrightness = openScreenBrightness(screenServiceName);
+
+    if (screenBrightness) {
+        const QStringList displays = screenBrightness->property("DisplaysDBusNames").toStringList();
+        for (const QString &d : displays) {
+            QString path = d;
+            if (!path.startsWith(QLatin1Char('/')))
+                path = QStringLiteral("/org/kde/ScreenBrightness/") + d;
+
+            QDBusInterface display(screenServiceName,
+                                   path,
+                                   QStringLiteral("org.kde.ScreenBrightness.Display"),
+                                   QDBusConnection::sessionBus());
+            if (display.isValid()) {
+                const int dMax = display.property("MaxBrightness").toInt();
+                if (dMax > 0) {
+                    const int dVal = qRound(percent * dMax / 100.0);
+                    const QDBusMessage dReply = display.call(QStringLiteral("SetBrightness"), dVal, static_cast<uint>(0));
+                    if (dReply.type() == QDBusMessage::ReplyMessage)
+                        success = true;
+                }
+            }
+        }
+    }
+
+    // 2. Try org.kde.Solid.PowerManagement.Actions.BrightnessControl
+    QDBusInterface kde(QStringLiteral("org.kde.Solid.PowerManagement"),
+                       QStringLiteral("/org/kde/Solid/PowerManagement/Actions/BrightnessControl"),
+                       QStringLiteral("org.kde.Solid.PowerManagement.Actions.BrightnessControl"),
+                       QDBusConnection::sessionBus());
+    if (kde.isValid()) {
+        const QDBusReply<int> maxReply = kde.call(QStringLiteral("brightnessMax"));
+        if (maxReply.isValid() && maxReply.value() > 0) {
+            const int maximum = maxReply.value();
+            const int targetVal = qRound(percent * maximum / 100.0);
+            const QDBusMessage reply = kde.call(QStringLiteral("setBrightness"), targetVal);
+            if (reply.type() == QDBusMessage::ReplyMessage)
+                success = true;
+        }
+    }
+
+    return success;
 }
 
 QJsonObject readSysfsBrightness()
@@ -2398,15 +2564,31 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
         return true;
     }
     if (op == QStringLiteral("display.brightness.get")) {
+        const QJsonObject kdeBrightness = readKdeBrightness();
+        if (kdeBrightness.value(QStringLiteral("available")).toBool()) {
+            respond(socket, request, true, kdeBrightness);
+            return true;
+        }
         const QString brightnessctl = QStandardPaths::findExecutable(QStringLiteral("brightnessctl"));
-        if (!brightnessctl.isEmpty())
+        if (!brightnessctl.isEmpty()) {
             runCommand(socket, request, brightnessctl, {QStringLiteral("-m")}, parseBrightness);
-        else
-            respond(socket, request, true, readSysfsBrightness());
+            return true;
+        }
+        respond(socket, request, true, readSysfsBrightness());
         return true;
     }
     if (op == QStringLiteral("display.brightness.set")) {
-        const int value = qBound(0, payload.value(QStringLiteral("percent")).toInt(), 100);
+        int percent = 0;
+        if (payload.contains(QStringLiteral("percent")))
+            percent = payload.value(QStringLiteral("percent")).toInt();
+        else if (request.contains(QStringLiteral("percent")))
+            percent = request.value(QStringLiteral("percent")).toInt();
+        const int value = qBound(0, percent, 100);
+
+        if (setKdeBrightness(value)) {
+            respond(socket, request, true, QJsonObject{{QStringLiteral("percent"), value}});
+            return true;
+        }
         const QString brightnessctl = QStandardPaths::findExecutable(QStringLiteral("brightnessctl"));
         if (!brightnessctl.isEmpty()) {
             runCommand(socket, request, brightnessctl,

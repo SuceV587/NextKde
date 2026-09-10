@@ -12,4 +12,7 @@ config/dock/config.json
 
 # Local build outputs
 .build/
+build/
 apps/settings/build/
+platform/build/
+
