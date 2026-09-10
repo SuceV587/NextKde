@@ -75,7 +75,7 @@ Item {
             anchors.fill: parent
             radius: height / 2
             color: AppearanceTokens.isMaterial
-                ? (root.checked ? AppearanceTokens.colors.onPrimary
+                ? (root.checked ? AppearanceTokens.colors.primaryForeground
                     : AppearanceTokens.colors.outline)
                 : "white"
         }
