@@ -866,19 +866,19 @@ Item {
                 if (isMuted) {
                     // Cutout mask
                     ctx.globalCompositeOperation = "destination-out"
-                    ctx.lineWidth = 3.0
+                    ctx.lineWidth = 2.6
                     ctx.beginPath()
-                    ctx.moveTo(1.5, 2.0)
-                    ctx.lineTo(14.5, 14.5)
+                    ctx.moveTo(0.8, 2.0)
+                    ctx.lineTo(8.8, 14.0)
                     ctx.stroke()
 
                     // Slash line directly across the speaker
                     ctx.globalCompositeOperation = "source-over"
-                    ctx.lineWidth = 1.6
+                    ctx.lineWidth = 1.5
                     ctx.strokeStyle = fg
                     ctx.beginPath()
-                    ctx.moveTo(1.5, 2.0)
-                    ctx.lineTo(14.5, 14.5)
+                    ctx.moveTo(0.8, 2.0)
+                    ctx.lineTo(8.8, 14.0)
                     ctx.stroke()
                 } else {
                     const arcs = volumeLevel > 66 ? 3 : (volumeLevel > 33 ? 2 : (volumeLevel > 0 ? 1 : 0))
