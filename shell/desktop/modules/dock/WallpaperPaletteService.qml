@@ -125,6 +125,7 @@ QtObject {
         } else {
             configuredWallpaperUrl = ""
             wallpaperUrl = ""
+            AppearanceConfigService.wallpaperSeedColor = "transparent"
             console.warn("[WallpaperPalette] no image wallpaper found")
         }
     }
@@ -169,6 +170,7 @@ QtObject {
         target: palette
         function onReadyChanged() {
             if (palette.ready) {
+                AppearanceConfigService.wallpaperSeedColor = palette.primary
                 console.log("[WallpaperPalette] primary=" + palette.primary
                     + " secondary=" + palette.secondary)
             }
