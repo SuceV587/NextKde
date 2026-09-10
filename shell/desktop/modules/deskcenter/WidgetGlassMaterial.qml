@@ -71,6 +71,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: root.cornerRadius
+        visible: !AppearanceTokens.isMaterial
         gradient: Gradient {
             orientation: Gradient.Horizontal
             GradientStop {
@@ -95,6 +96,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: root.cornerRadius
+        visible: !AppearanceTokens.isMaterial
         gradient: Gradient {
             orientation: Gradient.Horizontal
             GradientStop { position: 0.0; color: Qt.rgba(root.primarySheen.r, root.primarySheen.g, root.primarySheen.b, (0.050 + (1.0 - root.wallpaperLuminance) * 0.065) * root.strength) }
@@ -108,6 +110,7 @@ Item {
     Rectangle {
         x: Math.min(parent.width / 2, root.cornerRadius + 5)
         y: 1
+        visible: !AppearanceTokens.isMaterial
         width: Math.max(0, parent.width - x * 2)
         height: 1.1
         gradient: Gradient {
