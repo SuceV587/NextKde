@@ -11,10 +11,6 @@ LiquidGlassSurface {
     baseColor: ThemeService.backgroundColor
     blurStrength: AppearanceConfigService.globalBlurStrength
     liquidStrength: AppearanceConfigService.globalLiquidStrength
-    ambientPrimary: WallpaperPaletteService.primary
-    ambientSecondary: WallpaperPaletteService.secondary
-    ambientStrength: 0.35 * AppearanceTokens.glass.ambientMultiplier
     material: "regular"
     compositorManaged: true
-    border.width: 0
 }

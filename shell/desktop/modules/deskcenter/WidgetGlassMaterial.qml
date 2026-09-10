@@ -52,6 +52,11 @@ Item {
         radius: root.cornerRadius
         material: "regular"
         materialDepth: 0.35
+        // Desktop widgets self-render (compositorManaged: false) and cannot
+        // use the KWin backdrop pass, so their body must not be gated by the
+        // Dock blur slider — that setting only makes sense for surfaces the
+        // compositor actually blurs.
+        blurStrength: 1.0
         surfaceOpacity: 0.92 * root.strength
         baseColor: root.adaptiveBase
         ambientPrimary: root.pigmentPrimary
@@ -102,8 +107,28 @@ Item {
         }
     }
 
-    // The coloured part of the specular edge is deliberately a sub-pixel
-    // accent: the centre retains a familiar white glass glint.
+    // Edge glints converge toward each edge's midpoint and fade before the
+    // corners. They follow the adaptive base: a bright desktop yields a dark
+    // material, where a white glint would vanish, so the glint flips dark;
+    // a dark desktop keeps the familiar white glint.
+    readonly property real _glintDarkMix: darkMaterialAmount
+    readonly property color _glintCore: Qt.rgba(
+        1.0 - 0.96 * _glintDarkMix,
+        1.0 - 0.95 * _glintDarkMix,
+        1.0 - 0.93 * _glintDarkMix, 1.0)
+    readonly property color _glintPrimary: _mixGlint(root.primarySheen)
+    readonly property color _glintSecondary: _mixGlint(root.secondarySheen)
+
+    function _mixGlint(sheen) {
+        const m = _glintDarkMix * 0.9
+        return Qt.rgba(
+            sheen.r * (1.0 - m) + 0.03 * m,
+            sheen.g * (1.0 - m) + 0.04 * m,
+            sheen.b * (1.0 - m) + 0.06 * m, 1.0)
+    }
+
+    // Top edge: the strongest glint; the coloured part stays a sub-pixel
+    // accent while the centre keeps a neutral glass glint.
     Rectangle {
         x: Math.min(parent.width / 2, root.cornerRadius + 5)
         y: 1
@@ -111,11 +136,59 @@ Item {
         height: 1.1
         gradient: Gradient {
             orientation: Gradient.Horizontal
-            GradientStop { position: 0.0; color: Qt.rgba(root.primarySheen.r, root.primarySheen.g, root.primarySheen.b, 0.0) }
-            GradientStop { position: 0.18; color: Qt.rgba(root.primarySheen.r, root.primarySheen.g, root.primarySheen.b, 0.34 * root.strength) }
-            GradientStop { position: 0.50; color: Qt.rgba(1, 1, 1, 0.48 * root.strength) }
-            GradientStop { position: 0.82; color: Qt.rgba(root.secondarySheen.r, root.secondarySheen.g, root.secondarySheen.b, 0.30 * root.strength) }
-            GradientStop { position: 1.0; color: Qt.rgba(root.secondarySheen.r, root.secondarySheen.g, root.secondarySheen.b, 0.0) }
+            GradientStop { position: 0.0; color: Qt.rgba(root._glintPrimary.r, root._glintPrimary.g, root._glintPrimary.b, 0.0) }
+            GradientStop { position: 0.18; color: Qt.rgba(root._glintPrimary.r, root._glintPrimary.g, root._glintPrimary.b, 0.34 * root.strength) }
+            GradientStop { position: 0.50; color: Qt.rgba(root._glintCore.r, root._glintCore.g, root._glintCore.b, 0.48 * root.strength) }
+            GradientStop { position: 0.82; color: Qt.rgba(root._glintSecondary.r, root._glintSecondary.g, root._glintSecondary.b, 0.30 * root.strength) }
+            GradientStop { position: 1.0; color: Qt.rgba(root._glintSecondary.r, root._glintSecondary.g, root._glintSecondary.b, 0.0) }
+        }
+    }
+
+    // Bottom edge: the same convergence, dimmer so it reads as light
+    // reflected up from below rather than a second key light.
+    Rectangle {
+        x: Math.min(parent.width / 2, root.cornerRadius + 5)
+        y: parent.height - height - 1
+        width: Math.max(0, parent.width - x * 2)
+        height: 1.1
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0.0; color: Qt.rgba(root._glintSecondary.r, root._glintSecondary.g, root._glintSecondary.b, 0.0) }
+            GradientStop { position: 0.18; color: Qt.rgba(root._glintSecondary.r, root._glintSecondary.g, root._glintSecondary.b, 0.21 * root.strength) }
+            GradientStop { position: 0.50; color: Qt.rgba(root._glintCore.r, root._glintCore.g, root._glintCore.b, 0.30 * root.strength) }
+            GradientStop { position: 0.82; color: Qt.rgba(root._glintPrimary.r, root._glintPrimary.g, root._glintPrimary.b, 0.19 * root.strength) }
+            GradientStop { position: 1.0; color: Qt.rgba(root._glintPrimary.r, root._glintPrimary.g, root._glintPrimary.b, 0.0) }
+        }
+    }
+
+    // Side edges: shorter and fainter still, converging toward the vertical
+    // midpoint. The wider corner inset keeps them clear of the corner arcs.
+    Rectangle {
+        x: 1
+        y: Math.min(parent.height / 2, root.cornerRadius + 12)
+        width: 1.1
+        height: Math.max(0, parent.height - y * 2)
+        gradient: Gradient {
+            orientation: Gradient.Vertical
+            GradientStop { position: 0.0; color: Qt.rgba(root._glintPrimary.r, root._glintPrimary.g, root._glintPrimary.b, 0.0) }
+            GradientStop { position: 0.22; color: Qt.rgba(root._glintPrimary.r, root._glintPrimary.g, root._glintPrimary.b, 0.13 * root.strength) }
+            GradientStop { position: 0.50; color: Qt.rgba(root._glintCore.r, root._glintCore.g, root._glintCore.b, 0.21 * root.strength) }
+            GradientStop { position: 0.78; color: Qt.rgba(root._glintPrimary.r, root._glintPrimary.g, root._glintPrimary.b, 0.13 * root.strength) }
+            GradientStop { position: 1.0; color: Qt.rgba(root._glintPrimary.r, root._glintPrimary.g, root._glintPrimary.b, 0.0) }
+        }
+    }
+    Rectangle {
+        x: parent.width - width - 1
+        y: Math.min(parent.height / 2, root.cornerRadius + 12)
+        width: 1.1
+        height: Math.max(0, parent.height - y * 2)
+        gradient: Gradient {
+            orientation: Gradient.Vertical
+            GradientStop { position: 0.0; color: Qt.rgba(root._glintSecondary.r, root._glintSecondary.g, root._glintSecondary.b, 0.0) }
+            GradientStop { position: 0.22; color: Qt.rgba(root._glintSecondary.r, root._glintSecondary.g, root._glintSecondary.b, 0.13 * root.strength) }
+            GradientStop { position: 0.50; color: Qt.rgba(root._glintCore.r, root._glintCore.g, root._glintCore.b, 0.21 * root.strength) }
+            GradientStop { position: 0.78; color: Qt.rgba(root._glintSecondary.r, root._glintSecondary.g, root._glintSecondary.b, 0.13 * root.strength) }
+            GradientStop { position: 1.0; color: Qt.rgba(root._glintSecondary.r, root._glintSecondary.g, root._glintSecondary.b, 0.0) }
         }
     }
 }
