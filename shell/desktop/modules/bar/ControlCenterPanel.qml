@@ -486,23 +486,6 @@ Item {
         blurStrength: panel.effectiveBlur
         liquidStrength: panel.effectiveLiquid
 
-        // A faint wallpaper-tone layer is both the card's quiet liquid base
-        // and the blur source for the transport buttons. Blurring it makes
-        // each button a frosted lens that absorbs the ambient wallpaper tint
-        // (iOS-style), instead of a swatch of the album artwork.
-        Rectangle {
-            id: mediaBackdrop
-            anchors.fill: parent
-            // `parent` here is the card's contentHost (a plain Item), which
-            // has no cardRadius; read the card's blurRadius instead so the
-            // backdrop corners follow the card's SDF-rounded shape.
-            radius: mediaCard.blurRadius
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: Qt.rgba(WallpaperPaletteService.primary.r, WallpaperPaletteService.primary.g, WallpaperPaletteService.primary.b, 0.16) }
-                GradientStop { position: 1.0; color: Qt.rgba(WallpaperPaletteService.secondary.r, WallpaperPaletteService.secondary.g, WallpaperPaletteService.secondary.b, 0.07) }
-            }
-        }
 
         Rectangle {
             id: artwork
@@ -774,7 +757,6 @@ Item {
             anchors { left: parent.left; top: parent.top; leftMargin: 14; topMargin: 8 }
             text: "显示亮度"
             color: ThemeService.foregroundColor
-            opacity: 0.70
             font { pixelSize: 11; weight: Font.DemiBold; family: "Noto Sans CJK SC" }
         }
         GlassText {
@@ -843,6 +825,8 @@ Item {
             width: 15
             height: 15
             property color glyphColor: ThemeService.isDark ? "white" : "#000000"
+            opacity: volumeMutePointer.pressed ? 0.65 : (volumeMutePointer.containsMouse ? 0.82 : 1.0)
+            Behavior on opacity { NumberAnimation { duration: 100 } }
             onGlyphColorChanged: requestPaint()
             onPaint: {
                 const ctx = getContext("2d")
@@ -863,6 +847,20 @@ Item {
             Connections {
                 target: ControlCenterService
                 function onAudioMutedChanged() { volumeGlyph.requestPaint() }
+            }
+
+            MouseArea {
+                id: volumeMutePointer
+                anchors.fill: parent
+                anchors {
+                    leftMargin: -8
+                    rightMargin: -4
+                    topMargin: -8
+                    bottomMargin: -8
+                }
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: ControlCenterService.setMuted(!ControlCenterService.audioMuted)
             }
         }
         LiquidControls.LiquidSlider {
