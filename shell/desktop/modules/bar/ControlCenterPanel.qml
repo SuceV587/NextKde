@@ -821,29 +821,86 @@ Item {
         }
         Canvas {
             id: volumeGlyph
-            anchors { left: parent.left; leftMargin: 12; bottom: parent.bottom; bottomMargin: 12 }
-            width: 15
-            height: 15
-            property color glyphColor: ThemeService.isDark ? "white" : "#000000"
+            anchors { left: parent.left; leftMargin: 11; verticalCenter: volumeSlider.verticalCenter }
+            width: 19
+            height: 16
+            renderTarget: Canvas.Image
+
+            readonly property int volumeLevel: Math.round(panel.volumePreview)
+            readonly property bool isMuted: ControlCenterService.audioMuted
+            readonly property bool isDark: ThemeService.isDark
+
+            onVolumeLevelChanged: requestPaint()
+            onIsMutedChanged: requestPaint()
+            onIsDarkChanged: requestPaint()
+
             opacity: volumeMutePointer.pressed ? 0.65 : (volumeMutePointer.containsMouse ? 0.82 : 1.0)
             Behavior on opacity { NumberAnimation { duration: 100 } }
-            onGlyphColorChanged: requestPaint()
+
             onPaint: {
                 const ctx = getContext("2d")
                 ctx.reset()
-                ctx.strokeStyle = glyphColor
-                ctx.fillStyle = glyphColor
-                ctx.lineWidth = 1.7
+                const fg = isDark ? Qt.rgba(1, 1, 1, 1.0) : Qt.rgba(0.06, 0.08, 0.12, 1.0)
+                const bodyColor = isMuted
+                    ? (isDark ? Qt.rgba(1, 1, 1, 0.50) : Qt.rgba(0.06, 0.08, 0.12, 0.50))
+                    : fg
+
+                ctx.fillStyle = bodyColor
+                ctx.strokeStyle = fg
+                ctx.lineWidth = 1.5
+                ctx.lineCap = "round"
                 ctx.lineJoin = "round"
-                ctx.fillRect(1, 6, 3.5, 4)
-                ctx.beginPath(); ctx.moveTo(4.3, 6); ctx.lineTo(8, 3); ctx.lineTo(8, 13); ctx.lineTo(4.3, 10); ctx.closePath(); ctx.fill()
-                if (!ControlCenterService.audioMuted) {
-                    ctx.lineCap = "round"
-                    ctx.beginPath(); ctx.arc(7.2, 8, 4, -0.8, 0.8); ctx.stroke()
+
+                // Speaker body
+                ctx.fillRect(1.0, 5.5, 3.2, 5.0)
+
+                // Speaker cone
+                ctx.beginPath()
+                ctx.moveTo(4.2, 5.5)
+                ctx.lineTo(7.5, 2.5)
+                ctx.lineTo(7.5, 13.5)
+                ctx.lineTo(4.2, 10.5)
+                ctx.closePath()
+                ctx.fill()
+
+                if (isMuted) {
+                    // Cutout mask
+                    ctx.globalCompositeOperation = "destination-out"
+                    ctx.lineWidth = 3.0
+                    ctx.beginPath()
+                    ctx.moveTo(1.5, 2.0)
+                    ctx.lineTo(14.5, 14.5)
+                    ctx.stroke()
+
+                    // Slash line directly across the speaker
+                    ctx.globalCompositeOperation = "source-over"
+                    ctx.lineWidth = 1.6
+                    ctx.strokeStyle = fg
+                    ctx.beginPath()
+                    ctx.moveTo(1.5, 2.0)
+                    ctx.lineTo(14.5, 14.5)
+                    ctx.stroke()
                 } else {
-                    ctx.beginPath(); ctx.moveTo(10.5, 4.5); ctx.lineTo(14, 11.5); ctx.stroke()
+                    const arcs = volumeLevel > 66 ? 3 : (volumeLevel > 33 ? 2 : (volumeLevel > 0 ? 1 : 0))
+                    const cx = 6.0, cy = 8.0
+                    if (arcs >= 1) {
+                        ctx.beginPath()
+                        ctx.arc(cx, cy, 4.2, -0.65, 0.65)
+                        ctx.stroke()
+                    }
+                    if (arcs >= 2) {
+                        ctx.beginPath()
+                        ctx.arc(cx, cy, 7.0, -0.70, 0.70)
+                        ctx.stroke()
+                    }
+                    if (arcs >= 3) {
+                        ctx.beginPath()
+                        ctx.arc(cx, cy, 9.8, -0.72, 0.72)
+                        ctx.stroke()
+                    }
                 }
             }
+
             Connections {
                 target: ControlCenterService
                 function onAudioMutedChanged() { volumeGlyph.requestPaint() }
@@ -865,7 +922,7 @@ Item {
         }
         LiquidControls.LiquidSlider {
             id: volumeSlider
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 34; rightMargin: 17; bottomMargin: 8 }
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 35; rightMargin: 17; bottomMargin: 8 }
             height: 30
             value: panel.volumePreview / 100
             trackHeight: 5
@@ -878,6 +935,8 @@ Item {
             }
             onCommitRequested: function(v) {
                 panel.draggingVolume = false
+                if (ControlCenterService.audioMuted)
+                    ControlCenterService.setMuted(false)
                 ControlCenterService.setVolume(Math.round(v * 100))
             }
         }
