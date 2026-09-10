@@ -61,6 +61,18 @@ Item {
         height: width
     }
 
+    // Dynamic vertical gap offset so Control Center cards start cleanly 6px below the Bar,
+    // regardless of whether Bar is 32px or 35px, and taking into account floating margins.
+    // Top cards declare offsetTop: 20.
+    readonly property int standaloneBarGap: {
+        const isFloating = AppearanceConfigService.barLayoutMode === "floating"
+        const barH = ConfigService.barHeight || 32
+        const toggleBottomOffset = Math.round((barH - 24) / 2) + 24
+        const barBottomOffset = barH + (isFloating ? 6 : 0)
+        const gapToBarBottom = barBottomOffset - toggleBottomOffset
+        return (gapToBarBottom + 6) - 20
+    }
+
     ControlCenterCoordinator {
         id: coordinator
         cardAnchor: positioningAnchor
@@ -68,9 +80,7 @@ Item {
         cardOffsetX: !panel.dockHosted ? 0
             : panel.dockEdge === "left" ? -20
             : panel.dockEdge === "right" ? 20 : 0
-        // Card offsets include a historical 20px top inset. Cancel it for the
-        // standalone Bar so the visible cards begin 4px below the Bar.
-        cardOffsetY: !panel.dockHosted ? -18
+        cardOffsetY: !panel.dockHosted ? panel.standaloneBarGap
             : (panel.dockEdge === "bottom" ? 20 : 0)
     }
 
@@ -96,7 +106,7 @@ Item {
                 : panel.dockEdge === "right" ? Edges.Left : Edges.Top
             adjustment: PopupAdjustment.Slide
             margins.top: 0
-            margins.bottom: panel.dockHosted ? 0 : -4
+            margins.bottom: 0
             margins.left: 0
             margins.right: 0
         }

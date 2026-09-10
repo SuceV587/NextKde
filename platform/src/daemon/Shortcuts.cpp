@@ -35,6 +35,8 @@ const QStringList kLegacyDesktopIds = {
     QStringLiteral("net.local.quickshell-launcher"),
     QStringLiteral("net.local.quickshell-control-center"),
     QStringLiteral("net.local.quickshell-overview"),
+    QStringLiteral("net.local.quickshell-clipboard"),
+    QStringLiteral("net.local.quickshell-show-desktop"),
 };
 
 QString normalizedShortcut(QString value)

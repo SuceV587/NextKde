@@ -380,9 +380,14 @@ Item {
     onTargetScreenChanged: { ctl._recomputeConflict(); ctl._scheduleEvaluate() }
     onBarHeightChanged: { ctl._recomputeConflict(); ctl._scheduleEvaluate() }
     onPointerInsideBarChanged: ctl._scheduleEvaluate()
-    on_HandleHoveredChanged: ctl._scheduleEvaluate()
-    onPopupOpenChanged: ctl._scheduleEvaluate()
-    onLauncherOpenChanged: ctl._scheduleEvaluate()
+    onPopupOpenChanged: {
+        if (ctl.popupOpen && ctl.mode !== "always" && ctl.revealProgress < 1.0) {
+            ctl._anim.stop()
+            ctl.revealProgress = 1.0
+            ctl._setPhase(ctl.policyWantsHidden ? "Held" : "Shown")
+        }
+        ctl._scheduleEvaluate()
+    }
     onConfigReadyChanged: ctl._tryResolveBoot(false)
     onWindowDataReadyChanged: { ctl._recomputeConflict(); ctl._scheduleEvaluate() }
 

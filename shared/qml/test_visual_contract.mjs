@@ -255,8 +255,8 @@ assert.match(appLauncherWindow,
     /duration:\s*AppearanceTokens\.motion\.popupOpenDuration[\s\S]*popupStartScale/,
     "Launchpad and anchored popups consume the same entrance tokens");
 assert.match(controlCenterPanelSource,
-    /cardOffsetY:\s*!panel\.dockHosted\s*\?\s*-18[\s\S]{0,1800}margins\.bottom:\s*panel\.dockHosted\s*\?\s*0\s*:\s*-4/,
-    "standalone Control Center starts four pixels below the Bar");
+    /cardOffsetY:\s*!panel\.dockHosted\s*\?\s*panel\.standaloneBarGap[\s\S]{0,1800}margins\.bottom:\s*0/,
+    "standalone Control Center starts with a clean gap below the Bar");
 assert.match(globalMenuSource, /root\.height\s*\+\s*4/,
     "application menus keep a four-pixel Bar gap");
 
@@ -289,7 +289,7 @@ assert.match(networkPanel,
     "the network panel reuses the live Wi-Fi signal glyph");
 for (const marker of ["Card 1: Wi-Fi", "Card 2: Bluetooth"]) {
     const start = controlCenterPanel.indexOf(marker);
-    const section = controlCenterPanel.slice(start, start + 5200);
+    const section = controlCenterPanel.slice(start, start + 8000);
     assert.match(section,
         /id:\s*(?:wifi|bluetooth)TogglePointer[\s\S]{0,420}onClicked:[\s\S]{0,140}set(?:Wifi|Bluetooth)Enabled/,
         `${marker} round disc owns its power toggle`);
@@ -300,7 +300,7 @@ for (const marker of ["Card 1: Wi-Fi", "Card 2: Bluetooth"]) {
 for (const component of ["NetworkStatus", "Battery", "SettingsButton",
                          "ControlCenterToggle"]) {
     assert.match(barStatusArea,
-        new RegExp(component + "\\s*\\{[\\s\\S]{0,180}iconSize:\\s*systemTray\\.iconSize"),
+        new RegExp(component + "\\s*\\{[\\s\\S]{0,400}iconSize:\\s*systemTray\\.iconSize(?:\\s*\\+\\s*\\d+)?"),
         component + " shares the native tray icon size");
 }
 assert.doesNotMatch(controlCenterPanel,

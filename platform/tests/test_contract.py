@@ -58,6 +58,7 @@ def test_theme_toggle_uses_the_safe_palette_path() -> None:
     toggle = source[source.index('if (op == QStringLiteral("theme.toggle"))'):]
     assert "QSettings settings" in toggle
     assert "auto *reader" not in toggle
+    assert 'QStringLiteral("ColorScheme")' in toggle
     helper = source[source.index("void PlatformServer::applySystemTheme"):]
     assert helper.index("plasma-apply-colorscheme") < helper.index(
         "plasma-apply-lookandfeel"

@@ -37,6 +37,7 @@ PanelWindow {
         edgeMargin: 15
         pointerInsideBar: contentHoverHandler.hovered
         popupOpen: (barContentLoader.item?.statusArea?.anyPanelOpen ?? false)
+            || (barContentLoader.item?.statusArea?.controlCenterLoaded ?? false)
             || (barContentLoader.item?.globalMenu?.menuOpen ?? false)
         launcherOpen: AppLauncherService.open
     }
