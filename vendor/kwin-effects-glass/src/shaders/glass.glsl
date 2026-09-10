@@ -226,116 +226,68 @@ vec3 applyGlassTint(vec3 backdrop)
     return mix(lifted, tintCol, strength);
 }
 
-// Half-circle lens profile of the rim bevel. dd is the distance from the
-// rim (0 at the edge, growing inward); the height rises smoothly from 0 at
-// the rim to zR at the inner edge of the band. Used to build the rim normal
-// so the fresnel/specular lighting has its own geometry, independent of the
-// refraction zone width.
-float rimBandHeight(float dd, float zR)
+// ── Edge-confined liquid reflection ───────────────────────────────────
+// Keep the material body untouched. These reflections are short, white
+// glints on the straight portions of the contour, not an all-around Fresnel
+// outline and not a dark inner bevel. Their centre is wider than their ends,
+// matching the shared QML glass component.
+vec3 applyLiquidGlints(vec3 rgb, vec2 position, vec2 halfBlurSize,
+    vec4 cornerRadius, float dist, float edgeAntialiasWidth)
 {
-    dd = clamp(dd, 0.0, zR);
-    return sqrt(dd * (2.0 * zR - dd));
-}
+    float topRadius = max(cornerRadius.x, cornerRadius.y);
+    float bottomRadius = max(cornerRadius.z, cornerRadius.w);
+    float leftRadius = max(cornerRadius.x, cornerRadius.z);
+    float rightRadius = max(cornerRadius.y, cornerRadius.w);
+    float horizontalHalfLength = max(halfBlurSize.x
+        - max(topRadius, bottomRadius) - 5.0, 0.0);
+    float verticalHalfLength = max(halfBlurSize.y
+        - max(leftRadius, rightRadius) - 12.0, 0.0);
 
-// iOS glass reflects the environment above it: a faint band of light falling
-// from the top edge across the whole surface. Distinct from the bevel (which
-// is confined to the rim band) — this covers the glass interior, scaled per
-// window type so the dock reads more "glassy" than popups.
-float topEnvironmentReflection(vec2 position, vec2 halfBlurSize)
-{
-    float t = position.y / halfBlurSize.y;   // -1 top, +1 bottom
-    return smoothstep(0.3, -0.7, t);
-}
-// ── End bidirectional tint ────────────────────────────────────────────
+    float horizontalEnvelope = (1.0 - smoothstep(0.64, 1.0,
+        abs(position.x) / max(horizontalHalfLength, 1.0)))
+        * step(1.0, horizontalHalfLength);
+    float verticalEnvelope = (1.0 - smoothstep(0.56, 1.0,
+        abs(position.y) / max(verticalHalfLength, 1.0)))
+        * step(1.0, verticalHalfLength);
+    float widthScale = clamp(highlightWidthPx / 3.0, 0.80, 1.20);
+    float topSigma = max(edgeAntialiasWidth * 0.52,
+        mix(0.43, 0.76, horizontalEnvelope) * widthScale);
+    float bottomSigma = max(edgeAntialiasWidth * 0.48,
+        mix(0.40, 0.64, horizontalEnvelope) * widthScale);
+    float sideSigma = max(edgeAntialiasWidth * 0.48,
+        mix(0.42, 0.62, verticalEnvelope) * widthScale);
 
-vec3 glassOutline(vec2 position, GlassFragment s, vec4 cornerRadius)
-{
-    // Tint is applied to the *backdrop* colour before any edge lighting is
-    // added, so the rim highlights stay luminous instead of being dragged
-    // toward the tint colour (black on bright backgrounds).
-    vec3 baseColor = applyGlassTint(s.color.rgb);
+    float topGlint = exp(-0.5 * pow((halfBlurSize.y - position.y - 1.0)
+        / topSigma, 2.0)) * horizontalEnvelope;
+    float bottomGlint = exp(-0.5 * pow((position.y + halfBlurSize.y - 1.0)
+        / bottomSigma, 2.0)) * horizontalEnvelope;
+    float sideGlint = (exp(-0.5 * pow((position.x + halfBlurSize.x - 1.0)
+        / sideSigma, 2.0)) + exp(-0.5 * pow((halfBlurSize.x - position.x - 1.0)
+        / sideSigma, 2.0))) * verticalEnvelope;
 
-    vec2 halfBlurSize = blurSize * 0.5;
-    float minHalfSize = min(halfBlurSize.x, halfBlurSize.y);
+    // A capsule has no straight vertical section. Give its two rounded end
+    // caps a very small reflection at their horizontal centre only; it fades
+    // before reaching the top/bottom joins, so this cannot close into a rim.
+    float endcapSurface = 1.0 - smoothstep(0.0, 12.0,
+        verticalHalfLength);
+    float minRadius = min(min(cornerRadius.x, cornerRadius.y),
+        min(cornerRadius.z, cornerRadius.w));
+    vec2 gradient = gradSdRoundedBox(position, halfBlurSize,
+        max(minRadius, 1.0));
+    vec2 outward = length(gradient) > 1e-5 ? normalize(gradient)
+        : vec2(0.0, 1.0);
+    float sideArcFacing = smoothstep(0.46, 0.98, abs(outward.x));
+    float edgeDistance = -dist;
+    float sideArcSigma = max(edgeAntialiasWidth * 0.58, 0.72);
+    float sideArcGlint = exp(-0.5 * pow((edgeDistance - 1.0)
+        / sideArcSigma, 2.0)) * pow(sideArcFacing, 1.8) * endcapSurface;
 
-    // ── Rim lighting, decoupled from the refraction zone ───────────────
-    // The fresnel + specular below live inside their own band whose width is
-    // highlightWidthPx, so widening RefractionEdgeSize (the refraction zone)
-    // no longer thickens the highlight.
-    float zR = clamp(highlightWidthPx, 0.5, minHalfSize * 0.5);
-
-    // Bevel height field sampled by finite differences. The surface tilts
-    // most at the rim (normalZ -> 0) and is flat in the interior
-    // (normalZ -> 1), giving a continuous grazing-angle ramp instead of a
-    // hardcoded stripe band.
-    const float eps = 0.75;
-    vec2 gradPosX = vec2(eps, 0.0);
-    vec2 gradPosY = vec2(0.0, eps);
-    float hR = rimBandHeight(-roundedRectangleDist(position + gradPosX, halfBlurSize, cornerRadius), zR);
-    float hL = rimBandHeight(-roundedRectangleDist(position - gradPosX, halfBlurSize, cornerRadius), zR);
-    float hU = rimBandHeight(-roundedRectangleDist(position + gradPosY, halfBlurSize, cornerRadius), zR);
-    float hD = rimBandHeight(-roundedRectangleDist(position - gradPosY, halfBlurSize, cornerRadius), zR);
-    vec2 hGrad = vec2(hR - hL, hU - hD) / (2.0 * eps);
-
-    float invLen = inversesqrt(max(dot(hGrad, hGrad), 1e-8) + 1.0);
-    float normalZ = invLen;                 // 1.0 in the interior, 0.0 at the rim
-    float fresnel = 1.0 - normalZ;
-
-    float n2dLen = max(length(hGrad), 1e-5);
-    vec2 n2d = hGrad / n2dLen;              // unit 2D rim normal (points inward)
-
-    // Inner shadow (container lip): a soft dark band just inside the rim,
-    // mirroring the recessed lip of iOS glass. It multiplies the *base*
-    // colour only, before any highlight is added, so the highlights layer on
-    // top of it instead of being swallowed by it. The band starts just off
-    // the very edge (0.35zR) and extends past the highlight band (to 1.6zR),
-    // so the outer edge stays a bright highlight line while the lip shades.
-    // Inner shadow (container lip), directional like iOS: the glass is lit
-    // from above, so the lip shadow is strongest just under the bright top
-    // edge and fades toward the bottom (which the bevel already dims) and
-    // the sides. Not a uniform all-around band. The band eases in from the
-    // edge and dissolves progressively inward, so it reads as a recessed lip
-    // rather than a hard ring.
-    float shadowW = zR * 1.6;
-    float topWeight = smoothstep(0.35, -0.35, position.y / halfBlurSize.y);
-    float innerShadow = smoothstep(0.0, zR * 0.3, -s.dist)
-                      * (1.0 - smoothstep(shadowW * 0.5, shadowW, -s.dist))
-                      * mix(0.25, 1.0, topWeight);
-
-    vec3 rgb = baseColor * (1.0 - innerShadow * 0.15);
-    vec3 highlight = getHighlightColor(baseColor, 1.0);
-
-    // ── Stable edge highlight ──────────────────────────────────────────
-    // Use one fixed, screen-space light source instead of the mirrored
-    // diagonal arcs used by the earlier material. The upper edge carries the
-    // readable specular line and the lower edge catches only a quiet secondary
-    // reflection. This stays stable as a surface or pointer moves.
-    float topFacing = max(n2d.y, 0.0);
-    float bottomFacing = max(-n2d.y, 0.0);
-    float focused = smoothstep(0.18, 1.0, topFacing)
-                  + smoothstep(0.35, 1.0, bottomFacing) * 0.28;
-
-    // Faint all-around fresnel keeps the rim visible on dark backdrops, but
-    // deliberately low so the arc reads as the light source, not a ring.
-    rgb += highlight * fresnel * 0.05 * surfaceScale;
-    // The upper line is crisp but restrained; the lower reflection should be
-    // felt as thickness rather than read as a second outline.
-    rgb += highlight * fresnel * focused * 0.24 * surfaceScale;
-
-    // Synthetic bevel: the top edge catches light while the bottom shades
-    // (n2d.y > 0 on the top edge), giving the material a physical thickness.
-    // Kept independent of the diagonal arc - it is the "3D slab" cue, the arc
-    // is the liquid reflection.
-    float bevelGradient = n2d.y * 0.15;
-    rgb += highlight * (bevelGradient * fresnel) * surfaceScale;
-
-    // A narrow sheen follows the same fixed top/bottom lighting model.
-    float directional = topFacing * sqrt(topFacing) * 0.55
-                      + bottomFacing * sqrt(bottomFacing) * 0.10;
-    float brightnessRaw = (directional + 0.02) * fresnel * 0.4 * surfaceScale;
-    float brightness = brightnessRaw / (1.0 + brightnessRaw);
-    rgb = mix(rgb, highlight, brightness);
-
+    float response = smoothstep(0.05, 0.75,
+        clamp(refractionStrength, 0.0, 1.0)) * surfaceScale;
+    rgb = mix(rgb, vec3(0.965, 0.982, 1.0), clamp(
+        (topGlint * 0.47 + bottomGlint * 0.30) * response, 0.0, 0.49));
+    rgb = mix(rgb, vec3(0.86, 0.90, 0.95), clamp(
+        (sideGlint * 0.17 + sideArcGlint * 0.14) * response, 0.0, 0.18));
     return rgb;
 }
 
@@ -346,6 +298,9 @@ vec4 glass(vec4 sum, vec4 cornerRadius)
 
     vec2 position = uv * blurSize - halfBlurSize.xy;
     float dist = roundedRectangleDist(position, halfBlurSize, cornerRadius);
+    // Evaluate derivatives before the early return: doing so only in the
+    // inside branch is undefined along the exact contour on some GPUs.
+    float edgeAntialiasWidth = max(fwidth(dist), 0.75);
 
     if (dist >= 0.0) {
         return sum;
@@ -365,23 +320,9 @@ vec4 glass(vec4 sum, vec4 cornerRadius)
         s = GlassFragment(sum, dist, edgeFactor, concaveFactor, vec3(0.0, 0.0, 1.0), 1.0);
     }
 
-    // Tint + rim lighting are applied inside glassOutline() on the backdrop
-    // colour only, so edge highlights stay bright. The outline zone spans
-    // both the refraction band (edgeSizePixels) and the rim band
-    // (highlightWidthPx), so widening either one never clips the other.
-    float zR = clamp(highlightWidthPx, 0.5, minHalfSize * 0.5);
-    float glassZone = max(minEsp, zR);
-    vec3 rgb;
-    if (abs(dist) < glassZone) {
-        rgb = glassOutline(position, s, cornerRadius);
-    } else {
-        rgb = applyGlassTint(s.color.rgb);
-    }
-
-    // Top environment reflection over the whole surface, scaled per window
-    // type so the dock reads more "glassy" than popups.
-    float topReflection = topEnvironmentReflection(position, halfBlurSize);
-    rgb += getHighlightColor(rgb, 1.0) * topReflection * 0.08 * surfaceScale;
+    vec3 rgb = applyGlassTint(s.color.rgb);
+    rgb = applyLiquidGlints(rgb, position, halfBlurSize, cornerRadius, dist,
+        edgeAntialiasWidth);
 
     return roundedRectangle(uv * blurSize, rgb, cornerRadius);
 }
