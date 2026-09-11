@@ -27,8 +27,11 @@ QtObject {
             _process.destroy()
         }
         const proc = processFactory.createObject(service, {
+            // end-4 uses the vibrant family as its normal Material preset.
+            // It retains the wallpaper hue while giving primary/secondary/
+            // tertiary roles enough chroma to remain useful in dark mode.
             command: ["matugen", "image", path, "--json", "hex", "--dry-run",
-                "--source-color-index", "0", "--type", "scheme-tonal-spot"]
+                "--source-color-index", "0", "--type", "scheme-vibrant"]
         })
         _process = proc
         proc.exited.connect(function(code) {
