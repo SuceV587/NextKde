@@ -139,8 +139,8 @@ BlurEffect::BlurEffect()
         m_roundedOnscreenPass.blurSizeLocation = m_roundedOnscreenPass.shader->uniformLocation("blurSize");
         m_roundedOnscreenPass.edgeSizePixelsLocation = m_roundedOnscreenPass.shader->uniformLocation("edgeSizePixels");
         m_roundedOnscreenPass.highlightWidthPxLocation = m_roundedOnscreenPass.shader->uniformLocation("highlightWidthPx");
+        m_roundedOnscreenPass.highlightAngleLocation = m_roundedOnscreenPass.shader->uniformLocation("highlightAngle");
         m_roundedOnscreenPass.surfaceScaleLocation = m_roundedOnscreenPass.shader->uniformLocation("surfaceScale");
-        m_roundedOnscreenPass.brightMaterialDarkStyleLocation = m_roundedOnscreenPass.shader->uniformLocation("brightMaterialDarkStyle");
         m_roundedOnscreenPass.lensStrengthScaleLocation = m_roundedOnscreenPass.shader->uniformLocation("lensStrengthScale");
         m_roundedOnscreenPass.refractionStrengthLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionStrength");
         m_roundedOnscreenPass.refractionNormalPowLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionNormalPow");
@@ -348,15 +348,6 @@ void BlurEffect::reconfigure(ReconfigureFlags flags)
         m_settings.general.blurStrength,
         m_settings.general.noiseStrength
     );
-    // Text-dense shell popups soften fine backdrop detail before white ink is
-    // composed. This is a semantic material role, not a separate setting.
-    const int protectedBlurStrength = std::min(
-        m_settings.general.blurStrength + 2,
-        static_cast<int>(blurStrengthValues.size()) - 1);
-    m_protectedBlurSettings = pipelineSettingsForStrength(
-        protectedBlurStrength,
-        m_settings.general.noiseStrength
-    );
     m_decorationBlurSettings = pipelineSettingsForStrength(
         m_settings.general.decorationBlurStrength,
         m_settings.general.decorationNoiseStrength
@@ -365,28 +356,23 @@ void BlurEffect::reconfigure(ReconfigureFlags flags)
         m_settings.general.dockBlurStrength,
         m_settings.general.dockNoiseStrength
     );
-    // A launcher is a temporary, text-dense surface. It needs substantially
-    // more low-pass filtering than Dock so the underlying document's text and
-    // icons do not compete with its own grid. This pipeline is only selected
-    // for the large Quickshell launcher card below.
-    constexpr int launcherBlurBoost = 5;
-    const int launcherBlurStrength = std::min(
-        m_settings.general.blurStrength + launcherBlurBoost,
-        static_cast<int>(blurStrengthValues.size()) - 1);
+    // AppearanceConfig maps 0..1 to 15 stored levels with
+    // round(1 + strength * 14), then settings.cpp converts that to the
+    // zero-based pipeline index. 15% therefore maps to index 2.
+    constexpr int fullScreenLauncherMinimumBlurIndex = 2;
     m_fullScreenLauncherBlurSettings = pipelineSettingsForStrength(
-        launcherBlurStrength,
+        std::max(m_settings.general.blurStrength,
+                 fullScreenLauncherMinimumBlurIndex),
         m_settings.general.noiseStrength
     );
     m_maxIterationCount = std::max({
         m_contentBlurSettings.iterationCount,
-        m_protectedBlurSettings.iterationCount,
         m_decorationBlurSettings.iterationCount,
         m_dockBlurSettings.iterationCount,
         m_fullScreenLauncherBlurSettings.iterationCount,
     });
     m_expandSize = std::max({
         m_contentBlurSettings.expandSize,
-        m_protectedBlurSettings.expandSize,
         m_decorationBlurSettings.expandSize,
         m_dockBlurSettings.expandSize,
         m_fullScreenLauncherBlurSettings.expandSize,
@@ -1281,25 +1267,15 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     const BlurRegion effectShape = transformShape(blurRegion(w, &cornerRadius));
     const BlurRegion contentShape = transformShape(contentRegion(w, &cornerRadius));
     const BlurRegion frameShape = effectShape - contentShape;
-    const bool isQuickshellSurface =
-        w->window()->resourceClass().contains(QLatin1String("quickshell"), Qt::CaseInsensitive)
-        || w->window()->resourceName().contains(QLatin1String("quickshell"), Qt::CaseInsensitive);
     const QRectF launcherFrame = w->frameGeometry();
-    // Layer-shell namespaces are intentionally not exposed by KWin. The
-    // launcher is nevertheless structurally distinct: it is the only large
-    // Quickshell card. Use that stable geometry for its dedicated blur role.
-    const bool isLargeShellLauncher = isQuickshellSurface
-        && launcherFrame.width() >= 900.0
-        && launcherFrame.height() >= 500.0;
-    const bool isProtectedShellSurface = isQuickshellSurface
-        && (w->isMenu() || w->isDropdownMenu() || w->isPopupMenu()
-            || w->isPopupWindow() || w->isNotification()
-            || w->window()->resourceName().contains(QLatin1String("quickshell-notification"), Qt::CaseInsensitive));
+    const bool isFullScreenLauncher = !w->isDock()
+        && launcherFrame.width() > 1500.0
+        && launcherFrame.height() > 300.0
+        && w->pos().y() < 10.0;
     const BlurPipelineSettings &contentBlurSettings = w->isDock()
         ? m_dockBlurSettings
-        : (isProtectedShellSurface ? m_protectedBlurSettings
-        : (isLargeShellLauncher ? m_fullScreenLauncherBlurSettings
-                                : m_contentBlurSettings));
+        : (isFullScreenLauncher ? m_fullScreenLauncherBlurSettings
+                                : m_contentBlurSettings);
     const BlurPipelineSettings &combinedBlurSettings =
         (contentShape.isEmpty() && !frameShape.isEmpty()) ? m_decorationBlurSettings : contentBlurSettings;
     const bool splitBlurSettings = !frameShape.isEmpty() &&
@@ -1389,6 +1365,8 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     // Only the full-window replacement (blurring the whole background) is
     // gated on fullCoverage, to avoid flicker from stale framebuffer content.
     bool useInferredRadius = false;
+    const bool isQuickshellSurface = w->window()->resourceClass().contains(QLatin1String("quickshell"), Qt::CaseInsensitive)
+        || w->window()->resourceName().contains(QLatin1String("quickshell"), Qt::CaseInsensitive);
     if (isQuickshellSurface && frameShape.isEmpty()
         && contentShape.boundingRect() == effectShape.boundingRect()) {
         const auto bounds = contentShape.boundingRect();
@@ -1753,44 +1731,35 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
         : QVector2D(nativeBox.width(), nativeBox.height()));
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.edgeSizePixelsLocation, m_settings.refraction.edgeSizePixels);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.highlightWidthPxLocation, m_settings.refraction.highlightWidthPx);
+    // Keep the legacy uniform populated for shader/config compatibility. The
+    // current material uses one stable top-down screen-space light for every
+    // surface, so moving between Dock, launcher, and cards cannot rotate it.
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.highlightAngleLocation, 90.0f);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionStrengthLocation, m_settings.refraction.refractionStrength);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionNormalPowLocation, m_settings.refraction.refractionNormalPow);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionRGBFringingLocation, m_settings.refraction.refractionRGBFringing);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionOffsetStrengthLocation, m_settings.refraction.refractionOffsetStrength);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionBevelIntensityLocation, m_settings.refraction.refractionBevelIntensity);
-    m_roundedOnscreenPass.shader->setUniform(
-        m_roundedOnscreenPass.physicallyBasedRefractionLocation,
-        m_settings.refraction.physicallyBased ? 1 : 0);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.physicallyBasedRefractionLocation, m_settings.refraction.physicallyBased ? 1 : 0);
 
     QColor tint(m_settings.general.tintColor);
     QVector3D tintVec(tint.redF(), tint.greenF(), tint.blueF());
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.tintColorLocation, tintVec);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.tintGrayLocation, static_cast<float>(0.299 * tint.redF() + 0.587 * tint.greenF() + 0.114 * tint.blueF()));
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.autoTintAlphaLocation, m_settings.general.autoTintAlpha ? 1 : 0);
-    // Keep the optical response consistent for shell surfaces. KWin exposes
-    // every layer-shell surface from Quickshell with the same resource name;
-    // its QML namespace is not available here. The application launcher is
-    // therefore identified by its stable, large card geometry. It is the only
-    // shell surface that requests a deeper body on a nearly-white framebuffer,
-    // so white foreground does not have to rely on text shadows alone.
-    const bool isQuickshellMaterial =
-        w->window()->resourceClass().contains(QLatin1String("quickshell"), Qt::CaseInsensitive)
-        || w->window()->resourceName().contains(QLatin1String("quickshell"), Qt::CaseInsensitive);
-    const QRectF shellFrame = w->frameGeometry();
-    const bool isAppLauncher = isQuickshellMaterial
-        && shellFrame.width() >= 900.0
-        && shellFrame.height() >= 500.0;
-    const float surfaceScale = isQuickshellMaterial ? 1.0f
-        : (w->isDock() ? 1.3f
-        : (w->isNotification() || w->isOnScreenDisplay()) ? 0.5f : 1.0f);
+    // Per-surface material strength: the always-visible dock gets a more
+    // pronounced glassy rim, transient popups stay subtle.
+    const float surfaceScale = w->isDock() ? 1.3f
+                             : (w->isNotification() || w->isOnScreenDisplay()) ? 0.5f
+                             : 1.0f;
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.surfaceScaleLocation, surfaceScale);
-    m_roundedOnscreenPass.shader->setUniform(
-        m_roundedOnscreenPass.brightMaterialDarkStyleLocation,
-        isAppLauncher ? 0.30f : 0.0f);
-    const float lensStrengthScale = isQuickshellMaterial ? 0.45f
-        : (w->isDock() ? 0.45f
-        : (w->isMenu() || w->isDropdownMenu() || w->isPopupMenu()) ? 0.55f
-        : (w->isNotification() || w->isOnScreenDisplay()) ? 0.35f : 1.0f);
+    // Dock, menus, notifications and OSD stay visually stable while the
+    // content behind them moves. Reserve the full lens for small transient
+    // controls and previews, where a stronger refraction communicates touch.
+    const float lensStrengthScale = w->isDock() ? 0.45f
+                                  : (w->isMenu() || w->isDropdownMenu() || w->isPopupMenu()) ? 0.55f
+                                  : (w->isNotification() || w->isOnScreenDisplay()) ? 0.35f
+                                  : 1.0f;
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.lensStrengthScaleLocation, lensStrengthScale);
     auto tintStrengthForRegion = [&](bool decorationRegion) {
         if (w->isDock() && m_settings.general.excludeDocks) {

@@ -15,6 +15,8 @@ Rectangle {
     property color ambientSecondary: "transparent"
     property real ambientStrength: 0.0
     property real materialDepth: 0.0
+    property bool bottomEdgeVisible: true
+    property bool bottomShadeVisible: true
 
     // Light base for text readability
     Rectangle {
@@ -26,7 +28,6 @@ Rectangle {
     // Liquid-glass material layer (reflection, tint, specular edges)
     LiquidGlassSurface {
         anchors.fill: parent
-        compositorManaged: false
         radius: root.radius
         border.width: root.border.width
         border.color: root.border.color
@@ -36,5 +37,7 @@ Rectangle {
         ambientStrength: root.ambientStrength
         surfaceOpacity: root.surfaceOpacity
         materialDepth: root.materialDepth
+        bottomEdgeVisible: root.bottomEdgeVisible
+        bottomShadeVisible: root.bottomShadeVisible
     }
 }

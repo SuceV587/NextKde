@@ -8,11 +8,8 @@ uniform int edgeLighting;
 
 uniform float edgeSizePixels;
 uniform float highlightWidthPx;
+uniform float highlightAngle;
 uniform float surfaceScale;
-// Semantic high-information surfaces may use a deeper material only when the
-// real framebuffer behind them is nearly white. This is deliberately not a
-// generic opacity/tint knob: normal glass (including Dock) keeps transmission.
-uniform float brightMaterialDarkStyle;
 // Optical distortion belongs to small, directly manipulated controls.  Large
 // persistent surfaces keep the material treatment but use a quieter lens.
 uniform float lensStrengthScale;
@@ -22,14 +19,6 @@ uniform float refractionRGBFringing;
 uniform float refractionOffsetStrength;
 uniform float refractionBevelIntensity;
 uniform int physicallyBasedRefraction;
-
-// Cheap cubic approximation of the sRGB transfer function. Brightness
-// classification happens in linear light without three per-pixel pow() calls.
-vec3 srgbToLinearApprox(vec3 color)
-{
-    vec3 c = clamp(color, 0.0, 1.0);
-    return c * (c * (c * 0.305306011 + 0.682171111) + 0.012522878);
-}
 
 float roundedRectangleDist(vec2 p, vec2 b, vec4 cornerRadius)
 {
@@ -47,7 +36,6 @@ struct GlassFragment {
     float concaveFactor;
     vec3 normal;
     float ior;
-    float backdropComplexity;
 };
 
 #include "snells-glass.glsl"
@@ -92,116 +80,129 @@ vec2 gradSdRoundedBox(vec2 p, vec2 b, float r)
     return (q.x > q.y) ? vec2(sgn.x, 0.0) : vec2(0.0, sgn.y);
 }
 
-struct GlassBevel {
-    float depth;
-    float height;
-    float slope;
-    vec2 outward;
-    vec3 normal;
-};
-
-GlassBevel evaluateGlassBevel(vec2 position, vec2 halfSize,
-    vec4 cornerRadius, float dist, float width)
+GlassFragment glassRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadius, float dist, float edgeFactor, float concaveFactor)
 {
-    float minHalfSize = min(halfSize.x, halfSize.y);
-    float minR = min(min(cornerRadius.x, cornerRadius.y),
-        min(cornerRadius.z, cornerRadius.w));
-    float gradRadius = min(max(minR * 1.5, 1.0), minHalfSize);
-    vec2 gradient = gradSdRoundedBox(position, halfSize, gradRadius);
-    vec2 outward = length(gradient) > 1e-5
-        ? normalize(gradient) : vec2(0.0, 1.0);
+    // Analytic SDF normal (Kyant0): one exact sample instead of the
+    // finite-difference pair. The gradient radius is widened to keep the
+    // normal field smooth through the corners.
+    float minHalfSize = min(halfBlurSize.x, halfBlurSize.y);
+    float minR = min(min(cornerRadius.x, cornerRadius.y), min(cornerRadius.z, cornerRadius.w));
+    float gradRadius = min(minR * 1.5, minHalfSize);
+    vec2 gradient = gradSdRoundedBox(position, halfBlurSize, gradRadius);
 
-    float depth = clamp((-dist) / max(width, 1e-4), 0.0, 1.0);
-    float rimT = 1.0 - depth;
-    float height = circleMap(rimT);
-    // Analytic derivative of circleMap, clamped at the physical rim where an
-    // ideal lens tends to infinity. One profile now drives all optical layers.
-    float denominator = sqrt(max(1.0 - rimT * rimT, 0.015));
-    float slope = min(rimT / denominator, 3.2);
-    vec3 normal = normalize(vec3(outward * slope, 1.0));
-    return GlassBevel(depth, height, slope, outward, normal);
-}
+    vec2 normal = length(gradient) > 1e-5 ? -normalize(gradient) : vec2(0.0, 1.0);
 
-GlassFragment glassRefraction(vec2 position, vec2 halfBlurSize,
-    vec4 cornerRadius, float dist, float edgeFactor,
-    float concaveFactor, GlassBevel bevel)
-{
-    // Kyant0 lens: circleMap supplies a pixel-space displacement along the
-    // rounded-rectangle SDF gradient. Keep it in pixels until the texture
-    // lookup so wide surfaces do not bend farther merely because their UVs
-    // cover a larger window.
-    vec2 centeredDirection = position / max(halfBlurSize, vec2(1.0));
-    vec2 lensDirection = normalize(bevel.outward
-        + centeredDirection * refractionOffsetStrength * 0.18);
-    // Preserve the peak at the rim but let lensing settle sooner toward the
-    // content-bearing interior. This follows the edge-confined Kyant profile
-    // without lowering the configured peak strength.
-    float opticalHeight = pow(bevel.height, 1.35);
-    float displacementPx = opticalHeight * edgeSizePixels
-        * refractionStrength * lensStrengthScale;
-    vec2 refractOffsetG = lensDirection * displacementPx / blurSize;
+    // The lens band: refraction lives only inside a band of width
+    // max(edgeSizePixels, 2px) * 1.5 from the edge. interiorDist grows inward
+    // from 0 at the rim; bandT goes 1.0 (rim) -> 0.0 (band inner edge) and
+    // circleMap turns that into the circular-arc falloff. Beyond the band the
+    // surface is perfectly flat, matching iOS "edge bends, center flat".
+    float interiorDist = -dist;
+    float bandWidth = max(edgeSizePixels, 2.0) * 1.5;
+    float bandT = 1.0 - clamp(interiorDist / bandWidth, 0.0, 1.0);
+    float lens = circleMap(bandT);
+
+    // Displacement: the rim peak scales with refractionStrength (kwinrc /20,
+    // so 10 -> 0.5) through the original 0.4 coefficient. The lens profile
+    // (circleMap) and concaveFactor attenuate it toward the interior. How
+    // strong the bend reads is a parameter choice (RefractionStrength), not a
+    // shader constant.
+    float finalStrength = min(0.4 * concaveFactor * refractionStrength, 1.0)
+        * lens * lensStrengthScale;
 
     // Corner-weighted chromatic aberration (Kyant0): a real rectangular lens
     // fringes most at its corners and not at all on the axes, so the colour
-    // split scales with signed x*y across the surface. The corner emphasis is the
+    // split scales with |x*y| across the surface. The corner emphasis is the
     // structural change (parameter-unreachable); the overall amount stays
     // parameter-driven via refractionRGBFringing.
     vec2 centeredNorm = position / halfBlurSize;
-    float dispersionIntensity = refractionRGBFringing
-        * centeredNorm.x * centeredNorm.y;
-    vec2 dispersedOffset = refractOffsetG * dispersionIntensity;
-    vec2 refractedUv = uv + refractOffsetG;
+    float cornerWeight = abs(centeredNorm.x * centeredNorm.y);
+    float fringingFactor = refractionRGBFringing * 0.3
+        * (0.3 + 0.7 * cornerWeight) * lensStrengthScale;
 
-    // Kyant0-style seven-band dispersion. The previous three-channel
-    // approximation shifted each channel by only a fraction of a pixel after
-    // all scale factors, so its colour separation vanished under compositor
-    // blur. These weights reconstruct a smooth visible spectrum at the rim.
-    vec4 color;
-    if (abs(dispersionIntensity) > 0.001) {
-        vec4 red = texture(texUnit, clamp(refractedUv + dispersedOffset, 0.0, 1.0));
-        vec4 orange = texture(texUnit, clamp(refractedUv + dispersedOffset * (2.0 / 3.0), 0.0, 1.0));
-        vec4 yellow = texture(texUnit, clamp(refractedUv + dispersedOffset * (1.0 / 3.0), 0.0, 1.0));
-        vec4 green = texture(texUnit, clamp(refractedUv, 0.0, 1.0));
-        vec4 cyan = texture(texUnit, clamp(refractedUv - dispersedOffset * (1.0 / 3.0), 0.0, 1.0));
-        vec4 blue = texture(texUnit, clamp(refractedUv - dispersedOffset * (2.0 / 3.0), 0.0, 1.0));
-        vec4 purple = texture(texUnit, clamp(refractedUv - dispersedOffset, 0.0, 1.0));
-        color = vec4(
-            red.r / 3.5 + orange.r / 3.5 + yellow.r / 3.5 + purple.r / 7.0,
-            orange.g / 7.0 + yellow.g / 3.5 + green.g / 3.5 + cyan.g / 3.5,
-            cyan.b / 3.0 + blue.b / 3.0 + purple.b / 3.0,
-            green.a
-        );
-    } else {
-        color = texture(texUnit, clamp(refractedUv, 0.0, 1.0));
+    vec2 refractOffsetG = -normal.xy * finalStrength;
+    vec2 refractOffsetR = -normal.xy * finalStrength;
+    vec2 refractOffsetB = -normal.xy * finalStrength;
+
+    if (fringingFactor > 0.0) {
+        // Red bends most
+        refractOffsetR = -normal.xy * (finalStrength * (1.0 + fringingFactor));
+        // Blue bends least
+        refractOffsetB = -normal.xy * (finalStrength * (1.0 - fringingFactor));
     }
-    return GlassFragment(color, dist, edgeFactor, concaveFactor,
-        bevel.normal, 1.0, 0.0);
+
+    vec2 coordR = clamp(uv - refractOffsetR, 0.0, 1.0);
+    vec2 coordG = clamp(uv - refractOffsetG, 0.0, 1.0);
+    vec2 coordB = clamp(uv - refractOffsetB, 0.0, 1.0);
+
+    vec4 color = vec4(
+        texture(texUnit, coordR).r,
+        texture(texUnit, coordG).g,
+        texture(texUnit, coordB).b,
+        texture(texUnit, coordG).a
+    );
+    return GlassFragment(color, dist, edgeFactor, concaveFactor, vec3(0.0, 0.0, 1.0), 1.0);
 }
 
-// ── White-ink adaptive tint ───────────────────────────────────────────
-// Shell chrome uses white foreground content in both themes. Tint therefore
-// responds in one direction only: bright framebuffer content is darkened,
-// while already-dark content is preserved.
+// ── Bidirectional tint ────────────────────────────────────────────────
+// Tint strength scales with how far the backdrop brightness is from the
+// mid-point (0.5): a near-white or near-black background gets the full
+// configured strength, a mid-grey background gets almost none, and the
+// result is hard-capped at 15% so the glass never turns into painted
+// plastic. The tint *colour* flips from dark (configured tintColor) on
+// bright backgrounds to white on dark backgrounds, so the glass always
+// retains material depth instead of turning into a flat black slab.
+// These must be declared before glassOutline() because glassOutline applies
+// the tint to the backdrop.
 float adjustedTintStrength(float baseTintStrength, vec3 backgroundColor)
 {
     float strength = clamp(baseTintStrength, 0.0, 1.0);
-    const vec3 grayscaleWeights = vec3(0.2126, 0.7152, 0.0722);
-    float backgroundGray = dot(srgbToLinearApprox(backgroundColor),
-        grayscaleWeights);
-    float backgroundChroma = max(max(backgroundColor.r, backgroundColor.g),
-        backgroundColor.b) - min(min(backgroundColor.r, backgroundColor.g),
-        backgroundColor.b);
-    // Low-chroma whites and greys need protection before blur pulls their
-    // measured luminance down. Saturated middle tones such as pink remain in
-    // the chromatic branch, while genuinely intense highlights always darken.
-    float neutralBright = smoothstep(0.260, 0.500, backgroundGray)
-        * (1.0 - smoothstep(0.070, 0.220, backgroundChroma));
-    float absoluteBright = smoothstep(0.500, 0.720, backgroundGray);
-    float brightMask = max(neutralBright, absoluteBright);
-    // Bright documents need only a small chroma/tint correction. A larger
-    // cap pre-darkens the framebuffer before the readability budget below can
-    // account for it, making transparent cards look like grey scrims.
-    return min(strength * brightMask, 0.08);
+
+    // Bright backdrops may deepen up to 28% so white text stays readable on
+    // white backgrounds; dark backdrops stay at 15% so the glass keeps its
+    // transparent liquid-glass look.
+    const vec3 grayscaleWeights = vec3(0.299, 0.587, 0.114);
+    float backgroundGray = dot(backgroundColor, grayscaleWeights);
+
+    float cap = mix(0.15, 0.28, smoothstep(0.70, 0.80, backgroundGray));
+
+    float useLocal = step(0.5, float(autoTintAlpha)) * step(0.001, strength);
+    if (useLocal < 0.5)
+        return min(strength, cap);
+
+    float deviation = abs(backgroundGray - 0.5) * 2.0;
+    float scale = mix(0.05, 1.0, deviation);
+
+    return min(strength * scale, cap);
+}
+
+vec3 bidirectionalTintColor(vec3 backgroundColor, vec3 darkTint)
+{
+    float useLocal = step(0.5, float(autoTintAlpha)) * step(0.001, tintStrength);
+    if (useLocal < 0.5)
+        return darkTint;
+
+    const vec3 grayscaleWeights = vec3(0.299, 0.587, 0.114);
+    float backgroundGray = dot(backgroundColor, grayscaleWeights);
+
+    float t = smoothstep(0.35, 0.65, backgroundGray);
+    return mix(vec3(1.0), darkTint, t);
+}
+
+// Rim highlight colour from the iOS render shader: on a dark backdrop the
+// rim is white for contrast; on a bright or colourful backdrop it keeps the
+// backdrop's own hue, brightened — the "vibrancy at the edge" that makes the
+// rim read as glass catching light instead of a painted white stripe.
+vec3 getHighlightColor(vec3 backgroundColor, float targetBrightness)
+{
+    const vec3 grayscaleWeights = vec3(0.299, 0.587, 0.114);
+    float luminance = dot(backgroundColor, grayscaleWeights);
+    float maxComponent = max(max(backgroundColor.r, backgroundColor.g), backgroundColor.b);
+    float lumFactor = (luminance * 2.5) / (1.0 + luminance * 2.5);
+    float satFactor = (maxComponent * 2.5) / (1.0 + maxComponent * 2.5);
+    float colorInfluence = lumFactor * satFactor;
+    vec3 tinted = (backgroundColor / max(luminance, 0.001)) * targetBrightness;
+    return mix(vec3(targetBrightness), tinted, colorInfluence);
 }
 
 // Luminosity-preserving bidirectional tint with a content-adaptive
@@ -221,7 +222,8 @@ vec3 applyGlassTint(vec3 backdrop)
     float adaptive = mix(1.10, 0.96, luma);
     vec3 lifted = mix(vec3(luma), backdrop, adaptive);
     float strength = adjustedTintStrength(tintStrength, lifted);
-    return mix(lifted, tintColor, strength);
+    vec3 tintCol = bidirectionalTintColor(lifted, tintColor);
+    return mix(lifted, tintCol, strength);
 }
 
 // ── Edge-confined liquid reflection ───────────────────────────────────
@@ -307,20 +309,15 @@ vec4 glass(vec4 sum, vec4 cornerRadius)
     float minEsp = clamp(edgeSizePixels, 0.1, minHalfSize * 0.9);
     float edgeFactor = 1.0 - clamp(abs(dist) / minEsp, 0.0, 1.0);
     float concaveFactor = 1.0 - sqrt(1.0 - pow(smoothstep(0.0, 1.0, edgeFactor), refractionNormalPow));
-    float bevelWidth = clamp(minEsp, 2.0, minHalfSize * 0.9);
-    GlassBevel bevel = evaluateGlassBevel(position, halfBlurSize,
-        cornerRadius, dist, bevelWidth);
 
     GlassFragment s;
     if (refractionStrength > 0.0) {
         vec4 r = clamp(cornerRadius * 2.0, min(64.0, minHalfSize), min(128.0, minHalfSize));
         s = physicallyBasedRefraction == 0
-            ? glassRefraction(position, halfBlurSize, r, dist, edgeFactor,
-                concaveFactor, bevel)
+            ? glassRefraction(position, halfBlurSize, r, dist, edgeFactor, concaveFactor)
             : snellsRefraction(position, halfBlurSize, r, minHalfSize, dist, edgeFactor, concaveFactor);
     } else {
-        s = GlassFragment(sum, dist, edgeFactor, concaveFactor,
-            vec3(0.0, 0.0, 1.0), 1.0, 0.0);
+        s = GlassFragment(sum, dist, edgeFactor, concaveFactor, vec3(0.0, 0.0, 1.0), 1.0);
     }
 
     vec3 rgb = applyGlassTint(s.color.rgb);

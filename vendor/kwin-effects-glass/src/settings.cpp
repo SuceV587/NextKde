@@ -93,6 +93,7 @@ void BlurSettings::read()
 
     refraction.edgeSizePixels = BlurConfig::refractionEdgeSize() * 10;
     refraction.highlightWidthPx = BlurConfig::highlightWidthPx();
+    refraction.highlightAngle = BlurConfig::highlightAngle();
     refraction.refractionStrength = BlurConfig::refractionStrength() / 20.0;
     refraction.refractionNormalPow = BlurConfig::refractionNormalPow() / 2.0;
     refraction.refractionRGBFringing = BlurConfig::refractionRGBFringing() / 20.0;
