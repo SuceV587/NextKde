@@ -84,7 +84,6 @@ struct RefractionSettings
     float refractionOffsetStrength;
     float refractionBevelIntensity;
     float highlightWidthPx;
-    float highlightAngle;  // degrees, light direction for the focused highlight
     bool physicallyBased;
 };
 

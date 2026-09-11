@@ -180,8 +180,8 @@ private:
         int blurSizeLocation;
         int edgeSizePixelsLocation;
         int highlightWidthPxLocation;
-        int highlightAngleLocation;
         int surfaceScaleLocation;
+        int brightMaterialDarkStyleLocation;
         int lensStrengthScaleLocation;
         int refractionStrengthLocation;
         int refractionNormalPowLocation;
@@ -248,6 +248,7 @@ private:
     float m_upsampleOffset = 1.0f;
     size_t m_maxIterationCount = 1; // number of times the texture will be downsized to half size
     BlurPipelineSettings m_contentBlurSettings{};
+    BlurPipelineSettings m_protectedBlurSettings{};
     BlurPipelineSettings m_decorationBlurSettings{};
     BlurPipelineSettings m_dockBlurSettings{};
     BlurPipelineSettings m_fullScreenLauncherBlurSettings{};
