@@ -2,8 +2,19 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import qs.desktop.modules.common
 
+// Wallpaper colour source for Kos.Ui. It resolves the active KDE Plasma
+// wallpaper and exposes its two sampled colours plus the derived Material
+// scheme, without depending on any shell-side module.
+//
+// Layering contract: this file lives in `shared/`, so it must never import
+// `qs.desktop.modules.*`. Everything the shell used to push in or pull out is
+// expressed here as an injectable input or an outbound signal:
+//   - in : `darkMode`         — the shell feeds its resolved light/dark state
+//   - in : `wallpaperSeedSink`— optional callback invoked with the seed colour
+//   - out: `paletteChanged`   — emitted when primary/secondary become ready
+// Consumers wire these up in their own adapter (see shell's PaletteBridge).
+//
 // Plasma updates its wallpaper config through atomic file replacement on some
 // versions. That can evade an inotify FileView watch, so we read this small
 // config on a low-frequency timer and only sample when the URL truly changes.
@@ -22,13 +33,25 @@ QtObject {
     readonly property color secondary: palette.secondary
     readonly property bool ready: palette.ready
 
+    // Injected by the shell adapter: which scheme branch the wallpaper-derived
+    // colours should be generated for. Defaults to the system palette so the
+    // service stays usable stand-alone.
+    property bool darkMode: false
+
+    // Emitted once the sampled pair is available. The shell adapter listens and
+    // persists the seed colour; `shared/` never touches shell config itself.
+    signal paletteChanged(color primary, color secondary)
+
+    // Emitted when no wallpaper is resolvable, so the adapter can reset any
+    // persisted seed colour back to "transparent".
+    signal paletteCleared()
+
     function _applyWallpaperUrl(nextUrl) {
         if (wallpaperUrl.toString() === nextUrl)
             return
-        console.log("[WallpaperPalette] sampling screen=" + preferredScreen
+        console.log("[WallpaperColorSource] sampling screen=" + preferredScreen
             + " " + nextUrl)
         wallpaperUrl = nextUrl
-        MaterialThemeService.generateFromWallpaper(nextUrl)
     }
 
     function _resolveWallpaperUrl(nextUrl) {
@@ -49,7 +72,7 @@ QtObject {
             ? screen.width / screen.height : 16 / 9
         const packagePath = decodeURIComponent(nextUrl
             .replace(/^file:\/\//, "").replace(/\/+$/, ""))
-        const imageSet = ThemeService.isDark ? "images_dark" : "images"
+        const imageSet = svc.darkMode ? "images_dark" : "images"
         const requestedUrl = nextUrl
         const proc = _processFactory.createObject(svc, {
             command: ["sh", "-c",
@@ -68,7 +91,7 @@ QtObject {
                     && svc.configuredWallpaperUrl === requestedUrl)
                 svc._applyWallpaperUrl("file://" + resolvedPath)
             else if (svc.configuredWallpaperUrl === requestedUrl)
-                console.warn("[WallpaperPalette] package image resolve failed "
+                console.warn("[WallpaperColorSource] package image resolve failed "
                     + requestedUrl)
             proc.destroy()
         })
@@ -126,8 +149,8 @@ QtObject {
         } else {
             configuredWallpaperUrl = ""
             wallpaperUrl = ""
-            AppearanceConfigService.wallpaperSeedColor = "transparent"
-            console.warn("[WallpaperPalette] no image wallpaper found")
+            paletteCleared()
+            console.warn("[WallpaperColorSource] no image wallpaper found")
         }
     }
 
@@ -142,7 +165,7 @@ QtObject {
         // depend on a watch of the old inode. Failed reads retain the palette.
         watchChanges: false
         onLoaded: svc._readWallpaperText(text())
-        onLoadFailed: error => console.warn("[WallpaperPalette] config read failed error=" + error)
+        onLoadFailed: error => console.warn("[WallpaperColorSource] config read failed error=" + error)
     }
 
     property Component _processFactory: Component {
@@ -159,7 +182,7 @@ QtObject {
         onTriggered: svc.refresh()
     }
 
-    property ArtworkPalette _palette: ArtworkPalette {
+    property ArtworkColorSource _palette: ArtworkColorSource {
         id: palette
         source: svc.wallpaperUrl
         // LiquidGlassSurface owns the slow visual transition for wallpaper
@@ -171,19 +194,21 @@ QtObject {
         target: palette
         function onReadyChanged() {
             if (palette.ready) {
-                AppearanceConfigService.wallpaperSeedColor = palette.primary
-                console.log("[WallpaperPalette] primary=" + palette.primary
+                console.log("[WallpaperColorSource] primary=" + palette.primary
                     + " secondary=" + palette.secondary)
+                // The sampled primary is the seed for the Material scheme. It is
+                // computed in-process, so no external tool has to re-read the image.
+                ColorScheme.setSeed(palette.primary)
+                svc.paletteChanged(palette.primary, palette.secondary)
             }
         }
     }
 
-    property Connections _themeWatch: Connections {
-        target: ThemeService
-        function onIsDarkChanged() {
-            if (svc.configuredWallpaperUrl.endsWith("/"))
-                svc._resolveWallpaperUrl(svc.configuredWallpaperUrl)
-        }
+    // Re-resolve the wallpaper package when the requested scheme branch flips,
+    // because packages ship separate `images` / `images_dark` sets.
+    onDarkModeChanged: {
+        if (svc.configuredWallpaperUrl.endsWith("/"))
+            svc._resolveWallpaperUrl(svc.configuredWallpaperUrl)
     }
 
 }
