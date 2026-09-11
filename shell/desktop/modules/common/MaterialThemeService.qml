@@ -28,7 +28,7 @@ QtObject {
         }
         const proc = processFactory.createObject(service, {
             command: ["matugen", "image", path, "--json", "hex", "--dry-run",
-                "--source-color-index", "0", "--type", "scheme-vibrant"]
+                "--source-color-index", "0", "--type", "scheme-tonal-spot"]
         })
         _process = proc
         proc.exited.connect(function(code) {
