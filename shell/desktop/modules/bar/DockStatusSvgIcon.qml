@@ -14,7 +14,7 @@ Item {
     property url source
     readonly property color iconColor: IconAppearanceService.mode === "tint"
         ? IconAppearanceService.styledSymbolicColor()
-        : (ThemeService.isDark ? ThemeService.foregroundColor : "#000000")
+        : ThemeService.foregroundColor
     readonly property real appearanceOpacity: IconAppearanceService.mode !== "color"
         ? IconAppearanceService.opacity : 1.0
 

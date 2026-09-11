@@ -640,6 +640,18 @@ void DockWindowAnimationEffect::apply(EffectWindow *window, int mask,
         applyDockMorph(window, *it, quads);
 }
 
+#ifdef KOS_KWIN_PAINT_TIME_API
+void DockWindowAnimationEffect::prePaintScreen(ScreenPrePaintData &data,
+                                               std::chrono::milliseconds presentTime)
+{
+    // Match KWin's Magic Lamp exactly. Minimize/unminimize signals can arrive
+    // on a paint-cycle boundary; setting this only after m_animations becomes
+    // non-empty leaves that boundary frame with a partial damage region and
+    // can expose wallpaper blocks or tearing at animation start/end.
+    data.mask |= PAINT_SCREEN_WITH_TRANSFORMED_WINDOWS;
+    effects->prePaintScreen(data, presentTime);
+}
+#else
 void DockWindowAnimationEffect::prePaintScreen(ScreenPrePaintData &data)
 {
     // Match KWin's Magic Lamp exactly. Minimize/unminimize signals can arrive
@@ -649,7 +661,22 @@ void DockWindowAnimationEffect::prePaintScreen(ScreenPrePaintData &data)
     data.mask |= PAINT_SCREEN_WITH_TRANSFORMED_WINDOWS;
     effects->prePaintScreen(data);
 }
+#endif
 
+#ifdef KOS_KWIN_PAINT_TIME_API
+void DockWindowAnimationEffect::prePaintWindow(RenderView *view,
+                                                EffectWindow *window,
+                                                WindowPrePaintData &data,
+                                                std::chrono::milliseconds presentTime)
+{
+    auto it = m_animations.find(window);
+    if (it != m_animations.end()) {
+        it->timeLine.advance(presentTime);
+        data.setTransformed();
+    }
+    effects->prePaintWindow(view, window, data, presentTime);
+}
+#else
 void DockWindowAnimationEffect::prePaintWindow(RenderView *view,
                                                 EffectWindow *window,
                                                 WindowPrePaintData &data)
@@ -661,6 +688,7 @@ void DockWindowAnimationEffect::prePaintWindow(RenderView *view,
     }
     effects->prePaintWindow(view, window, data);
 }
+#endif
 
 void DockWindowAnimationEffect::postPaintScreen()
 {
