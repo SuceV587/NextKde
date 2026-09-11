@@ -540,6 +540,7 @@ void BlurEffect::updateBlurRegion(EffectWindow *w)
         // an application that paints nothing gets the full pane.
 #ifndef GLASS_X11
         if (SurfaceInterface *surface = w->surface()) {
+#ifdef GLASS_KWIN_67
             const RegionF opaque = surface->opaque();
             if (!opaque.isEmpty()) {
                 // surface->opaque() is surface-local; contentsRect() places the
@@ -551,6 +552,19 @@ void BlurEffect::updateBlurRegion(EffectWindow *w)
                 }
                 glass -= opaqueInFrame;
             }
+#else
+            const Region opaque = surface->opaque();
+            if (!opaque.isEmpty()) {
+                // surface->opaque() is surface-local; contentsRect() places the
+                // client area inside the frame the region above is built in.
+                const QPoint clientOffset = w->contentsRect().topLeft().toPoint();
+                Region opaqueInFrame;
+                for (const Rect &rect : opaque.rects()) {
+                    opaqueInFrame += rect.translated(clientOffset);
+                }
+                glass -= opaqueInFrame;
+            }
+#endif
         }
 #endif
 
