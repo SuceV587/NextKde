@@ -23,9 +23,16 @@ public:
     ~DockWindowAnimationEffect() override;
 
     void reconfigure(ReconfigureFlags flags) override;
+#ifdef KOS_KWIN_PAINT_TIME_API
+    void prePaintScreen(ScreenPrePaintData &data, std::chrono::milliseconds presentTime) override;
+    void prePaintWindow(RenderView *view, EffectWindow *window,
+                        WindowPrePaintData &data,
+                        std::chrono::milliseconds presentTime) override;
+#else
     void prePaintScreen(ScreenPrePaintData &data) override;
     void prePaintWindow(RenderView *view, EffectWindow *window,
                         WindowPrePaintData &data) override;
+#endif
     void postPaintScreen() override;
     bool isActive() const override;
 
