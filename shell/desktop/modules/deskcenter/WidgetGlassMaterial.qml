@@ -1,6 +1,7 @@
 import QtQuick
 import qs.desktop.modules.common
 import qs.desktop.modules.dock
+import "../../../Kos/Ui"
 
 // Component-level glass that intentionally does not sample the desktop.
 // That makes its highlight and pigment treatment stable for still images,
@@ -18,12 +19,12 @@ Item {
     // desktop needs a darker lens for contrast, while a dark desktop receives
     // a pale one. This is continuous rather than a light/dark theme switch.
     readonly property real wallpaperLuminance: Math.max(0.0, Math.min(1.0,
-        ((WallpaperPaletteService.primary.r * 0.2126
-            + WallpaperPaletteService.primary.g * 0.7152
-            + WallpaperPaletteService.primary.b * 0.0722) * 0.64)
-        + ((WallpaperPaletteService.secondary.r * 0.2126
-            + WallpaperPaletteService.secondary.g * 0.7152
-            + WallpaperPaletteService.secondary.b * 0.0722) * 0.36)))
+        ((WallpaperColorSource.primary.r * 0.2126
+            + WallpaperColorSource.primary.g * 0.7152
+            + WallpaperColorSource.primary.b * 0.0722) * 0.64)
+        + ((WallpaperColorSource.secondary.r * 0.2126
+            + WallpaperColorSource.secondary.g * 0.7152
+            + WallpaperColorSource.secondary.b * 0.0722) * 0.36)))
     readonly property real darkMaterialAmount: wallpaperLuminance
     readonly property color adaptiveBase: Qt.rgba(
         0.94 * (1.0 - darkMaterialAmount) + 0.025 * darkMaterialAmount,
@@ -34,9 +35,9 @@ Item {
     // values stay close to white so a widget reads as glass, not as a colour
     // card.
     readonly property color pigmentPrimary: appearanceMode === "tint"
-        ? IconAppearanceService.tintColor : WallpaperPaletteService.primary
+        ? IconAppearanceService.tintColor : WallpaperColorSource.primary
     readonly property color pigmentSecondary: appearanceMode === "tint"
-        ? IconAppearanceService.tintColor : WallpaperPaletteService.secondary
+        ? IconAppearanceService.tintColor : WallpaperColorSource.secondary
     readonly property color primarySheen: Qt.rgba(
         pigmentPrimary.r * 0.42 + 0.58,
         pigmentPrimary.g * 0.42 + 0.58,
@@ -75,6 +76,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: root.cornerRadius
+        visible: AppearanceTokens.surface.usesBackdrop
         gradient: Gradient {
             orientation: Gradient.Horizontal
             GradientStop {
@@ -99,6 +101,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: root.cornerRadius
+        visible: AppearanceTokens.surface.usesBackdrop
         gradient: Gradient {
             orientation: Gradient.Horizontal
             GradientStop { position: 0.0; color: Qt.rgba(root.primarySheen.r, root.primarySheen.g, root.primarySheen.b, (0.050 + (1.0 - root.wallpaperLuminance) * 0.065) * root.strength) }
@@ -132,6 +135,7 @@ Item {
     Rectangle {
         x: Math.min(parent.width / 2, root.cornerRadius + 5)
         y: 1
+        visible: AppearanceTokens.surface.usesBackdrop
         width: Math.max(0, parent.width - x * 2)
         height: 1.1
         gradient: Gradient {

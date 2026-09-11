@@ -40,6 +40,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: height / 2
+        visible: !AppearanceTokens.isMaterial
         gradient: Gradient {
             orientation: Gradient.Vertical
             GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.08 + root._bloom * 0.22) }
@@ -73,12 +74,16 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: height / 2
-            color: "white"
+            color: AppearanceTokens.isMaterial
+                ? (root.checked ? AppearanceTokens.colors.primaryForeground
+                    : AppearanceTokens.colors.outline)
+                : "white"
         }
         // Glass-shell top highlight.
         Rectangle {
             anchors.fill: parent
             radius: height / 2
+            visible: !AppearanceTokens.isMaterial
             gradient: Gradient {
                 orientation: Gradient.Vertical
                 GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.85) }

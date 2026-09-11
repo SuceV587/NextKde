@@ -224,7 +224,70 @@ vec3 applyGlassTint(vec3 backdrop)
     return mix(lifted, tintColor, strength);
 }
 
-// ── End white-ink adaptive tint ──────────────────────────────────────
+// ── Edge-confined liquid reflection ───────────────────────────────────
+// Keep the material body untouched. These reflections are short, white
+// glints on the straight portions of the contour, not an all-around Fresnel
+// outline and not a dark inner bevel. Their centre is wider than their ends,
+// matching the shared QML glass component.
+vec3 applyLiquidGlints(vec3 rgb, vec2 position, vec2 halfBlurSize,
+    vec4 cornerRadius, float dist, float edgeAntialiasWidth)
+{
+    float topRadius = max(cornerRadius.x, cornerRadius.y);
+    float bottomRadius = max(cornerRadius.z, cornerRadius.w);
+    float leftRadius = max(cornerRadius.x, cornerRadius.z);
+    float rightRadius = max(cornerRadius.y, cornerRadius.w);
+    float horizontalHalfLength = max(halfBlurSize.x
+        - max(topRadius, bottomRadius) - 5.0, 0.0);
+    float verticalHalfLength = max(halfBlurSize.y
+        - max(leftRadius, rightRadius) - 12.0, 0.0);
+
+    float horizontalEnvelope = (1.0 - smoothstep(0.64, 1.0,
+        abs(position.x) / max(horizontalHalfLength, 1.0)))
+        * step(1.0, horizontalHalfLength);
+    float verticalEnvelope = (1.0 - smoothstep(0.56, 1.0,
+        abs(position.y) / max(verticalHalfLength, 1.0)))
+        * step(1.0, verticalHalfLength);
+    float widthScale = clamp(highlightWidthPx / 3.0, 0.80, 1.20);
+    float topSigma = max(edgeAntialiasWidth * 0.52,
+        mix(0.43, 0.76, horizontalEnvelope) * widthScale);
+    float bottomSigma = max(edgeAntialiasWidth * 0.48,
+        mix(0.40, 0.64, horizontalEnvelope) * widthScale);
+    float sideSigma = max(edgeAntialiasWidth * 0.48,
+        mix(0.42, 0.62, verticalEnvelope) * widthScale);
+
+    float topGlint = exp(-0.5 * pow((halfBlurSize.y - position.y - 1.0)
+        / topSigma, 2.0)) * horizontalEnvelope;
+    float bottomGlint = exp(-0.5 * pow((position.y + halfBlurSize.y - 1.0)
+        / bottomSigma, 2.0)) * horizontalEnvelope;
+    float sideGlint = (exp(-0.5 * pow((position.x + halfBlurSize.x - 1.0)
+        / sideSigma, 2.0)) + exp(-0.5 * pow((halfBlurSize.x - position.x - 1.0)
+        / sideSigma, 2.0))) * verticalEnvelope;
+
+    // A capsule has no straight vertical section. Give its two rounded end
+    // caps a very small reflection at their horizontal centre only; it fades
+    // before reaching the top/bottom joins, so this cannot close into a rim.
+    float endcapSurface = 1.0 - smoothstep(0.0, 12.0,
+        verticalHalfLength);
+    float minRadius = min(min(cornerRadius.x, cornerRadius.y),
+        min(cornerRadius.z, cornerRadius.w));
+    vec2 gradient = gradSdRoundedBox(position, halfBlurSize,
+        max(minRadius, 1.0));
+    vec2 outward = length(gradient) > 1e-5 ? normalize(gradient)
+        : vec2(0.0, 1.0);
+    float sideArcFacing = smoothstep(0.46, 0.98, abs(outward.x));
+    float edgeDistance = -dist;
+    float sideArcSigma = max(edgeAntialiasWidth * 0.58, 0.72);
+    float sideArcGlint = exp(-0.5 * pow((edgeDistance - 1.0)
+        / sideArcSigma, 2.0)) * pow(sideArcFacing, 1.8) * endcapSurface;
+
+    float response = smoothstep(0.05, 0.75,
+        clamp(refractionStrength, 0.0, 1.0)) * surfaceScale;
+    rgb = mix(rgb, vec3(0.965, 0.982, 1.0), clamp(
+        (topGlint * 0.47 + bottomGlint * 0.30) * response, 0.0, 0.49));
+    rgb = mix(rgb, vec3(0.86, 0.90, 0.95), clamp(
+        (sideGlint * 0.17 + sideArcGlint * 0.14) * response, 0.0, 0.18));
+    return rgb;
+}
 
 vec4 glass(vec4 sum, vec4 cornerRadius)
 {
@@ -233,9 +296,8 @@ vec4 glass(vec4 sum, vec4 cornerRadius)
 
     vec2 position = uv * blurSize - halfBlurSize.xy;
     float dist = roundedRectangleDist(position, halfBlurSize, cornerRadius);
-    // Derivatives must be evaluated before the shape-dependent early return.
-    // Computing fwidth() only for inside fragments is undefined at the exact
-    // boundary and can make rounded ends shimmer or stair-step across GPUs.
+    // Evaluate derivatives before the early return: doing so only in the
+    // inside branch is undefined along the exact contour on some GPUs.
     float edgeAntialiasWidth = max(fwidth(dist), 0.75);
 
     if (dist >= 0.0) {
@@ -261,196 +323,9 @@ vec4 glass(vec4 sum, vec4 cornerRadius)
             vec3(0.0, 0.0, 1.0), 1.0, 0.0);
     }
 
-    // On large panels, preserve strong refraction over calm colour fields but
-    // stabilise isolated high-contrast shapes. This prevents saturated dots,
-    // text, or tiles from being repeated as translucent smears while leaving
-    // Dock-sized surfaces and ordinary wallpaper detail untouched.
-    float largePanel = smoothstep(160.0, 480.0, minHalfSize * 2.0);
-    float complexRefractionStability = largePanel
-        * s.backdropComplexity * 0.70;
-    s.color.rgb = mix(s.color.rgb, sum.rgb, complexRefractionStability);
-
-    // Apply tint after the selected refraction path so displaced detail and
-    // spectral separation remain intact.
     vec3 rgb = applyGlassTint(s.color.rgb);
-    float edgeDistance = -dist;
-
-    // Asymmetric framebuffer adaptation: bright content is darkened strongly
-    // enough to support white ink, while near-black content receives only a
-    // restrained lift so the glass shape does not disappear. Both responses
-    // are continuous inside the surface and preserve the refracted image.
-    const vec3 readabilityLumaWeights = vec3(0.2126, 0.7152, 0.0722);
-    // Evaluate the untouched, already low-pass framebuffer rather than the
-    // tinted result. This avoids a feedback loop where our own darkening
-    // changes the next decision, and avoids noisy classification from a
-    // single strongly displaced refraction sample. A small refracted share
-    // keeps the response aware of content visibly pulled under the glass.
-    float baseBackdropLuma = dot(srgbToLinearApprox(sum.rgb),
-        readabilityLumaWeights);
-    float refractedBackdropLuma = dot(srgbToLinearApprox(s.color.rgb),
-        readabilityLumaWeights);
-    float backdropLuma = mix(baseBackdropLuma, refractedBackdropLuma, 0.22);
-    float liquidResponse = smoothstep(0.05, 0.75,
-        clamp(refractionStrength, 0.0, 1.0));
-    float backdropChroma = max(max(sum.r, sum.g), sum.b)
-        - min(min(sum.r, sum.g), sum.b);
-    float neutralBright = smoothstep(0.260, 0.500, backdropLuma)
-        * (1.0 - smoothstep(0.070, 0.220, backdropChroma));
-    float absoluteBright = smoothstep(0.500, 0.720, backdropLuma);
-    float brightMask = max(neutralBright, absoluteBright);
-    float darkMask = 1.0 - smoothstep(0.013, 0.133, backdropLuma);
-    float midtoneMask = smoothstep(0.100, 0.250, backdropLuma)
-        * (1.0 - smoothstep(0.400, 0.560, backdropLuma));
-    float chromaticMidtone = midtoneMask
-        * smoothstep(0.120, 0.320, backdropChroma);
-    // Tint and white-ink protection share one darkening budget. Previously
-    // they compounded (28% then 30%), which could approach a 50% total loss.
-    float tintAdjustedLuma = dot(srgbToLinearApprox(rgb),
-        readabilityLumaWeights);
-    float existingDarkening = clamp((refractedBackdropLuma
-        - tintAdjustedLuma) / max(refractedBackdropLuma, 0.001), 0.0, 1.0);
-    // Preserve transmission on bright documents and white application
-    // surfaces. The previous 30% ceiling made a wide glass card look like a
-    // grey/black scrim; text readability is now chiefly provided by white ink
-    // and its local soft shadow, with only a restrained 4–20% material shift.
-    float totalDarkeningBudget = brightMask
-        * mix(0.04, 0.20, liquidResponse);
-    float brightDarkening = max(0.0, 1.0
-        - (1.0 - totalDarkeningBudget)
-        / max(1.0 - existingDarkening, 0.001));
-    float darkLift = darkMask * mix(0.04, 0.15, liquidResponse);
-    rgb *= 1.0 - brightDarkening;
-    rgb = mix(rgb, vec3(1.0), darkLift);
-
-    // A material role is a property of the whole card, never a property of
-    // individual fragments. Sampling the centre of the already low-pass
-    // backdrop gives one stable representative for a launcher window. The
-    // previous per-fragment test made a single card turn dark over white
-    // pixels while remaining clear over blue ones, producing a hard split.
-    vec3 materialProbe = texture(texUnit, vec2(0.5)).rgb;
-    float materialProbeLuma = dot(srgbToLinearApprox(materialProbe),
-        readabilityLumaWeights);
-    float materialProbeChroma = max(max(materialProbe.r, materialProbe.g),
-        materialProbe.b) - min(min(materialProbe.r, materialProbe.g),
-        materialProbe.b);
-    float nearWhiteNeutral = smoothstep(0.62, 0.88, materialProbeLuma)
-        * (1.0 - smoothstep(0.035, 0.150, materialProbeChroma));
-    float darkMaterialMix = nearWhiteNeutral * brightMaterialDarkStyle;
-    rgb = mix(rgb, vec3(0.035, 0.045, 0.060), darkMaterialMix);
-
-    // iOS-style material response for saturated middle tones: lift the
-    // transmitted colour slightly instead of treating chroma as luminance.
-    // Body chroma separation below supplies the accompanying soft scatter.
-    float chromaticLift = chromaticMidtone
-        * mix(0.025, 0.075, liquidResponse);
-    rgb = mix(rgb, vec3(1.0), chromaticLift);
-
-    // Keep material colour separation spatially uniform. Modulating it per
-    // fragment with backdrop complexity produced dirty saturation halos around
-    // isolated high-chroma shapes.
-    float bodyGray = dot(rgb, vec3(0.299, 0.587, 0.114));
-    float bodySeparation = 0.050 * liquidResponse;
-    rgb = mix(rgb, vec3(bodyGray), bodySeparation);
-    // Match WidgetGlassMaterial.qml: glints live only on straight edge
-    // segments, fade toward their endpoints, and never travel around a
-    // corner. That deliberate discontinuity is what prevents a capsule from
-    // reading as either a stroked outline or an embossed pill.
-    // KWin uploads texture V upside-down: screen top is positive position.y.
-    // roundedRectangleDist's xy radii are therefore the two visual top
-    // corners and zw are the visual bottom corners.
-    float topRadius = max(cornerRadius.x, cornerRadius.y);
-    float bottomRadius = max(cornerRadius.z, cornerRadius.w);
-    float leftRadius = max(cornerRadius.x, cornerRadius.z);
-    float rightRadius = max(cornerRadius.y, cornerRadius.w);
-    float horizontalHalfLength = max(halfBlurSize.x
-        - max(topRadius, bottomRadius) - 5.0, 0.0);
-    float verticalHalfLength = max(halfBlurSize.y
-        - max(leftRadius, rightRadius) - 12.0, 0.0);
-
-    float horizontalPosition = abs(position.x)
-        / max(horizontalHalfLength, 1.0);
-    float verticalPosition = abs(position.y)
-        / max(verticalHalfLength, 1.0);
-    float horizontalEnvelope = (1.0 - smoothstep(0.64, 1.0,
-        horizontalPosition)) * step(1.0, horizontalHalfLength);
-    float verticalEnvelope = (1.0 - smoothstep(0.56, 1.0,
-        verticalPosition)) * step(1.0, verticalHalfLength);
-
-    // The QML edge is 1.1 px high. Let its centre become slightly wider than
-    // its ends, preserving the requested middle-thick/end-thin character
-    // without creating a second inward band.
-    float topInside = halfBlurSize.y - position.y;
-    float bottomInside = position.y + halfBlurSize.y;
-    float leftInside = position.x + halfBlurSize.x;
-    float rightInside = halfBlurSize.x - position.x;
-    float glintWidthScale = clamp(highlightWidthPx / 3.0, 0.80, 1.20);
-    float topSigma = max(edgeAntialiasWidth * 0.52,
-        mix(0.43, 0.76, horizontalEnvelope) * glintWidthScale);
-    float bottomSigma = max(edgeAntialiasWidth * 0.48,
-        mix(0.40, 0.64, horizontalEnvelope) * glintWidthScale);
-    float sideSigma = max(edgeAntialiasWidth * 0.48,
-        mix(0.42, 0.62, verticalEnvelope) * glintWidthScale);
-    float topOffset = (topInside - 1.0) / topSigma;
-    float bottomOffset = (bottomInside - 1.0) / bottomSigma;
-    float leftOffset = (leftInside - 1.0) / sideSigma;
-    float rightOffset = (rightInside - 1.0) / sideSigma;
-    float topGlint = exp(-0.5 * topOffset * topOffset)
-        * horizontalEnvelope;
-    float bottomGlint = exp(-0.5 * bottomOffset * bottomOffset)
-        * horizontalEnvelope;
-    float sideGlint = (exp(-0.5 * leftOffset * leftOffset)
-        + exp(-0.5 * rightOffset * rightOffset)) * verticalEnvelope;
-
-    // Capsules have no straight vertical segment, but still need a small cue
-    // at each end to keep them separate from a similar-coloured backdrop.
-    // Light only the centre of each curved endcap and fade well before the
-    // top/bottom joins, so the arcs cannot close into a full outline.
-    float endcapSurface = 1.0 - smoothstep(0.0, 12.0,
-        verticalHalfLength);
-    float sideArcFacing = smoothstep(0.46, 0.98,
-        clamp(abs(bevel.outward.x), 0.0, 1.0));
-    float sideArcSigma = max(edgeAntialiasWidth * 0.58, 0.72);
-    float sideArcOffset = (edgeDistance - 1.0) / sideArcSigma;
-    float sideArcGlint = exp(-0.5 * sideArcOffset * sideArcOffset)
-        * pow(sideArcFacing, 1.8) * endcapSurface;
-
-    // A circle has no straight segment, so the QML-style masks above are
-    // intentionally empty. Give only these compact round surfaces a single
-    // top-left environmental arc. It fades before the opposite side and has
-    // no paired shade, avoiding both a full outline and an embossed disc.
-    float roundSurface = (1.0 - smoothstep(0.0, 8.0,
-        horizontalHalfLength)) * (1.0 - smoothstep(0.0, 8.0,
-        verticalHalfLength));
-    vec2 roundLightDirection = normalize(vec2(-0.42, 0.76));
-    float roundFacing = smoothstep(0.08, 0.92,
-        dot(bevel.outward, roundLightDirection));
-    float roundOffset = (edgeDistance - 1.0)
-        / max(edgeAntialiasWidth * 0.62, 0.68);
-    float roundGlint = exp(-0.5 * roundOffset * roundOffset)
-        * roundFacing * roundFacing * roundSurface;
-
-    // iOS reflections remain close to white on nearly every backdrop. Use the
-    // real framebuffer only to reduce their energy on bright pixels; never
-    // invert the glint into a dark stroke.
-    float opticalBackdropLuma = dot(srgbToLinearApprox(rgb),
-        readabilityLumaWeights);
-    float reflectionRoom = 1.0 - smoothstep(0.16, 0.72,
-        opticalBackdropLuma);
-    vec3 glintColor = vec3(0.965, 0.982, 1.0);
-    float glintVisibility = mix(0.62, 1.0, reflectionRoom);
-    float glintMask = (topGlint * 0.47 + bottomGlint * 0.30
-        + roundGlint * 0.36) * glintVisibility
-        * liquidResponse * surfaceScale;
-    rgb = mix(rgb, glintColor, clamp(glintMask, 0.0, 0.49));
-
-    // Side reflections use a slightly darker material colour and much less
-    // energy than the horizontal glints. Straight sides and curved endcaps
-    // share this response but do not overlap around the corner joins.
-    vec3 sideGlintColor = vec3(0.86, 0.90, 0.95);
-    float sideGlintMask = (sideGlint * 0.17 + sideArcGlint * 0.14)
-        * glintVisibility * liquidResponse * surfaceScale;
-    rgb = mix(rgb, sideGlintColor, clamp(sideGlintMask, 0.0, 0.18));
-    rgb = clamp(rgb, 0.0, 1.0);
+    rgb = applyLiquidGlints(rgb, position, halfBlurSize, cornerRadius, dist,
+        edgeAntialiasWidth);
 
     return roundedRectangle(uv * blurSize, rgb, cornerRadius);
 }
