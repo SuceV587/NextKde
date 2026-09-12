@@ -1,15 +1,20 @@
+import QtQuick
 import Quickshell
 import qs.desktop.modules.common
 
-// A desktop surface is intentionally independent from application windows.
-// ScreenLifecycle temporarily hides it while KWin has no real output.
+// 修复多屏：为所有连接的显示器挂载桌面层，实现三屏右键菜单 100% 绝对统一
 Scope {
     id: root
 
-    readonly property var targetScreen: ScreenLifecycle.activeScreen
+    Variants {
+        model: Quickshell.screens
 
-    DeskCenterWindow {
-        screen: root.targetScreen
-        visible: ScreenLifecycle.outputAvailable && root.targetScreen !== null
+        delegate: Component {
+            DeskCenterWindow {
+                required property var modelData
+                screen: modelData
+                visible: ScreenLifecycle.outputAvailable && modelData !== null
+            }
+        }
     }
 }

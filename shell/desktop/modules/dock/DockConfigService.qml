@@ -34,6 +34,14 @@ QtObject {
     // Runtime values (backed by JSON when available)
     // ═══════════════════════════════════════════════════════════
     property real   baseHeight:   60
+    // Dock 与屏幕边缘距离（悬浮间距，0~72pt，最低贴边，通用下左右）
+    property real   edgeMargin:   10
+    // Dock 栏小组件设置：总开关、模式（轮播/固定）、固定展示项、轮播参与项、轮播周期
+    property bool   showWidgets:      true
+    property string widgetMode:       "carousel" // "carousel" | "fixed"
+    property string fixedWidget:      "weather"  // "weather" | "temperature" | "clock" | "music"
+    property var    enabledWidgets:   ({ weather: true, temperature: true, clock: false, music: true })
+    property int    carouselInterval: 30         // 秒
     property string theme:        "system"
     property string position:     "bottom"
     // Reserved strip of the top status bar. Side docks subtract it from the
@@ -151,6 +159,80 @@ QtObject {
         if (Math.abs(baseHeight - height) <= 0.01)
             return false
         baseHeight = height
+        scheduleSave()
+        return true
+    }
+
+    // 边距控制（距屏幕边缘距离）：限制在 0 ~ 72 pt 之间，最低 0 贴合边缘
+    function updateEdgeMargin(rawMargin) {
+        const margin = Math.max(0, Math.min(72, Number(rawMargin)))
+        if (!Number.isFinite(margin))
+            return false
+        if (Math.abs(edgeMargin - margin) <= 0.01)
+            return false
+        edgeMargin = margin
+        scheduleSave()
+        return true
+    }
+
+    // 检查指定 Dock 小组件当前是否应该显示
+    function isDockWidgetEnabled(id) {
+        if (!showWidgets)
+            return false
+        if (widgetMode === "fixed")
+            return fixedWidget === id
+        if (enabledWidgets && enabledWidgets[id] !== undefined)
+            return Boolean(enabledWidgets[id])
+        return id !== "clock"
+    }
+
+    function updateShowWidgets(rawEnabled) {
+        const nextEnabled = Boolean(rawEnabled)
+        if (showWidgets === nextEnabled)
+            return false
+        showWidgets = nextEnabled
+        scheduleSave()
+        return true
+    }
+
+    function updateWidgetMode(rawMode) {
+        const mode = String(rawMode)
+        if (mode !== "carousel" && mode !== "fixed")
+            return false
+        if (widgetMode === mode)
+            return false
+        widgetMode = mode
+        scheduleSave()
+        return true
+    }
+
+    function updateFixedWidget(rawId) {
+        const id = String(rawId)
+        if (id !== "weather" && id !== "temperature" && id !== "clock" && id !== "music")
+            return false
+        if (fixedWidget === id)
+            return false
+        fixedWidget = id
+        scheduleSave()
+        return true
+    }
+
+    function updateDockWidgetEnabled(id, rawEnabled) {
+        const enabled = Boolean(rawEnabled)
+        const map = Object.assign({}, enabledWidgets || {})
+        if (map[id] === enabled)
+            return false
+        map[id] = enabled
+        enabledWidgets = map
+        scheduleSave()
+        return true
+    }
+
+    function updateCarouselInterval(rawSeconds) {
+        const secs = Math.max(5, Math.min(300, Number(rawSeconds)))
+        if (!Number.isFinite(secs) || carouselInterval === secs)
+            return false
+        carouselInterval = secs
         scheduleSave()
         return true
     }
@@ -369,6 +451,7 @@ QtObject {
         const obj = {
             version: 3,
             baseHeight:    svc.baseHeight,
+            edgeMargin:    svc.edgeMargin,
             theme:         svc.theme,
             position:      svc.position,
             barHeight:     svc.barHeight,
@@ -385,6 +468,12 @@ QtObject {
             visibilityMode: svc.visibilityMode,
             // Grouping mode (macOS style vs separate)
             windowGrouping: svc.windowGrouping,
+            // Dock 栏小组件设置
+            showWidgets:      svc.showWidgets,
+            widgetMode:       svc.widgetMode,
+            fixedWidget:      svc.fixedWidget,
+            enabledWidgets:   svc.enabledWidgets,
+            carouselInterval: svc.carouselInterval,
         }
         const json = JSON.stringify(obj, null, 2)
         console.log("[DockConfig] save requested path=" + svc.configPath
@@ -472,6 +561,11 @@ QtObject {
 
     function _apply(obj) {
         if (obj.baseHeight   !== undefined) svc.baseHeight   = obj.baseHeight
+        if (obj.edgeMargin   !== undefined) {
+            const margin = Math.max(0, Math.min(72, Number(obj.edgeMargin)))
+            if (Number.isFinite(margin))
+                svc.edgeMargin = margin
+        }
         if (obj.position !== undefined) {
             if (isValidPosition(obj.position)) {
                 svc.position = obj.position
@@ -547,6 +641,16 @@ QtObject {
                 scheduleSave()
             }
         }
+        if (obj.showWidgets !== undefined)
+            svc.showWidgets = Boolean(obj.showWidgets)
+        if (obj.widgetMode === "carousel" || obj.widgetMode === "fixed")
+            svc.widgetMode = obj.widgetMode
+        if (obj.fixedWidget !== undefined)
+            svc.fixedWidget = String(obj.fixedWidget)
+        if (obj.enabledWidgets !== undefined && typeof obj.enabledWidgets === "object")
+            svc.enabledWidgets = obj.enabledWidgets
+        if (Number.isFinite(Number(obj.carouselInterval)))
+            svc.carouselInterval = Math.max(5, Math.min(300, Number(obj.carouselInterval)))
         applyVisibilityMode(obj)
     }
 

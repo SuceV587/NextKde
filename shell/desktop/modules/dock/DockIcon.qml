@@ -700,18 +700,18 @@ Item {
                 const pinned = icon.isPinnedItem || DockModelService.isAppPinned(icon.appId)
                 contextMenu.clear()
                 if (icon.isWindowItem) {
-                    contextMenu.addItem("", "激活窗口", "activate")
-                    contextMenu.addItem("", "最小化", "minimize")
-                    contextMenu.addItem("", "关闭窗口", "close")
-                    contextMenu.addItem("", "新建窗口", "new_window")
-                    contextMenu.addItem(pinned ? "" : "",
+                    contextMenu.addItem("🗖", "激活窗口", "activate")
+                    contextMenu.addItem("—", "最小化", "minimize")
+                    contextMenu.addItem("✕", "关闭窗口", "close")
+                    contextMenu.addItem("＋", "新建窗口", "new_window")
+                    contextMenu.addItem(pinned ? "⊘" : "📌",
                         pinned ? "取消固定" : "固定此应用", pinned ? "unpin" : "pin")
                 } else {
-                    contextMenu.addItem("", "打开", "open")
-                    contextMenu.addItem("", "新建窗口", "new_window")
+                    contextMenu.addItem("📁", "打开", "open")
+                    contextMenu.addItem("＋", "新建窗口", "new_window")
                     if (icon.isRunning)
-                        contextMenu.addItem("", "关闭所有窗口", "close_all")
-                    contextMenu.addItem(pinned ? "" : "",
+                        contextMenu.addItem("✕", "关闭所有窗口", "close_all")
+                    contextMenu.addItem(pinned ? "⊘" : "📌",
                         pinned ? "取消固定" : "固定此应用", pinned ? "unpin" : "pin")
                 }
                 DockModelService.activeContextMenu = contextMenu

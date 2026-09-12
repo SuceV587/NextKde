@@ -53,7 +53,7 @@ PanelWindow {
         AppearanceConfigService.barIntegratedWithDock
     readonly property real topInset: barIntegratedWithDock
         ? 24 : Math.max(56, ConfigService.barHeight + 21)
-    readonly property real bottomInset: Math.max(96, AppLauncherService.dockHeight + 24)
+    readonly property real bottomInset: Math.max(96, AppLauncherService.dockHeight + (ConfigService.edgeMargin !== undefined ? ConfigService.edgeMargin : 10) + 24)
     // A side dock reserves its own strip on the left/right edge; shift the
     // grid and the desktop file field inward so the dock never covers them.
     // AppLauncherService.dockHeight is the dock's short edge, which is
@@ -63,10 +63,10 @@ PanelWindow {
     // so reserving would leave an empty gap next to the collapsed bar.
     readonly property real leftInset: ConfigService.position === "left"
         && ConfigService.visibilityMode === "always"
-        ? AppLauncherService.dockHeight + 24 : root.sideMargin
+        ? AppLauncherService.dockHeight + (ConfigService.edgeMargin !== undefined ? ConfigService.edgeMargin : 10) + 24 : root.sideMargin
     readonly property real rightInset: ConfigService.position === "right"
         && ConfigService.visibilityMode === "always"
-        ? AppLauncherService.dockHeight + 24 : root.sideMargin
+        ? AppLauncherService.dockHeight + (ConfigService.edgeMargin !== undefined ? ConfigService.edgeMargin : 10) + 24 : root.sideMargin
     readonly property real gap: AppearanceTokens.widget.gap
     readonly property real cellSize: Math.max(1,
         (width - layoutBaseSideMargin * 2
@@ -189,7 +189,9 @@ PanelWindow {
     readonly property var widgetDefinitions: {
         // Make the binding depend on persisted configuration changes.
         const revision = DeskCenterConfigService.revision
-        return [
+        if (!DeskCenterConfigService.widgetsEnabled)
+            return []
+        const defs = [
             configuredWidget("clock", 100, "#536783", "#35465f"),
             configuredWidget("weather", 90, "#536b94", "#394b70"),
             configuredWidget("calendar", 80, "#fff8fa", "#f3e8ed"),
@@ -198,6 +200,7 @@ PanelWindow {
             configuredWidget("activity", 60, "#40506a", "#29364e"),
             configuredWidget("music", 50, "#51415d", "#332a3d")
         ]
+        return defs.filter(w => DeskCenterConfigService.isWidgetEnabled(w.id))
     }
     readonly property var weatherTheme: WeatherTheme.theme(WeatherService.weatherCode, WeatherService.isDay)
 
@@ -252,7 +255,7 @@ PanelWindow {
     }
 
     Repeater {
-        model: root.widgetDefinitions
+        model: (root.screen === ScreenLifecycle.activeScreen) ? root.widgetDefinitions : []
 
         delegate: DeskWidgetCard {
             id: card
@@ -2055,7 +2058,7 @@ PanelWindow {
     // columns from right to left and rows from top to bottom.
     Item {
         id: desktopFileGrid
-        x: root.leftInset + 4 * (root.cellSize + root.gap)
+        x: root.leftInset + (DeskCenterConfigService.widgetsEnabled && root.placements.length > 0 ? 4 * (root.cellSize + root.gap) : 0)
         y: root.topInset
         width: root.width - x - root.rightInset
         height: root.height - y - root.bottomInset
@@ -2597,13 +2600,13 @@ PanelWindow {
         }
 
         function iconFor(kind) {
-            if (kind === "folder") return ""
-            if (kind === "image") return ""
+            if (kind === "folder") return "📁"
+            if (kind === "image") return "🖼"
             if (kind === "pdf") return ""
             if (kind === "code") return ""
             if (kind === "text") return "󰈙"
             if (kind === "launcher") return ""
-            return ""
+            return "📄"
         }
 
         function canChooseOpenWith(entry) {
@@ -2766,32 +2769,32 @@ PanelWindow {
                             owKids.push({ icon: "", label: applicationName(id), cmd: "openWith", value: id, enabled: true })
                     }
                     owKids.push(_ctxAct("其他应用程序…", "openWithMore", ""))
-                    root.push(_ctxSub("打开方式", owKids, ""))
+                    root.push(_ctxSub("打开方式", owKids, "📂"))
                 }
 
-                root.push(_ctxAct("复制", "copy", ""))
-                root.push(_ctxAct("剪切", "cut", ""))
-                root.push(_ctxAct("移到废纸篓", "trash", ""))
-                root.push(_ctxAct("在文件管理器中打开", "open", ""))
+                root.push(_ctxAct("复制", "copy", "📋"))
+                root.push(_ctxAct("剪切", "cut", "✂"))
+                root.push(_ctxAct("移到废纸篓", "trash", "🗑"))
+                root.push(_ctxAct("在文件管理器中打开", "open", "📁"))
             } else {
                 // desktop background
-                root.push(_ctxAct("新建文件", "newFile", ""))
-                root.push(_ctxAct("新建文件夹", "newFolder", ""))
-                root.push(_ctxAct("粘贴", "paste", ""))
+                root.push(_ctxAct("新建文件", "newFile", "📄"))
+                root.push(_ctxAct("新建文件夹", "newFolder", "📁"))
+                root.push(_ctxAct("粘贴", "paste", "📋"))
                 const arrange = [
-                    _ctxAct("按名称", "arrangeByName", ""), _ctxAct("按类型", "arrangeByType", ""),
-                    _ctxAct("按修改时间（最新）", "arrangeModifiedNew", ""),
-                    _ctxAct("按修改时间（最早）", "arrangeModifiedOld", "")
+                    _ctxAct("按名称", "arrangeByName", "☰"), _ctxAct("按类型", "arrangeByType", "▦"),
+                    _ctxAct("按修改时间（最新）", "arrangeModifiedNew", "🕒"),
+                    _ctxAct("按修改时间（最早）", "arrangeModifiedOld", "🕒")
                 ]
-                root.push(_ctxSub("整理方式", arrange, ""))
-                root.push(_ctxAct("重置图标排序", "resetLayout", ""))
+                root.push(_ctxSub("整理方式", arrange, "↕"))
+                root.push(_ctxAct("重置图标排序", "resetLayout", "↺"))
                 root.push(_ctxCheck("显示文件扩展名", "toggleExtensions", null,
-                    desktopLayout.showExtensions, ""))
+                    desktopLayout.showExtensions, "📄"))
                 const sizeKids = [[40, "小"], [56, "中"], [72, "大"]]
                     .map(([px, l]) => _ctxCheck(l, "setIconSize", px,
-                        iconSize === px, ""))
-                root.push(_ctxSub("图标大小", sizeKids, ""))
-                root.push(_ctxAct("刷新", "refresh", ""))
+                        iconSize === px, "○"))
+                root.push(_ctxSub("图标大小", sizeKids, "🖼"))
+                root.push(_ctxAct("刷新", "refresh", "↻"))
             }
             return root
         }

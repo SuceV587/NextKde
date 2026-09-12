@@ -22,7 +22,8 @@ PanelWindow {
     // plugin can give it its own highlight direction.
     WlrLayershell.namespace: "quickshell-dock"
     color: "transparent"
-    exclusionMode: ExclusionMode.Normal
+    exclusionMode: ConfigService.visibilityMode === "always"
+        ? ExclusionMode.Normal : ExclusionMode.Ignore
     // The Dock lives on Top, but the fullscreen launcher (a Top surface
     // covering the whole output) must render beneath the Dock. While that
     // launcher is open, the Dock promotes to Overlay; the launcher demotes
@@ -55,7 +56,8 @@ PanelWindow {
     property bool clockInInfoCarousel: false
     readonly property bool vertical: root.position === "left"
         || root.position === "right"
-    readonly property int edgeMargin: AppearanceTokens.dock.edgeMargin
+    readonly property int edgeMargin: (ConfigService.edgeMargin !== undefined)
+        ? ConfigService.edgeMargin : AppearanceTokens.dock.edgeMargin
     readonly property int workspaceGap: AppearanceTokens.dock.workspaceGap
     // Wayland does not expose a trustworthy QWindow global position to QML.
     // Derive this layer surface's compositor-global origin from the output it
@@ -132,7 +134,8 @@ PanelWindow {
         // exactly under the visible bar (§6.4).
         RoundedBlurRegion {
             id: barRegion
-            item: revealHandle.visualBar
+            item: (revealHandle.active && revealHandle.fadeOpacity > 0.01)
+                ? revealHandle.visualBar : null
             radius: Math.min(revealHandle.visualThickness,
                 revealHandle.barLength) / 2
         }
@@ -174,6 +177,7 @@ PanelWindow {
     onPositionChanged: layoutPublishTimer.restart()
     onRestXChanged: layoutPublishTimer.restart()
     onRestYChanged: layoutPublishTimer.restart()
+    onEdgeMarginChanged: layoutPublishTimer.restart()
     onSurfaceGlobalXChanged: layoutPublishTimer.restart()
     onSurfaceGlobalYChanged: layoutPublishTimer.restart()
 

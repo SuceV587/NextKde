@@ -66,7 +66,7 @@ Item {
             visible: row.icon.length > 0
             width: visible ? 18 : 0
             text: row.icon
-            font.family: "Font Awesome 7 Free"
+            font.family: "Font Awesome 7 Free Solid, Font Awesome 7 Free, Symbols Nerd Font, sans-serif"
             font.pixelSize: 13
             color: row.foregroundColor
             opacity: 0.85
