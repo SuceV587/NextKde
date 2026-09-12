@@ -64,6 +64,7 @@ Item {
                 ? ConfigService.windowGrouping : "grouped"
             return JSON.stringify({
                 baseHeight: ConfigService.baseHeight,
+                edgeMargin: ConfigService.edgeMargin,
                 theme: theme,
                 position: position,
                 iconMode: iconMode,
@@ -71,11 +72,21 @@ Item {
                 iconTintColor: ConfigService.iconTintColor,
                 visibilityMode,
                 windowGrouping,
+                showWidgets: ConfigService.showWidgets,
+                widgetMode: ConfigService.widgetMode,
+                fixedWidget: ConfigService.fixedWidget,
+                enabledWidgets: ConfigService.enabledWidgets,
+                carouselInterval: ConfigService.carouselInterval,
             })
         }
 
         function updateLayout(height: real): string {
             ConfigService.updateLayout(height)
+            return snapshot()
+        }
+
+        function updateEdgeMargin(margin: real): string {
+            ConfigService.updateEdgeMargin(margin)
             return snapshot()
         }
 
@@ -114,6 +125,87 @@ Item {
             return snapshot()
         }
 
+        function updateShowWidgets(enabled: bool): string {
+            ConfigService.updateShowWidgets(enabled)
+            return snapshot()
+        }
+
+        function updateWidgetMode(mode: string): string {
+            ConfigService.updateWidgetMode(mode)
+            return snapshot()
+        }
+
+        function updateFixedWidget(widget: string): string {
+            ConfigService.updateFixedWidget(widget)
+            return snapshot()
+        }
+
+        function updateDockWidgetEnabled(id: string, enabled: bool): string {
+            ConfigService.updateDockWidgetEnabled(id, enabled)
+            return snapshot()
+        }
+
+        function updateCarouselInterval(seconds: int): string {
+            ConfigService.updateCarouselInterval(seconds)
+            return snapshot()
+        }
+    }
+
+    // 桌面与 Dock 小组件统一管理 IPC 接口
+    IpcHandler {
+        target: "widget-settings"
+
+        function snapshot(): string {
+            return JSON.stringify({
+                desktopWidgetsEnabled: DeskCenterConfigService.widgetsEnabled,
+                widgets: DeskCenterConfigService.allWidgetsStatus(),
+                dockShowWidgets: ConfigService.showWidgets,
+                dockWidgetMode: ConfigService.widgetMode,
+                dockFixedWidget: ConfigService.fixedWidget,
+                dockEnabledWidgets: ConfigService.enabledWidgets,
+                dockCarouselInterval: ConfigService.carouselInterval
+            })
+        }
+
+        function updateDesktopWidgetsEnabled(enabled: bool): string {
+            DeskCenterConfigService.setWidgetsEnabled(enabled)
+            return snapshot()
+        }
+
+        function updateDesktopWidgetEnabled(id: string, enabled: bool): string {
+            DeskCenterConfigService.setWidgetEnabled(id, enabled)
+            return snapshot()
+        }
+
+        function updateDesktopWidgetSize(id: string, size: string): string {
+            DeskCenterConfigService.setSize(id, size)
+            return snapshot()
+        }
+
+        function updateDockShowWidgets(enabled: bool): string {
+            ConfigService.updateShowWidgets(enabled)
+            return snapshot()
+        }
+
+        function updateDockWidgetMode(mode: string): string {
+            ConfigService.updateWidgetMode(mode)
+            return snapshot()
+        }
+
+        function updateDockFixedWidget(widget: string): string {
+            ConfigService.updateFixedWidget(widget)
+            return snapshot()
+        }
+
+        function updateDockWidgetEnabled(id: string, enabled: bool): string {
+            ConfigService.updateDockWidgetEnabled(id, enabled)
+            return snapshot()
+        }
+
+        function updateDockCarouselInterval(seconds: int): string {
+            ConfigService.updateCarouselInterval(seconds)
+            return snapshot()
+        }
     }
 
     // Shell-wide appearance controls used by the standalone Settings app.
@@ -300,7 +392,8 @@ Item {
                 dataConnected: DataClient.socket.connected,
                 outputAvailable: ScreenLifecycle.outputAvailable,
                 desktopWidgetsVisible: ScreenLifecycle.outputAvailable
-                    && ScreenLifecycle.activeScreen !== null,
+                    && ScreenLifecycle.activeScreen !== null
+                    && DeskCenterConfigService.widgetsEnabled,
                 desktopFilesReady: DesktopFilesService.ready,
             })
         }

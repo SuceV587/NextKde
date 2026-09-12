@@ -23,8 +23,15 @@ QtObject {
 
     readonly property string configPath: Quickshell.env("HOME")
         + "/.config/plasma-org.kde.plasma.desktop-appletsrc"
-    // Keep this aligned with shell.qml's primaryScreen selection.
-    readonly property int preferredScreen: Quickshell.screens.length > 1 ? 1 : 0
+    // 动态对齐 ScreenLifecycle 的激活主屏幕，避免写死屏幕索引导致的取色偏差
+    readonly property var activeScreen: ScreenLifecycle.activeScreen
+    readonly property int preferredScreen: {
+        if (!activeScreen) return 0
+        for (let i = 0; i < Quickshell.screens.length; ++i) {
+            if (Quickshell.screens[i] === activeScreen) return i
+        }
+        return 0
+    }
     property url wallpaperUrl: ""
     property string configuredWallpaperUrl: ""
     // Keep a QML-owned reference while resolving a wallpaper package.
@@ -66,8 +73,7 @@ QtObject {
             _resolveProcess = null
         }
 
-        const screen = Quickshell.screens[Math.min(preferredScreen,
-            Math.max(0, Quickshell.screens.length - 1))]
+        const screen = activeScreen || (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
         const targetAspect = screen && screen.height > 0
             ? screen.width / screen.height : 16 / 9
         const packagePath = decodeURIComponent(nextUrl

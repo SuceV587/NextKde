@@ -399,7 +399,15 @@ Item {
     onPositionChanged: ctl._scheduleEvaluate()
     onDockWidthChanged: ctl._scheduleEvaluate()
     onDockHeightChanged: ctl._scheduleEvaluate()
-    onPointerInsideDockChanged: ctl._scheduleEvaluate()
+    onPointerInsideDockChanged: {
+        if (ctl.pointerInsideDock)
+            ctl._handleHovered = false
+        ctl._scheduleEvaluate()
+    }
+    onPhaseChanged: {
+        if (ctl.phase === "Shown")
+            ctl._handleHovered = false
+    }
     on_HandleHoveredChanged: ctl._scheduleEvaluate()
     onEditingChanged: ctl._scheduleEvaluate()
     onDraggingChanged: ctl._scheduleEvaluate()
