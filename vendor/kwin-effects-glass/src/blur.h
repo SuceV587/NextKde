@@ -190,6 +190,55 @@ private:
         int refractionBevelIntensityLocation;
         int physicallyBasedRefractionLocation;
 
+        int bionicModeLocation;
+        int bionicLumValue0Location;
+        int bionicLumValue1Location;
+        int bionicLumValue2Location;
+        int bionicLumValue3Location;
+        int bionicLumAmountLocation;
+        int bionicBrightnessLocation;
+        int bionicHsvvBoostLocation;
+        int bionicDarkerLocation;
+        int bionicDarkerRange0Location;
+        int bionicDarkerRange1Location;
+        int bionicInnerBottomLocation;
+        int bionicInnerColorWhiteLocation;
+        int bionicInnerColorMixLocation;
+        int bionicColorPowLocation;
+        int bionicAlphaLocation;
+        int bionicOverallAlphaLocation;
+        int bionicShapeEdgePxLocation;
+        int bionicShapeEdgePowLocation;
+        int bionicShapeThicknessPxLocation;
+        int bionicShapeReflectOffsetPxLocation;
+        int bionicReflLightenLocation;
+        int bionicReflStrengthLocation;
+        int bionicDirXLocation;
+        int bionicDirYLocation;
+        int bionicDirZLocation;
+        int bionicDirIntensityLocation;
+        int bionicDirOppositeIntensityLocation;
+        int bionicDirAngleRangeLocation;
+        int bionicDirEdgePowLocation;
+        int bionicIORLocation;
+        int bionicFlowTimeLocation;
+        int bionicFlowAmpLocation;
+        int bionicBgColorSaturationLocation;
+        int bionicBgColorBrightnessLocation;
+
+        int classicModeLocation;
+        int classicDark0Location;
+        int classicDark1Location;
+        int classicDark2Location;
+        int classicLight0Location;
+        int classicLight1Location;
+        int classicLight2Location;
+        int classicStrokeLocation;
+        int classicRefractIORLocation;
+        int classicReflLightenLocation;
+        int classicReflStrengthLocation;
+        int classicMaskSoftLocation;
+
         int tintColorLocation;
         int tintGrayLocation;
         int tintStrengthLocation;
@@ -241,6 +290,11 @@ private:
     BlurRegion m_paintedDeviceArea; // keeps track of all painted areas (from bottom to top)
     BlurRegion m_currentDeviceBlur; // keeps track of currently blurred area of the windows (from bottom to top)
     BlurOutput *m_currentOutput = nullptr;
+
+    // Per-window bionic activation amount (0..1), driving the native
+    // ACTIVATED parameter set on hover. Smoothed per frame in blur().
+    QHash<EffectWindow *, float> m_bionicActivation;
+    QPointF m_lastCursorPos;
 
     QMatrix4x4 m_colorMatrix;
     int m_expandSize;
