@@ -148,6 +148,51 @@ BlurEffect::BlurEffect()
         m_roundedOnscreenPass.refractionOffsetStrengthLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionOffsetStrength");
         m_roundedOnscreenPass.refractionBevelIntensityLocation = m_roundedOnscreenPass.shader->uniformLocation("refractionBevelIntensity");
         m_roundedOnscreenPass.physicallyBasedRefractionLocation = m_roundedOnscreenPass.shader->uniformLocation("physicallyBasedRefraction");
+        m_roundedOnscreenPass.bionicModeLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicMode");
+        m_roundedOnscreenPass.bionicLumValue0Location = m_roundedOnscreenPass.shader->uniformLocation("bionicLumValue0");
+        m_roundedOnscreenPass.bionicLumValue1Location = m_roundedOnscreenPass.shader->uniformLocation("bionicLumValue1");
+        m_roundedOnscreenPass.bionicLumValue2Location = m_roundedOnscreenPass.shader->uniformLocation("bionicLumValue2");
+        m_roundedOnscreenPass.bionicLumValue3Location = m_roundedOnscreenPass.shader->uniformLocation("bionicLumValue3");
+        m_roundedOnscreenPass.bionicLumAmountLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicLumAmount");
+        m_roundedOnscreenPass.bionicBrightnessLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicBrightness");
+        m_roundedOnscreenPass.bionicHsvvBoostLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicHsvvBoost");
+        m_roundedOnscreenPass.bionicDarkerLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicDarker");
+        m_roundedOnscreenPass.bionicDarkerRange0Location = m_roundedOnscreenPass.shader->uniformLocation("bionicDarkerRange0");
+        m_roundedOnscreenPass.bionicDarkerRange1Location = m_roundedOnscreenPass.shader->uniformLocation("bionicDarkerRange1");
+        m_roundedOnscreenPass.bionicInnerBottomLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicInnerBottom");
+        m_roundedOnscreenPass.bionicInnerColorWhiteLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicInnerColorWhite");
+        m_roundedOnscreenPass.bionicInnerColorMixLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicInnerColorMix");
+        m_roundedOnscreenPass.bionicColorPowLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicColorPow");
+        m_roundedOnscreenPass.bionicAlphaLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicAlpha");
+        m_roundedOnscreenPass.bionicOverallAlphaLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicOverallAlpha");
+        m_roundedOnscreenPass.bionicShapeEdgePxLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicShapeEdgePx");
+        m_roundedOnscreenPass.bionicShapeEdgePowLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicShapeEdgePow");
+        m_roundedOnscreenPass.bionicShapeThicknessPxLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicShapeThicknessPx");
+        m_roundedOnscreenPass.bionicShapeReflectOffsetPxLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicShapeReflectOffsetPx");
+        m_roundedOnscreenPass.bionicReflLightenLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicReflLighten");
+        m_roundedOnscreenPass.bionicReflStrengthLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicReflStrength");
+        m_roundedOnscreenPass.bionicDirXLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicDirX");
+        m_roundedOnscreenPass.bionicDirYLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicDirY");
+        m_roundedOnscreenPass.bionicDirZLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicDirZ");
+        m_roundedOnscreenPass.bionicDirIntensityLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicDirIntensity");
+        m_roundedOnscreenPass.bionicDirOppositeIntensityLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicDirOppositeIntensity");
+        m_roundedOnscreenPass.bionicDirAngleRangeLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicDirAngleRange");
+        m_roundedOnscreenPass.bionicDirEdgePowLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicDirEdgePow");
+        m_roundedOnscreenPass.bionicIORLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicIOR");
+        m_roundedOnscreenPass.bionicBgColorSaturationLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicBgColorSaturation");
+        m_roundedOnscreenPass.bionicBgColorBrightnessLocation = m_roundedOnscreenPass.shader->uniformLocation("bionicBgColorBrightness");
+        m_roundedOnscreenPass.classicModeLocation = m_roundedOnscreenPass.shader->uniformLocation("classicMode");
+        m_roundedOnscreenPass.classicDark0Location = m_roundedOnscreenPass.shader->uniformLocation("classicDark0");
+        m_roundedOnscreenPass.classicDark1Location = m_roundedOnscreenPass.shader->uniformLocation("classicDark1");
+        m_roundedOnscreenPass.classicDark2Location = m_roundedOnscreenPass.shader->uniformLocation("classicDark2");
+        m_roundedOnscreenPass.classicLight0Location = m_roundedOnscreenPass.shader->uniformLocation("classicLight0");
+        m_roundedOnscreenPass.classicLight1Location = m_roundedOnscreenPass.shader->uniformLocation("classicLight1");
+        m_roundedOnscreenPass.classicLight2Location = m_roundedOnscreenPass.shader->uniformLocation("classicLight2");
+        m_roundedOnscreenPass.classicStrokeLocation = m_roundedOnscreenPass.shader->uniformLocation("classicStroke");
+        m_roundedOnscreenPass.classicRefractIORLocation = m_roundedOnscreenPass.shader->uniformLocation("classicRefractIOR");
+        m_roundedOnscreenPass.classicReflLightenLocation = m_roundedOnscreenPass.shader->uniformLocation("classicReflLighten");
+        m_roundedOnscreenPass.classicReflStrengthLocation = m_roundedOnscreenPass.shader->uniformLocation("classicReflStrength");
+        m_roundedOnscreenPass.classicMaskSoftLocation = m_roundedOnscreenPass.shader->uniformLocation("classicMaskSoft");
         m_roundedOnscreenPass.tintColorLocation = m_roundedOnscreenPass.shader->uniformLocation("tintColor");
         m_roundedOnscreenPass.tintGrayLocation = m_roundedOnscreenPass.shader->uniformLocation("tintGray");
         m_roundedOnscreenPass.tintStrengthLocation = m_roundedOnscreenPass.shader->uniformLocation("tintStrength");
@@ -211,6 +256,24 @@ BlurEffect::BlurEffect()
 
     connect(effects, &EffectsHandler::windowAdded, this, &BlurEffect::slotWindowAdded);
     connect(effects, &EffectsHandler::windowDeleted, this, &BlurEffect::slotWindowDeleted);
+    m_lastCursorPos = effects->cursorPos();
+    connect(effects, &EffectsHandler::mouseChanged, this,
+            [this](const QPointF &pos, const QPointF &oldpos,
+                   Qt::MouseButtons, Qt::MouseButtons,
+                   Qt::KeyboardModifiers, Qt::KeyboardModifiers) {
+                Q_UNUSED(oldpos)
+                m_lastCursorPos = pos;
+                if (!m_settings.bionic.enabled) {
+                    return;
+                }
+                // Repaint only when the cursor can affect a glass surface.
+                for (auto it = m_bionicActivation.constBegin(); it != m_bionicActivation.constEnd(); ++it) {
+                    if (it.key()->frameGeometry().adjusted(-80, -80, 80, 80).contains(pos)) {
+                        effects->addRepaintFull();
+                        break;
+                    }
+                }
+            });
 #ifdef GLASS_X11
     connect(effects, &EffectsHandler::screenRemoved, this, &BlurEffect::slotOutputRemoved);
 #else
@@ -342,18 +405,37 @@ void BlurEffect::initBlurStrengthValues()
 
 void BlurEffect::reconfigure(ReconfigureFlags flags)
 {
+    // KConfig keeps an in-memory copy of the effects config, and
+    // BlurConfig::instance() only ever builds a single KConfigSkeleton bound
+    // to that cached copy. A plain read() therefore returns whatever KWin saw
+    // when it started, so runtime appearance changes written by the shell
+    // (material tuning written by the shell) never reached the shader until
+    // the whole compositor was restarted. Reparse the very config object
+    // BlurConfig is bound to before reading it back.
+    if (auto config = effects->config()) {
+        config->reparseConfiguration();
+    }
     m_settings.read();
 
+    // Bionic (HyperOS soft glass) mode owns the blur budget: the shell's
+    // blur-strength knobs are retired while it is active and a single
+    // BionicBlur value drives every surface.
+    const int bionicBlurPick = m_settings.bionic.enabled
+        ? qBound(0, m_settings.bionic.blur - 1, 14)
+        : -1;
+    const auto pickBlur = [&](int value) {
+        return bionicBlurPick >= 0 ? bionicBlurPick : value;
+    };
     m_contentBlurSettings = pipelineSettingsForStrength(
-        m_settings.general.blurStrength,
+        pickBlur(m_settings.general.blurStrength),
         m_settings.general.noiseStrength
     );
     m_decorationBlurSettings = pipelineSettingsForStrength(
-        m_settings.general.decorationBlurStrength,
+        pickBlur(m_settings.general.decorationBlurStrength),
         m_settings.general.decorationNoiseStrength
     );
     m_dockBlurSettings = pipelineSettingsForStrength(
-        m_settings.general.dockBlurStrength,
+        pickBlur(m_settings.general.dockBlurStrength),
         m_settings.general.dockNoiseStrength
     );
     // AppearanceConfig maps 0..1 to 15 stored levels with
@@ -361,7 +443,7 @@ void BlurEffect::reconfigure(ReconfigureFlags flags)
     // zero-based pipeline index. 15% therefore maps to index 2.
     constexpr int fullScreenLauncherMinimumBlurIndex = 2;
     m_fullScreenLauncherBlurSettings = pipelineSettingsForStrength(
-        std::max(m_settings.general.blurStrength,
+        std::max(pickBlur(m_settings.general.blurStrength),
                  fullScreenLauncherMinimumBlurIndex),
         m_settings.general.noiseStrength
     );
@@ -654,6 +736,7 @@ void BlurEffect::slotWindowDeleted(EffectWindow *w)
         disconnect(*it);
         windowFrameGeometryChangedConnections.erase(it);
     }
+    m_bionicActivation.remove(w);
     repaintDynamicCorners();
 }
 
@@ -1741,6 +1824,86 @@ void BlurEffect::blur(const RenderTarget &renderTarget, const RenderViewport &vi
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionOffsetStrengthLocation, m_settings.refraction.refractionOffsetStrength);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.refractionBevelIntensityLocation, m_settings.refraction.refractionBevelIntensity);
     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.physicallyBasedRefractionLocation, m_settings.refraction.physicallyBased ? 1 : 0);
+    // Bionic hover activation (native ACTIVATED token): per-window amount.
+    // NOTE: the ACTIVATED colorPow (0.4) is deliberately NOT applied — pow()
+    // lifts the whole surface (0.1 -> 0.4), reading as "the entire card goes
+    // white". Only the local passes (darker / directional pair) animate.
+    // smoothed per frame; the directional set fades between the default and
+    // activated values.
+    float bionicAct = 0.0f;
+    if (m_settings.bionic.enabled) {
+        const bool hover = w->frameGeometry().contains(m_lastCursorPos);
+        const float target = hover ? 1.0f : 0.0f;
+        float &act = m_bionicActivation[w];
+        act += (target - act) * 0.16f;
+        if (std::abs(target - act) < 0.005f) {
+            act = target;
+        }
+        if (act != target) {
+            effects->addRepaint(w->frameGeometry().toAlignedRect());
+        }
+        bionicAct = act;
+    } else {
+        m_bionicActivation.remove(w);
+    }
+    const auto bionicMix = [bionicAct](float base, float active) {
+        return base + (active - base) * bionicAct;
+    };
+
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicModeLocation, m_settings.bionic.enabled ? 1 : 0);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicLumValue0Location, m_settings.bionic.lumValue0);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicLumValue1Location, m_settings.bionic.lumValue1);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicLumValue2Location, m_settings.bionic.lumValue2);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicLumValue3Location, m_settings.bionic.lumValue3);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicLumAmountLocation, m_settings.bionic.lumAmount);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicBrightnessLocation, m_settings.bionic.brightness);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicHsvvBoostLocation, m_settings.bionic.hsvvBoost);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicDarkerLocation, bionicMix(m_settings.bionic.darker, m_settings.bionic.darkerActivated));
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicDarkerRange0Location, m_settings.bionic.darkerRange0);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicDarkerRange1Location, m_settings.bionic.darkerRange1);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicInnerBottomLocation, m_settings.bionic.innerBottom);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicInnerColorWhiteLocation, m_settings.bionic.innerColorWhite);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicInnerColorMixLocation, m_settings.bionic.innerColorMix);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicColorPowLocation, bionicMix(m_settings.bionic.colorPow, m_settings.bionic.colorPowActivated));
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicAlphaLocation, m_settings.bionic.alpha);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicOverallAlphaLocation, m_settings.bionic.overallAlpha);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicShapeEdgePxLocation, m_settings.bionic.shapeEdgePx);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicShapeEdgePowLocation, m_settings.bionic.shapeEdgePow);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicShapeThicknessPxLocation, m_settings.bionic.shapeThicknessPx);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicShapeReflectOffsetPxLocation, m_settings.bionic.shapeReflectOffsetPx);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicReflLightenLocation, m_settings.bionic.reflLighten);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicReflStrengthLocation, m_settings.bionic.reflStrength);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicDirXLocation, m_settings.bionic.dirX);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicDirYLocation, m_settings.bionic.dirY);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicDirZLocation, m_settings.bionic.dirZ);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicDirIntensityLocation, bionicMix(m_settings.bionic.dirIntensity, m_settings.bionic.dirIntensityActivated));
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicDirOppositeIntensityLocation, bionicMix(m_settings.bionic.dirOppositeIntensity, m_settings.bionic.dirOppositeIntensityActivated));
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicDirAngleRangeLocation, m_settings.bionic.dirAngleRange);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicDirEdgePowLocation, m_settings.bionic.dirEdgePow);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicIORLocation, m_settings.bionic.ior);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicBgColorSaturationLocation, m_settings.bionic.bgColorSaturation);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.bionicBgColorBrightnessLocation, m_settings.bionic.bgColorBrightness);
+
+    const auto classicLayer = [](const QString &spec) {
+        const QColor c(spec);
+        const float a = spec.isEmpty() ? 0.0f : static_cast<float>(c.alphaF());
+        return QVector4D(static_cast<float>(c.redF()), static_cast<float>(c.greenF()),
+                         static_cast<float>(c.blueF()), a);
+    };
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.classicModeLocation, m_settings.classic.enabled ? 1 : 0);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.classicDark0Location, classicLayer(m_settings.classic.dark0));
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.classicDark1Location, classicLayer(m_settings.classic.dark1));
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.classicDark2Location, classicLayer(m_settings.classic.dark2));
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.classicLight0Location, classicLayer(m_settings.classic.light0));
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.classicLight1Location, classicLayer(m_settings.classic.light1));
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.classicLight2Location, classicLayer(m_settings.classic.light2));
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.classicRefractIORLocation, m_settings.classic.refractIOR);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.classicReflLightenLocation, m_settings.classic.reflLighten);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.classicReflStrengthLocation, m_settings.classic.reflStrength);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.classicMaskSoftLocation, m_settings.classic.maskSoft);
+    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.classicStrokeLocation,
+        QVector4D(m_settings.classic.strokeSize, m_settings.classic.strokeStrength,
+                  m_settings.classic.strokeDegree, 0.0f));
 
     QColor tint(m_settings.general.tintColor);
     QVector3D tintVec(tint.redF(), tint.greenF(), tint.blueF());

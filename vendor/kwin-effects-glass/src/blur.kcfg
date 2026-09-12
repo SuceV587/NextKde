@@ -183,5 +183,161 @@
         <entry name="PhysicallyBasedRefraction" type="Bool">
             <default>false</default>
         </entry>
+        <entry name="BionicMode" type="Bool">
+            <default>true</default>
+        </entry>
+        <entry name="BionicLumValue0" type="Double">
+            <default>0.67</default>
+        </entry>
+        <entry name="BionicLumValue1" type="Double">
+            <default>0.16</default>
+        </entry>
+        <entry name="BionicLumValue2" type="Double">
+            <default>0.09</default>
+        </entry>
+        <entry name="BionicLumValue3" type="Double">
+            <default>0.0</default>
+        </entry>
+        <entry name="BionicLumAmount" type="Double">
+            <default>0.24</default>
+        </entry>
+        <entry name="BionicBrightness" type="Double">
+            <default>-0.02</default>
+        </entry>
+        <entry name="BionicDarker" type="Double">
+            <default>0.3</default>
+        </entry>
+        <entry name="BionicDarkerRange0" type="Double">
+            <default>0.6</default>
+        </entry>
+        <entry name="BionicDarkerRange1" type="Double">
+            <default>1.0</default>
+        </entry>
+        <entry name="BionicInnerBottom" type="Double">
+            <default>0.03</default>
+        </entry>
+        <entry name="BionicInnerColorWhite" type="Double">
+            <default>0.2</default>
+        </entry>
+        <entry name="BionicInnerColorMix" type="Double">
+            <default>0.3</default>
+        </entry>
+        <entry name="BionicColorPow" type="Double">
+            <default>1.0</default>
+        </entry>
+        <entry name="BionicAlpha" type="Double">
+            <default>0.1</default>
+        </entry>
+        <entry name="BionicOverallAlpha" type="Double">
+            <default>1.0</default>
+        </entry>
+        <entry name="BionicShapeEdgePx" type="Double">
+            <default>7.5</default>
+        </entry>
+        <entry name="BionicHsvvBoost" type="Double">
+            <default>1.0</default>
+        </entry>
+        <entry name="BionicShapeEdgePow" type="Double">
+            <default>3.8</default>
+        </entry>
+        <entry name="BionicShapeThicknessPx" type="Double">
+            <default>80.0</default>
+        </entry>
+        <entry name="BionicShapeReflectOffsetPx" type="Double">
+            <default>800.0</default>
+        </entry>
+        <entry name="BionicReflLighten" type="Double">
+            <default>1.2</default>
+        </entry>
+        <entry name="BionicReflStrength" type="Double">
+            <default>1.0</default>
+        </entry>
+        <entry name="BionicDirX" type="Double">
+            <default>-0.4</default>
+        </entry>
+        <entry name="BionicDirY" type="Double">
+            <default>0.6</default>
+        </entry>
+        <entry name="BionicDirZ" type="Double">
+            <default>-0.8</default>
+        </entry>
+        <entry name="BionicDirIntensity" type="Double">
+            <default>1.4</default>
+        </entry>
+        <entry name="BionicDirOppositeIntensity" type="Double">
+            <default>0.7</default>
+        </entry>
+        <entry name="BionicDirAngleRange" type="Double">
+            <default>0.8</default>
+        </entry>
+        <entry name="BionicDirEdgePow" type="Double">
+            <default>1.15</default>
+        </entry>
+        <entry name="BionicBlur" type="Int">
+            <default>12</default>
+        </entry>
+        <entry name="BionicIOR" type="Double">
+            <default>4.0</default>
+        </entry>
+        <entry name="BionicBgColorSaturation" type="Double">
+            <default>2.0</default>
+        </entry>
+        <entry name="BionicBgColorBrightness" type="Double">
+            <default>0.0</default>
+        </entry>
+        <entry name="BionicActivatedDarker" type="Double">
+            <default>0.42</default>
+        </entry>
+        <entry name="BionicActivatedDirIntensity" type="Double">
+            <default>3.0</default>
+        </entry>
+        <entry name="BionicActivatedDirOppositeIntensity" type="Double">
+            <default>2.0</default>
+        </entry>
+        <entry name="BionicActivatedColorPow" type="Double">
+            <default>1.0</default>
+        </entry>
+        <entry name="ClassicMode" type="Bool">
+            <default>false</default>
+        </entry>
+        <entry name="ClassicDark0" type="String">
+            <default>#1a000000</default>
+        </entry>
+        <entry name="ClassicDark1" type="String">
+            <default>#66565656</default>
+        </entry>
+        <entry name="ClassicDark2" type="String">
+            <default>#993f3f3f</default>
+        </entry>
+        <entry name="ClassicLight0" type="String">
+            <default>#05000000</default>
+        </entry>
+        <entry name="ClassicLight1" type="String">
+            <default>#14ffffff</default>
+        </entry>
+        <entry name="ClassicLight2" type="String">
+            <default>#0affffff</default>
+        </entry>
+        <entry name="ClassicStrokeSize" type="Double">
+            <default>2.0</default>
+        </entry>
+        <entry name="ClassicStrokeStrength" type="Double">
+            <default>0.1</default>
+        </entry>
+        <entry name="ClassicStrokeDegree" type="Double">
+            <default>24.0</default>
+        </entry>
+        <entry name="ClassicRefractIOR" type="Double">
+            <default>1.5</default>
+        </entry>
+        <entry name="ClassicReflLighten" type="Double">
+            <default>2.0</default>
+        </entry>
+        <entry name="ClassicReflStrength" type="Double">
+            <default>0.06</default>
+        </entry>
+        <entry name="ClassicMaskSoft" type="Double">
+            <default>1.5</default>
+        </entry>
     </group>
 </kcfg>

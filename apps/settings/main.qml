@@ -60,11 +60,7 @@ ApplicationWindow {
     }
     readonly property var contentByPage: [
         {
-            subtitle: "显示",
-            groups: []
-        },
-        {
-            subtitle: "主题",
+            subtitle: "外观",
             groups: []
         },
         {
@@ -1347,281 +1343,6 @@ ApplicationWindow {
         }
     }
 
-    component DisplaySettingsPage: ColumnLayout {
-        id: displayPage
-
-        Layout.fillWidth: true
-        spacing: 7
-
-        property var bridge: (typeof settingsBridge !== "undefined")
-            ? settingsBridge : null
-        property real blurStrength: 0.42
-        property real liquidStrength: 1.0
-        property bool blurDirty: false
-        property bool liquidDirty: false
-        property string errorText: ""
-
-        function percentage(value) {
-            return Math.round(value * 100) + "%"
-        }
-
-        function applyState(state) {
-            if (!state)
-                return
-            const rawBlur = state.globalBlurStrength !== undefined
-                ? state.globalBlurStrength : state.blurStrength
-            const rawLiquid = state.globalLiquidStrength !== undefined
-                ? state.globalLiquidStrength : state.liquidStrength
-            if (rawBlur === undefined || rawLiquid === undefined)
-                return
-            blurStrength = Math.max(0, Math.min(1, Number(rawBlur)))
-            liquidStrength = Math.max(0, Math.min(1, Number(rawLiquid)))
-            blurDirty = false
-            liquidDirty = false
-            errorText = ""
-        }
-
-        function refresh() {
-            if (!bridge) {
-                errorText = "尚未构建 Settings 桥接程序"
-                return
-            }
-            applyState(bridge.appearanceSnapshot())
-            if (bridge.lastError)
-                errorText = bridge.lastError
-        }
-
-        Timer {
-            id: liveBlurDebounce
-            interval: 60
-            repeat: false
-            onTriggered: {
-                if (displayPage.bridge && displayPage.blurDirty) {
-                    displayPage.bridge.updateGlobalBlurStrength(displayPage.blurStrength)
-                }
-            }
-        }
-
-        Timer {
-            id: liveLiquidDebounce
-            interval: 60
-            repeat: false
-            onTriggered: {
-                if (displayPage.bridge && displayPage.liquidDirty) {
-                    displayPage.bridge.updateGlobalLiquidStrength(displayPage.liquidStrength)
-                }
-            }
-        }
-
-        function previewBlur(value) {
-            const clamped = Math.max(0, Math.min(1, value))
-            if (Math.abs(blurStrength - clamped) < 0.005)
-                return
-            blurStrength = clamped
-            blurDirty = true
-            liveBlurDebounce.restart()
-        }
-
-        function commitBlur() {
-            liveBlurDebounce.stop()
-            if (!blurDirty || !bridge)
-                return
-            blurDirty = false
-            applyState(bridge.updateGlobalBlurStrength(blurStrength))
-            if (bridge.lastError)
-                errorText = bridge.lastError
-        }
-
-        function previewLiquid(value) {
-            const clamped = Math.max(0, Math.min(1, value))
-            if (Math.abs(liquidStrength - clamped) < 0.005)
-                return
-            liquidStrength = clamped
-            liquidDirty = true
-            liveLiquidDebounce.restart()
-        }
-
-        function commitLiquid() {
-            liveLiquidDebounce.stop()
-            if (!liquidDirty || !bridge)
-                return
-            liquidDirty = false
-            applyState(bridge.updateGlobalLiquidStrength(liquidStrength))
-            if (bridge.lastError)
-                errorText = bridge.lastError
-        }
-
-        function setSystemAppearance(index) {
-            if (!bridge) {
-                errorText = "尚未构建 Settings 桥接程序"
-                return
-            }
-            if (!bridge.applySystemAppearance(index === 1)) {
-                errorText = bridge.lastError
-                return
-            }
-            errorText = ""
-        }
-
-        Component.onCompleted: refresh()
-
-        Text {
-            text: "系统外观".toUpperCase()
-            color: theme.secondaryText
-            font.pixelSize: 12
-            font.weight: Font.DemiBold
-            Layout.leftMargin: 13
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: 54
-            radius: 18
-            color: theme.card
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 12
-
-                SettingIcon { symbol: "◐"; tint: "#5ac8fa" }
-                Text {
-                    text: "色彩模式"
-                    color: theme.primaryText
-                    font.pixelSize: 15
-                    font.weight: Font.DemiBold
-                }
-                Item { Layout.fillWidth: true }
-                SettingsNavBar {
-                    id: systemAppearanceNavBar
-                    model: [
-                        { id: "light", label: "明亮" },
-                        { id: "dark", label: "暗色" }
-                    ]
-                    currentIndex: theme.dark ? 1 : 0
-                    onSelectionChanged: function(index) {
-                        displayPage.setSystemAppearance(index)
-                    }
-                }
-            }
-        }
-
-        Text {
-            text: "液态玻璃".toUpperCase()
-            color: theme.secondaryText
-            font.pixelSize: 12
-            font.weight: Font.DemiBold
-            Layout.leftMargin: 13
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: 97
-            radius: 18
-            color: theme.card
-
-            Column {
-                anchors.fill: parent
-
-                Item {
-                    width: parent.width
-                    height: 48
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 16
-                        anchors.rightMargin: 16
-                        spacing: 12
-
-                        SettingIcon { symbol: "◌"; tint: "#5ac8fa" }
-                        Text {
-                            text: "模糊强度"
-                            color: theme.primaryText
-                            font.pixelSize: 14
-                        }
-                        Item { Layout.fillWidth: true }
-                        Text {
-                            text: displayPage.percentage(displayPage.blurStrength)
-                            color: theme.secondaryText
-                            font.pixelSize: 12
-                            Layout.preferredWidth: 38
-                            horizontalAlignment: Text.AlignRight
-                        }
-                        LiquidControls.LiquidSlider {
-                            Layout.preferredWidth: 190
-                            value: displayPage.blurStrength
-                            trackColor: theme.divider
-                            onPreviewChanged: function(position) {
-                                displayPage.previewBlur(position)
-                            }
-                            onCommitRequested: displayPage.commitBlur()
-                        }
-                    }
-                }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.leftMargin: 53
-                    height: 1
-                    color: theme.separator
-                }
-
-                Item {
-                    width: parent.width
-                    height: 48
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 16
-                        anchors.rightMargin: 16
-                        spacing: 12
-
-                        SettingIcon { symbol: "≈"; tint: "#af52de" }
-                        Text {
-                            text: "液态强度"
-                            color: theme.primaryText
-                            font.pixelSize: 14
-                        }
-                        Item { Layout.fillWidth: true }
-                        Text {
-                            text: displayPage.percentage(displayPage.liquidStrength)
-                            color: theme.secondaryText
-                            font.pixelSize: 12
-                            Layout.preferredWidth: 38
-                            horizontalAlignment: Text.AlignRight
-                        }
-                        LiquidControls.LiquidSlider {
-                            Layout.preferredWidth: 190
-                            value: displayPage.liquidStrength
-                            trackColor: theme.divider
-                            onPreviewChanged: function(position) {
-                                displayPage.previewLiquid(position)
-                            }
-                            onCommitRequested: displayPage.commitLiquid()
-                        }
-                    }
-                }
-            }
-        }
-
-        IconAppearanceSection {
-            bridge: displayPage.bridge
-        }
-
-        Text {
-            Layout.fillWidth: true
-            Layout.leftMargin: 13
-            Layout.rightMargin: 13
-            visible: displayPage.errorText.length > 0
-            text: displayPage.errorText
-            color: "#ff453a"
-            font.pixelSize: 12
-            wrapMode: Text.Wrap
-        }
-    }
-
     component IconAppearanceSection: ColumnLayout {
         id: iconAppearance
 
@@ -1826,8 +1547,51 @@ ApplicationWindow {
         property var bridge: (typeof settingsBridge !== "undefined")
             ? settingsBridge : null
         property string shellStyle: "macos"
+        property string materialStyle: "liquid"
+        property real blurStrength: 0.42
+        property real liquidStrength: 1.0
+        property bool blurDirty: false
+        property bool liquidDirty: false
         property string dockWindowAnimationStyle: "scale"
         property string errorText: ""
+        property string tuningErrorText: ""
+        // 材质微调（柔光玻璃 / 轻透磨砂）——只在对应材质下写入生效
+        property real bionicRefract: 4.0
+        property real bionicEdgeLight: 1.4
+        property real bionicSoftEdgePx: 1.5
+        property real bionicHsvv: 1.0
+        property real classicRefract: 1.5
+        property real classicReflect: 0.06
+        property real classicEdgeLight: 0.1
+        property real classicSoftEdgePx: 1.5
+        property real bionicTransparency: 1.0
+        property real bionicRefractMin: 1.0
+        property real bionicRefractMax: 5.0
+        property real bionicEdgeLightMin: 0.0
+        property real bionicEdgeLightMax: 3.0
+        property real bionicSoftEdgePxMin: 0.1
+        property real bionicSoftEdgePxMax: 25.0
+        property real bionicHsvvMin: 0.0
+        property real bionicHsvvMax: 2.0
+        property real bionicTransparencyMin: 0.0
+        property real bionicTransparencyMax: 1.0
+        property real classicRefractMin: 1.0
+        property real classicRefractMax: 2.0
+        property real classicReflectMin: 0.0
+        property real classicReflectMax: 1.5
+        property real classicEdgeLightMin: 0.0
+        property real classicEdgeLightMax: 0.5
+        property real classicSoftEdgePxMin: 0.5
+        property real classicSoftEdgePxMax: 25.0
+        property real bionicRefractPreview: -1
+        property real bionicEdgeLightPreview: -1
+        property real bionicSoftEdgePxPreview: -1
+        property real bionicHsvvPreview: -1
+        property real bionicTransparencyPreview: -1
+        property real classicRefractPreview: -1
+        property real classicReflectPreview: -1
+        property real classicEdgeLightPreview: -1
+        property real classicSoftEdgePxPreview: -1
         readonly property var styles: [
             {
                 id: "windows12",
@@ -1862,10 +1626,253 @@ ApplicationWindow {
             if (!state || !isValidStyle(state.shellStyle))
                 return
             shellStyle = state.shellStyle
+            if (state.materialStyle === "liquid" || state.materialStyle === "bionic"
+                    || state.materialStyle === "classic")
+                materialStyle = state.materialStyle
             if (isValidDockWindowAnimationStyle(state.dockWindowAnimationStyle))
                 dockWindowAnimationStyle = state.dockWindowAnimationStyle
+            if (isFinite(state.globalBlurStrength))
+                blurStrength = Math.max(0, Math.min(1, Number(state.globalBlurStrength)))
+            if (isFinite(state.globalLiquidStrength))
+                liquidStrength = Math.max(0, Math.min(1, Number(state.globalLiquidStrength)))
+            // 材质微调字段
+            if (isFinite(state.bionicRefract)) bionicRefract = state.bionicRefract
+            if (isFinite(state.bionicEdgeLight)) bionicEdgeLight = state.bionicEdgeLight
+            if (isFinite(state.bionicSoftEdgePx)) bionicSoftEdgePx = state.bionicSoftEdgePx
+            if (isFinite(state.bionicHsvv)) bionicHsvv = state.bionicHsvv
+            if (isFinite(state.bionicTransparency)) bionicTransparency = state.bionicTransparency
+            if (isFinite(state.bionicTransparencyMin)) bionicTransparencyMin = state.bionicTransparencyMin
+            if (isFinite(state.bionicTransparencyMax)) bionicTransparencyMax = state.bionicTransparencyMax
+            if (isFinite(state.classicRefract)) classicRefract = state.classicRefract
+            if (isFinite(state.classicReflect)) classicReflect = state.classicReflect
+            if (isFinite(state.classicEdgeLight)) classicEdgeLight = state.classicEdgeLight
+            if (isFinite(state.classicSoftEdgePx)) classicSoftEdgePx = state.classicSoftEdgePx
+            if (isFinite(state.bionicRefractMin)) bionicRefractMin = state.bionicRefractMin
+            if (isFinite(state.bionicRefractMax)) bionicRefractMax = state.bionicRefractMax
+            if (isFinite(state.bionicEdgeLightMin)) bionicEdgeLightMin = state.bionicEdgeLightMin
+            if (isFinite(state.bionicEdgeLightMax)) bionicEdgeLightMax = state.bionicEdgeLightMax
+            if (isFinite(state.bionicSoftEdgePxMin)) bionicSoftEdgePxMin = state.bionicSoftEdgePxMin
+            if (isFinite(state.bionicSoftEdgePxMax)) bionicSoftEdgePxMax = state.bionicSoftEdgePxMax
+            if (isFinite(state.bionicHsvvMin)) bionicHsvvMin = state.bionicHsvvMin
+            if (isFinite(state.bionicHsvvMax)) bionicHsvvMax = state.bionicHsvvMax
+            if (isFinite(state.classicRefractMin)) classicRefractMin = state.classicRefractMin
+            if (isFinite(state.classicRefractMax)) classicRefractMax = state.classicRefractMax
+            if (isFinite(state.classicReflectMin)) classicReflectMin = state.classicReflectMin
+            if (isFinite(state.classicReflectMax)) classicReflectMax = state.classicReflectMax
+            if (isFinite(state.classicEdgeLightMin)) classicEdgeLightMin = state.classicEdgeLightMin
+            if (isFinite(state.classicEdgeLightMax)) classicEdgeLightMax = state.classicEdgeLightMax
+            if (isFinite(state.classicSoftEdgePxMin)) classicSoftEdgePxMin = state.classicSoftEdgePxMin
+            if (isFinite(state.classicSoftEdgePxMax)) classicSoftEdgePxMax = state.classicSoftEdgePxMax
             errorText = ""
         }
+
+
+        function applyTuningState(state) {
+            if (!state || !isFinite(state.bionicRefract)) {
+                tuningErrorText = bridge ? "外观设置返回的数据不完整" : ""
+                return
+            }
+            // Reuse the one parser so the two groups can never drift apart.
+            applyState(state)
+            tuningErrorText = ""
+        }
+
+
+        Timer {
+            id: liveBlurDebounce
+            interval: 60
+            repeat: false
+            onTriggered: {
+                if (themePage.bridge && themePage.blurDirty) {
+                    themePage.bridge.updateGlobalBlurStrength(themePage.blurStrength)
+                }
+            }
+        }
+
+        Timer {
+            id: liveLiquidDebounce
+            interval: 60
+            repeat: false
+            onTriggered: {
+                if (themePage.bridge && themePage.liquidDirty) {
+                    themePage.bridge.updateGlobalLiquidStrength(themePage.liquidStrength)
+                }
+            }
+        }
+
+        function previewBlur(value) {
+            const clamped = Math.max(0, Math.min(1, value))
+            if (Math.abs(blurStrength - clamped) < 0.005)
+                return
+            blurStrength = clamped
+            blurDirty = true
+            liveBlurDebounce.restart()
+        }
+
+        function commitBlur() {
+            liveBlurDebounce.stop()
+            if (!blurDirty || !bridge)
+                return
+            blurDirty = false
+            applyState(bridge.updateGlobalBlurStrength(blurStrength))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function previewLiquid(value) {
+            const clamped = Math.max(0, Math.min(1, value))
+            if (Math.abs(liquidStrength - clamped) < 0.005)
+                return
+            liquidStrength = clamped
+            liquidDirty = true
+            liveLiquidDebounce.restart()
+        }
+
+        function commitLiquid() {
+            liveLiquidDebounce.stop()
+            if (!liquidDirty || !bridge)
+                return
+            liquidDirty = false
+            applyState(bridge.updateGlobalLiquidStrength(liquidStrength))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+
+        function setSystemAppearance(index) {
+            if (!bridge) {
+                errorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            if (!bridge.applySystemAppearance(index === 1)) {
+                errorText = bridge.lastError
+                return
+            }
+            errorText = ""
+        }
+
+
+        function setMaterialStyle(style) {
+            if (!bridge || (style !== "liquid" && style !== "bionic" && style !== "classic")) {
+                errorText = bridge ? "未知的材质风格" : "尚未构建 Settings 桥接程序"
+                return
+            }
+            // 立即本地更新（橙色框即时反馈），随后与 Shell 回传对齐
+            materialStyle = style
+            applyState(bridge.updateMaterialStyle(style))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function setBionicRefract(value) {
+            if (!bridge) {
+                tuningErrorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            bionicRefract = value
+            applyTuningState(bridge.updateBionicRefract(value))
+            if (bridge.lastError)
+                tuningErrorText = bridge.lastError
+        }
+
+        function setBionicEdgeLight(value) {
+            if (!bridge) {
+                tuningErrorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            bionicEdgeLight = value
+            applyTuningState(bridge.updateBionicEdgeLight(value))
+            if (bridge.lastError)
+                tuningErrorText = bridge.lastError
+        }
+
+        function setBionicSoftEdgePx(value) {
+            if (!bridge) {
+                tuningErrorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            bionicSoftEdgePx = value
+            applyTuningState(bridge.updateBionicSoftEdgePx(value))
+            if (bridge.lastError)
+                tuningErrorText = bridge.lastError
+        }
+
+        function setBionicHsvv(value) {
+            if (!bridge) {
+                tuningErrorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            bionicHsvv = value
+            applyTuningState(bridge.updateBionicHsvv(value))
+            if (bridge.lastError)
+                tuningErrorText = bridge.lastError
+        }
+
+        function setClassicRefract(value) {
+            if (!bridge) {
+                tuningErrorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            classicRefract = value
+            applyTuningState(bridge.updateClassicRefract(value))
+            if (bridge.lastError)
+                tuningErrorText = bridge.lastError
+        }
+
+        function setClassicReflect(value) {
+            if (!bridge) {
+                tuningErrorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            classicReflect = value
+            applyTuningState(bridge.updateClassicReflect(value))
+            if (bridge.lastError)
+                tuningErrorText = bridge.lastError
+        }
+
+        function setClassicEdgeLight(value) {
+            if (!bridge) {
+                tuningErrorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            classicEdgeLight = value
+            applyTuningState(bridge.updateClassicEdgeLight(value))
+            if (bridge.lastError)
+                tuningErrorText = bridge.lastError
+        }
+
+        function setClassicSoftEdgePx(value) {
+            if (!bridge) {
+                tuningErrorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            classicSoftEdgePx = value
+            applyTuningState(bridge.updateClassicSoftEdgePx(value))
+            if (bridge.lastError)
+                tuningErrorText = bridge.lastError
+        }
+
+        function setBionicTransparency(value) {
+            if (!bridge) {
+                tuningErrorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            bionicTransparency = value
+            applyTuningState(bridge.updateBionicTransparency(value))
+            if (bridge.lastError)
+                tuningErrorText = bridge.lastError
+        }
+
+        function resetMaterialTuning() {
+            if (!bridge) {
+                tuningErrorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            applyTuningState(bridge.resetMaterialTuning())
+            if (bridge.lastError)
+                tuningErrorText = bridge.lastError
+        }
+
 
         function refresh() {
             if (!bridge) {
@@ -1897,6 +1904,54 @@ ApplicationWindow {
                 errorText = bridge.lastError
         }
         Component.onCompleted: refresh()
+
+        Text {
+            text: "系统外观".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 54
+            radius: 18
+            color: theme.card
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 12
+
+                SettingIcon { symbol: "◐"; tint: "#5ac8fa" }
+                Text {
+                    text: "色彩模式"
+                    color: theme.primaryText
+                    font.pixelSize: 15
+                    font.weight: Font.DemiBold
+                }
+                Item { Layout.fillWidth: true }
+                SettingsNavBar {
+                    id: systemAppearanceNavBar
+                    model: [
+                        { id: "light", label: "明亮" },
+                        { id: "dark", label: "暗色" }
+                    ]
+                    currentIndex: theme.dark ? 1 : 0
+                    onSelectionChanged: function(index) {
+                        themePage.setSystemAppearance(index)
+                    }
+                }
+            }
+        }
+
+
+        IconAppearanceSection {
+            bridge: themePage.bridge
+        }
+
 
         Text {
             text: "界面形态".toUpperCase()
@@ -2056,6 +2111,765 @@ ApplicationWindow {
             font.pixelSize: 12
             wrapMode: Text.Wrap
         }
+
+        // ── 材质风格（柔光玻璃 / 轻透磨砂 · 对标澎湃材质风格）──
+        Text {
+            text: "材质风格".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 8
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 12
+            Repeater {
+                model: [
+                    { id: "liquid", name: "液态玻璃", desc: "KOS 经典玻璃效果" },
+                    { id: "bionic", name: "柔光玻璃", desc: "更高通透，光影流动" },
+                    { id: "classic", name: "轻透磨砂", desc: "经典磨砂，沉稳内敛" }
+                ]
+                delegate: Rectangle {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    implicitHeight: 92
+                    radius: 18
+                    color: theme.card
+                    border.width: themePage.materialStyle === modelData.id ? 2 : 1
+                    border.color: themePage.materialStyle === modelData.id
+                        ? "#ff6900" : theme.floatingBorder
+
+                    ColumnLayout {
+                        anchors.centerIn: parent
+                        spacing: 5
+                        Text {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: modelData.name
+                            color: theme.primaryText
+                            font.pixelSize: 15
+                            font.weight: Font.Bold
+                        }
+                        Text {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: modelData.desc
+                            color: theme.secondaryText
+                            font.pixelSize: 11
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: themePage.setMaterialStyle(modelData.id)
+                    }
+                }
+            }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            Layout.leftMargin: 13
+            Layout.rightMargin: 13
+            Layout.topMargin: 8
+            text: themePage.materialStyle === "bionic" ? "柔光玻璃微调"
+                : themePage.materialStyle === "classic" ? "轻透磨砂微调"
+                : themePage.materialStyle === "liquid" ? "液态玻璃微调"
+                : "材质微调"
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+        }
+
+        // ════════════════════════════════════════════════════════════
+
+        Rectangle {
+            id: materialTuningCard
+            Layout.fillWidth: true
+            implicitHeight: materialTuningColumn.implicitHeight + 32
+            radius: 18
+            color: theme.card
+            visible: themePage.materialStyle === "bionic" || themePage.materialStyle === "classic" || themePage.materialStyle === "liquid"
+
+            ColumnLayout {
+                id: materialTuningColumn
+                anchors.fill: parent
+                anchors.margins: 16
+                spacing: 14
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+                    visible: themePage.materialStyle === "liquid"
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        SettingIcon { symbol: "◌"; tint: "#5ac8fa" }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "模糊强度"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "液态玻璃背景的模糊程度"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Text {
+                            text: Math.round(themePage.blurStrength * 100) + "%"
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 56
+                            horizontalAlignment: Text.AlignRight
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 150
+                            value: themePage.blurStrength
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                themePage.previewBlur(position)
+                            }
+                            onCommitRequested: themePage.commitBlur()
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        SettingIcon { symbol: "◍"; tint: "#5ac8fa" }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "液态强度"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "液态玻璃的流动感强度"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Text {
+                            text: Math.round(themePage.liquidStrength * 100) + "%"
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 56
+                            horizontalAlignment: Text.AlignRight
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 150
+                            value: themePage.liquidStrength
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                themePage.previewLiquid(position)
+                            }
+                            onCommitRequested: themePage.commitLiquid()
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+                    visible: themePage.materialStyle === "bionic"
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        SettingIcon { symbol: "◈"; tint: "#af52de" }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "折射强度"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "玻璃边缘的光线弯折程度"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Text {
+                            text: Number(themePage.bionicRefractPreview >= 0 ? themePage.bionicRefractPreview : themePage.bionicRefract).toFixed(2)
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 56
+                            horizontalAlignment: Text.AlignRight
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 150
+                            value: {
+                                const shown = themePage.bionicRefractPreview >= 0
+                                    ? themePage.bionicRefractPreview : themePage.bionicRefract
+                                return themePage.bionicRefractMax <= themePage.bionicRefractMin
+                                    ? 0
+                                    : Math.max(0, Math.min(1,
+                                        (shown - themePage.bionicRefractMin)
+                                        / (themePage.bionicRefractMax - themePage.bionicRefractMin)))
+                            }
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                themePage.bionicRefractPreview = themePage.bionicRefractMin
+                                    + Math.max(0, Math.min(1, position))
+                                        * (themePage.bionicRefractMax - themePage.bionicRefractMin)
+                            }
+                            onCommitRequested: function(position) {
+                                const clamped = Math.max(0, Math.min(1, position))
+                                const v = themePage.bionicRefractMin
+                                    + clamped * (themePage.bionicRefractMax - themePage.bionicRefractMin)
+                                themePage.bionicRefractPreview = -1
+                                themePage.setBionicRefract(v)
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        SettingIcon { symbol: "◉"; tint: "#ff9500" }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "边缘光"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "鼠标靠近时点亮的边缘光强度"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Text {
+                            text: Number(themePage.bionicEdgeLightPreview >= 0 ? themePage.bionicEdgeLightPreview : themePage.bionicEdgeLight).toFixed(2)
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 56
+                            horizontalAlignment: Text.AlignRight
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 150
+                            value: {
+                                const shown = themePage.bionicEdgeLightPreview >= 0
+                                    ? themePage.bionicEdgeLightPreview : themePage.bionicEdgeLight
+                                return themePage.bionicEdgeLightMax <= themePage.bionicEdgeLightMin
+                                    ? 0
+                                    : Math.max(0, Math.min(1,
+                                        (shown - themePage.bionicEdgeLightMin)
+                                        / (themePage.bionicEdgeLightMax - themePage.bionicEdgeLightMin)))
+                            }
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                themePage.bionicEdgeLightPreview = themePage.bionicEdgeLightMin
+                                    + Math.max(0, Math.min(1, position))
+                                        * (themePage.bionicEdgeLightMax - themePage.bionicEdgeLightMin)
+                            }
+                            onCommitRequested: function(position) {
+                                const clamped = Math.max(0, Math.min(1, position))
+                                const v = themePage.bionicEdgeLightMin
+                                    + clamped * (themePage.bionicEdgeLightMax - themePage.bionicEdgeLightMin)
+                                themePage.bionicEdgeLightPreview = -1
+                                themePage.setBionicEdgeLight(v)
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        SettingIcon { symbol: "☀"; tint: "#ffcc00" }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "柔光强度"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "柔光提亮的强度"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Text {
+                            text: Number(themePage.bionicHsvvPreview >= 0 ? themePage.bionicHsvvPreview : themePage.bionicHsvv).toFixed(2)
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 56
+                            horizontalAlignment: Text.AlignRight
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 150
+                            value: {
+                                const shown = themePage.bionicHsvvPreview >= 0
+                                    ? themePage.bionicHsvvPreview : themePage.bionicHsvv
+                                return themePage.bionicHsvvMax <= themePage.bionicHsvvMin
+                                    ? 0
+                                    : Math.max(0, Math.min(1,
+                                        (shown - themePage.bionicHsvvMin)
+                                        / (themePage.bionicHsvvMax - themePage.bionicHsvvMin)))
+                            }
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                themePage.bionicHsvvPreview = themePage.bionicHsvvMin
+                                    + Math.max(0, Math.min(1, position))
+                                        * (themePage.bionicHsvvMax - themePage.bionicHsvvMin)
+                            }
+                            onCommitRequested: function(position) {
+                                const clamped = Math.max(0, Math.min(1, position))
+                                const v = themePage.bionicHsvvMin
+                                    + clamped * (themePage.bionicHsvvMax - themePage.bionicHsvvMin)
+                                themePage.bionicHsvvPreview = -1
+                                themePage.setBionicHsvv(v)
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        SettingIcon { symbol: "◭"; tint: "#5ac8fa" }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "边缘软边"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "玻璃边缘的柔和过渡宽度"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Text {
+                            text: Math.round((themePage.bionicSoftEdgePxPreview >= 0 ? themePage.bionicSoftEdgePxPreview : themePage.bionicSoftEdgePx) * 10) / 10 + " px"
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 56
+                            horizontalAlignment: Text.AlignRight
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 150
+                            value: {
+                                const shown = themePage.bionicSoftEdgePxPreview >= 0
+                                    ? themePage.bionicSoftEdgePxPreview : themePage.bionicSoftEdgePx
+                                return themePage.bionicSoftEdgePxMax <= themePage.bionicSoftEdgePxMin
+                                    ? 0
+                                    : Math.max(0, Math.min(1,
+                                        (shown - themePage.bionicSoftEdgePxMin)
+                                        / (themePage.bionicSoftEdgePxMax - themePage.bionicSoftEdgePxMin)))
+                            }
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                themePage.bionicSoftEdgePxPreview = themePage.bionicSoftEdgePxMin
+                                    + Math.max(0, Math.min(1, position))
+                                        * (themePage.bionicSoftEdgePxMax - themePage.bionicSoftEdgePxMin)
+                            }
+                            onCommitRequested: function(position) {
+                                const clamped = Math.max(0, Math.min(1, position))
+                                const v = themePage.bionicSoftEdgePxMin
+                                    + clamped * (themePage.bionicSoftEdgePxMax - themePage.bionicSoftEdgePxMin)
+                                themePage.bionicSoftEdgePxPreview = -1
+                                themePage.setBionicSoftEdgePx(v)
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        SettingIcon { symbol: "◐"; tint: "#ff375f" }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "透明度"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "玻璃整体的透明程度"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Text {
+                            text: Number(themePage.bionicTransparencyPreview >= 0
+                                ? themePage.bionicTransparencyPreview
+                                : themePage.bionicTransparency).toFixed(2)
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 56
+                            horizontalAlignment: Text.AlignRight
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 150
+                            value: {
+                                const shown = themePage.bionicTransparencyPreview >= 0
+                                    ? themePage.bionicTransparencyPreview : themePage.bionicTransparency
+                                return themePage.bionicTransparencyMax <= themePage.bionicTransparencyMin
+                                    ? 0
+                                    : Math.max(0, Math.min(1,
+                                        (shown - themePage.bionicTransparencyMin)
+                                        / (themePage.bionicTransparencyMax - themePage.bionicTransparencyMin)))
+                            }
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                themePage.bionicTransparencyPreview = themePage.bionicTransparencyMin
+                                    + Math.max(0, Math.min(1, position))
+                                        * (themePage.bionicTransparencyMax - themePage.bionicTransparencyMin)
+                            }
+                            onCommitRequested: function(position) {
+                                const clamped = Math.max(0, Math.min(1, position))
+                                const v = themePage.bionicTransparencyMin
+                                    + clamped * (themePage.bionicTransparencyMax - themePage.bionicTransparencyMin)
+                                themePage.bionicTransparencyPreview = -1
+                                themePage.setBionicTransparency(v)
+                            }
+                        }
+                    }
+
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+                    visible: themePage.materialStyle === "classic"
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        SettingIcon { symbol: "◈"; tint: "#af52de" }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "折射强度"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "玻璃边缘的透镜折射"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Text {
+                            text: Number(themePage.classicRefractPreview >= 0 ? themePage.classicRefractPreview : themePage.classicRefract).toFixed(2)
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 56
+                            horizontalAlignment: Text.AlignRight
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 150
+                            value: {
+                                const shown = themePage.classicRefractPreview >= 0
+                                    ? themePage.classicRefractPreview : themePage.classicRefract
+                                return themePage.classicRefractMax <= themePage.classicRefractMin
+                                    ? 0
+                                    : Math.max(0, Math.min(1,
+                                        (shown - themePage.classicRefractMin)
+                                        / (themePage.classicRefractMax - themePage.classicRefractMin)))
+                            }
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                themePage.classicRefractPreview = themePage.classicRefractMin
+                                    + Math.max(0, Math.min(1, position))
+                                        * (themePage.classicRefractMax - themePage.classicRefractMin)
+                            }
+                            onCommitRequested: function(position) {
+                                const clamped = Math.max(0, Math.min(1, position))
+                                const v = themePage.classicRefractMin
+                                    + clamped * (themePage.classicRefractMax - themePage.classicRefractMin)
+                                themePage.classicRefractPreview = -1
+                                themePage.setClassicRefract(v)
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        SettingIcon { symbol: "◍"; tint: "#5e5ce6" }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "反射强度"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "边缘反射的提亮强度"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Text {
+                            text: Number(themePage.classicReflectPreview >= 0 ? themePage.classicReflectPreview : themePage.classicReflect).toFixed(2)
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 56
+                            horizontalAlignment: Text.AlignRight
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 150
+                            value: {
+                                const shown = themePage.classicReflectPreview >= 0
+                                    ? themePage.classicReflectPreview : themePage.classicReflect
+                                return themePage.classicReflectMax <= themePage.classicReflectMin
+                                    ? 0
+                                    : Math.max(0, Math.min(1,
+                                        (shown - themePage.classicReflectMin)
+                                        / (themePage.classicReflectMax - themePage.classicReflectMin)))
+                            }
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                themePage.classicReflectPreview = themePage.classicReflectMin
+                                    + Math.max(0, Math.min(1, position))
+                                        * (themePage.classicReflectMax - themePage.classicReflectMin)
+                            }
+                            onCommitRequested: function(position) {
+                                const clamped = Math.max(0, Math.min(1, position))
+                                const v = themePage.classicReflectMin
+                                    + clamped * (themePage.classicReflectMax - themePage.classicReflectMin)
+                                themePage.classicReflectPreview = -1
+                                themePage.setClassicReflect(v)
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        SettingIcon { symbol: "◉"; tint: "#ff9500" }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "边缘光"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "玻璃描边的亮度"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Text {
+                            text: Number(themePage.classicEdgeLightPreview >= 0 ? themePage.classicEdgeLightPreview : themePage.classicEdgeLight).toFixed(2)
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 56
+                            horizontalAlignment: Text.AlignRight
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 150
+                            value: {
+                                const shown = themePage.classicEdgeLightPreview >= 0
+                                    ? themePage.classicEdgeLightPreview : themePage.classicEdgeLight
+                                return themePage.classicEdgeLightMax <= themePage.classicEdgeLightMin
+                                    ? 0
+                                    : Math.max(0, Math.min(1,
+                                        (shown - themePage.classicEdgeLightMin)
+                                        / (themePage.classicEdgeLightMax - themePage.classicEdgeLightMin)))
+                            }
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                themePage.classicEdgeLightPreview = themePage.classicEdgeLightMin
+                                    + Math.max(0, Math.min(1, position))
+                                        * (themePage.classicEdgeLightMax - themePage.classicEdgeLightMin)
+                            }
+                            onCommitRequested: function(position) {
+                                const clamped = Math.max(0, Math.min(1, position))
+                                const v = themePage.classicEdgeLightMin
+                                    + clamped * (themePage.classicEdgeLightMax - themePage.classicEdgeLightMin)
+                                themePage.classicEdgeLightPreview = -1
+                                themePage.setClassicEdgeLight(v)
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        SettingIcon { symbol: "◭"; tint: "#5ac8fa" }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "边缘软边"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "玻璃边缘的柔和过渡宽度"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Text {
+                            text: Math.round((themePage.classicSoftEdgePxPreview >= 0 ? themePage.classicSoftEdgePxPreview : themePage.classicSoftEdgePx) * 10) / 10 + " px"
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 56
+                            horizontalAlignment: Text.AlignRight
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 150
+                            value: {
+                                const shown = themePage.classicSoftEdgePxPreview >= 0
+                                    ? themePage.classicSoftEdgePxPreview : themePage.classicSoftEdgePx
+                                return themePage.classicSoftEdgePxMax <= themePage.classicSoftEdgePxMin
+                                    ? 0
+                                    : Math.max(0, Math.min(1,
+                                        (shown - themePage.classicSoftEdgePxMin)
+                                        / (themePage.classicSoftEdgePxMax - themePage.classicSoftEdgePxMin)))
+                            }
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                themePage.classicSoftEdgePxPreview = themePage.classicSoftEdgePxMin
+                                    + Math.max(0, Math.min(1, position))
+                                        * (themePage.classicSoftEdgePxMax - themePage.classicSoftEdgePxMin)
+                            }
+                            onCommitRequested: function(position) {
+                                const clamped = Math.max(0, Math.min(1, position))
+                                const v = themePage.classicSoftEdgePxMin
+                                    + clamped * (themePage.classicSoftEdgePxMax - themePage.classicSoftEdgePxMin)
+                                themePage.classicSoftEdgePxPreview = -1
+                                themePage.setClassicSoftEdgePx(v)
+                            }
+                        }
+                    }
+
+                }
+
+
+                // 恢复默认 → OS4 原生值（柔光玻璃：1.2 / 1.4 / 1.0 / 1.5px；
+                // 轻透磨砂：1.5 / 0.6 / 0.1 / 1.5px）
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 2
+                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: "恢复默认"
+                        color: theme.selected
+                        font.pixelSize: 12
+                        font.weight: Font.Medium
+
+                        MouseArea {
+                            anchors.fill: parent
+                            anchors.margins: -6
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: themePage.resetMaterialTuning()
+                        }
+                    }
+                }
+            }
+        }
+
 
         Text {
             text: "窗口动画"
@@ -3283,17 +4097,9 @@ ApplicationWindow {
 
                 SidebarEntry {
                     Layout.fillWidth: true
-                    pageIndex: 0
-                    label: "显示"
-                    navSymbol: "▱"
-                    navTint: "#34c759"
-                }
-
-                SidebarEntry {
-                    Layout.fillWidth: true
                     Layout.topMargin: 1
-                    pageIndex: 1
-                    label: "主题"
+                    pageIndex: 0
+                    label: "外观"
                     navSymbol: "◈"
                     navTint: "#af52de"
                 }
@@ -3301,7 +4107,7 @@ ApplicationWindow {
                 SidebarEntry {
                     Layout.fillWidth: true
                     Layout.topMargin: 1
-                    pageIndex: 2
+                    pageIndex: 1
                     label: "顶栏"
                     navSymbol: "⎍"
                     navTint: "#5ac8fa"
@@ -3310,7 +4116,7 @@ ApplicationWindow {
                 SidebarEntry {
                     Layout.fillWidth: true
                     Layout.topMargin: 1
-                    pageIndex: 3
+                    pageIndex: 2
                     label: "Dock"
                     navSymbol: "▰"
                     navTint: "#0a84ff"
@@ -3319,7 +4125,7 @@ ApplicationWindow {
                 SidebarEntry {
                     Layout.fillWidth: true
                     Layout.topMargin: 1
-                    pageIndex: 4
+                    pageIndex: 3
                     label: "启动台"
                     navSymbol: "❖"
                     navTint: "#ff9500"
@@ -3328,7 +4134,7 @@ ApplicationWindow {
                 SidebarEntry {
                     Layout.fillWidth: true
                     Layout.topMargin: 1
-                    pageIndex: 5
+                    pageIndex: 4
                     label: "快捷键"
                     navSymbol: "⌘"
                     navTint: "#5856d6"
@@ -3337,7 +4143,7 @@ ApplicationWindow {
                 SidebarEntry {
                     Layout.fillWidth: true
                     Layout.topMargin: 1
-                    pageIndex: 6
+                    pageIndex: 5
                     label: "接入状态"
                     navSymbol: "✓"
                     navTint: "#30d158"
@@ -3385,7 +4191,7 @@ ApplicationWindow {
                         Layout.bottomMargin: 18
                     }
                     Repeater {
-                        model: (window.currentPage >= 0 && window.currentPage <= 6)
+                        model: (window.currentPage >= 0 && window.currentPage <= 5)
                             ? [] : window.contentByPage[window.currentPage].groups
                         delegate: ColumnLayout {
                             required property var modelData
@@ -3417,30 +4223,26 @@ ApplicationWindow {
                     }
 
                     LauncherSettingsPage {
-                        visible: window.currentPage === 4
-                    }
-
-                    ShortcutsSettingsPage {
-                        visible: window.currentPage === 5
-                    }
-
-                    IntegrationStatusPage {
-                        visible: window.currentPage === 6
-                    }
-
-                    DockSettingsPage {
                         visible: window.currentPage === 3
                     }
 
-                    BarSettingsPage {
+                    ShortcutsSettingsPage {
+                        visible: window.currentPage === 4
+                    }
+
+                    IntegrationStatusPage {
+                        visible: window.currentPage === 5
+                    }
+
+                    DockSettingsPage {
                         visible: window.currentPage === 2
                     }
 
-                    ThemeSettingsPage {
+                    BarSettingsPage {
                         visible: window.currentPage === 1
                     }
 
-                    DisplaySettingsPage {
+                    ThemeSettingsPage {
                         visible: window.currentPage === 0
                     }
                 }

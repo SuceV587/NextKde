@@ -20,6 +20,63 @@ uniform float refractionOffsetStrength;
 uniform float refractionBevelIntensity;
 uniform int physicallyBasedRefraction;
 
+// ── Bionic light-field (HyperOS 4 soft-glass / MaterialMode$Bionics) ──
+// The 37-float DEFAULT_GLASS_TOKEN recipe from MiBackgroundStyle, now with
+// the field<->value alignment re-verified against three independent
+// sources: the BionicsToken constructor iput sequence, the
+// toBionicsParams() array order, and the sibling GlassToken.create()
+// parameter layout (luminanceValues / darkerRange / inner.color /
+// shape.edge / reflect.lighten / blurBg.*). Consumed by bionicGlass().
+uniform int bionicMode;
+uniform float bionicLumValue0;         // luminanceValue0   0.67
+uniform float bionicLumValue1;         // luminanceValue1   0.16
+uniform float bionicLumValue2;         // luminanceValue2   0.09
+uniform float bionicLumValue3;         // luminanceValue3   0.0
+uniform float bionicLumAmount;         // luminanceAmount   0.24
+uniform float bionicBrightness;        // brightness       -0.02
+uniform float bionicHsvvBoost;         // rou guang ti liang qiang du 1.0
+uniform float bionicDarker;            // darker            0.3
+uniform float bionicDarkerRange0;      // darkerRange[0]    0.6
+uniform float bionicDarkerRange1;      // darkerRange[1]    1.0
+uniform float bionicInnerBottom;       // inner.bottom      0.03
+uniform float bionicInnerColorWhite;   // inner.colorWhite  0.2
+uniform float bionicInnerColorMix;     // inner.colorMix    0.3
+uniform float bionicColorPow;          // inner.colorPow    1.0
+uniform float bionicAlpha;             // inner.color alpha 0.1
+uniform float bionicOverallAlpha;      // overallAlpha      1.0
+uniform float bionicShapeEdgePx;       // shape.edge        72.0
+uniform float bionicShapeEdgePow;      // shape.edgePow     3.8
+uniform float bionicShapeThicknessPx;  // shape.thicknessPx 80.0
+uniform float bionicShapeReflectOffsetPx; // shape.reflectOffsetPx 800.0
+uniform float bionicReflLighten;       // reflect.lighten   1.2
+uniform float bionicReflStrength;      // reflect.strength  1.0
+uniform float bionicDirX;              // directionalLight x -0.4
+uniform float bionicDirY;              // directionalLight y  0.6
+uniform float bionicDirZ;              // directionalLight z -0.8
+uniform float bionicDirIntensity;      // directionalLight intensity 1.4
+uniform float bionicDirOppositeIntensity; // oppositeIntensity 0.7
+uniform float bionicDirAngleRange;     // angleRange        0.8
+uniform float bionicDirEdgePow;        // edgePow           1.15
+uniform float bionicIOR;               // refract.ior (visual calibration kept at 1.2)
+uniform float bionicBgColorSaturation; // blurBg.saturation 2.0
+uniform float bionicBgColorBrightness; // blurBg.brightness 0.0
+
+// ── Classic (HyperOS "light frosted glass") ───────────────────────────
+// Model: blur + stacked colour-blend layers + bloom stroke, from the
+// miuix ColorBlendToken / BloomStrokeToken tables (see apply_classic.py).
+uniform int classicMode;
+uniform vec4 classicDark0;    // rgba layer 0 (dark scene)
+uniform vec4 classicDark1;
+uniform vec4 classicDark2;
+uniform vec4 classicLight0;   // rgba layer 0 (light scene)
+uniform vec4 classicLight1;
+uniform vec4 classicLight2;
+uniform vec4 classicStroke;   // x=size(24) y=strength(0.1) z=w unused w unused
+uniform float classicRefractIOR;     // GlassToken$Refract.ior 1.5
+uniform float classicReflLighten;    // GlassToken$Reflect.lighten 2.0
+uniform float classicReflStrength;   // GlassToken$Reflect.strength 0.6
+uniform float classicMaskSoft;       // shape mask feather px (native setMaskBlur 20)
+
 float roundedRectangleDist(vec2 p, vec2 b, vec4 cornerRadius)
 {
     float r = p.x > 0.0
@@ -291,8 +348,252 @@ vec3 applyLiquidGlints(vec3 rgb, vec2 position, vec2 halfBlurSize,
     return rgb;
 }
 
+vec4 bionicGlass(vec4 sum, vec4 cornerRadius)
+{
+    vec2 halfBlurSize = blurSize * 0.5;
+    float minHalfSize = min(halfBlurSize.x, halfBlurSize.y);
+
+    vec2 position = uv * blurSize - halfBlurSize.xy;
+    float dist = roundedRectangleDist(position, halfBlurSize, cornerRadius);
+    if (dist >= 0.0) {
+        return sum;
+    }
+
+    // Rim normals (shared by refraction and rim lighting).
+    float minR = min(min(cornerRadius.x, cornerRadius.y), min(cornerRadius.z, cornerRadius.w));
+    float gradRadius = min(minR * 1.5, minHalfSize);
+    vec2 gradient = gradSdRoundedBox(position, halfBlurSize, gradRadius);
+    vec2 n2d = length(gradient) > 1e-5 ? -normalize(gradient) : vec2(0.0, 1.0);
+
+    float interiorDist = -dist;   // 0 at the rim, grows inward
+    const vec3 lumaW = vec3(0.299, 0.587, 0.114);
+
+    // 1) Refraction — IOR-driven gentle lens inside the edge band.
+    //    shapeThicknessPx drives the band width (native thicknessPx, the
+    //    *30 scaling was the value-domain of the previous alignment).
+    float refractAmp = clamp((bionicIOR - 1.0) * 0.15, 0.0, 0.4);
+    float bandW = clamp(bionicShapeThicknessPx * 0.3, 8.0, 60.0);
+    float bandT = 1.0 - clamp(interiorDist / bandW, 0.0, 1.0);
+    float lens = circleMap(bandT);
+    vec2 refrUv = clamp(uv + n2d * (refractAmp * lens), 0.0, 1.0);
+    vec3 base = texture(texUnit, refrUv).rgb;
+
+    // 2) Backdrop treatment — NATIVE ONLY.
+    //    The single backdrop transform with a native formula is `darker`
+    //    (verbatim from bloom_stroke.sksl):
+    //      mix(col, vec3(0.07874,0.02848,0.09278),
+    //          mix(0., darker, smoothstep(range.x, range.y, luma)))
+    //    Saturation / brightness / luminance-step passes were OUR
+    //    approximations and are removed — the native pipeline owns its own
+    //    chroma & luma handling; we must not double-apply or invent one.
+    const vec3 kBionicDarkTint = vec3(0.07874, 0.02848, 0.09278);
+    float darkW = smoothstep(bionicDarkerRange0, bionicDarkerRange1, dot(base, lumaW));
+    base = mix(base, kBionicDarkTint, mix(0.0, bionicDarker, darkW));
+
+    vec3 rgb = base;
+
+    // 3) Rim lighting — ported from bloom_stroke.sksl (calculateLighting /
+    //    dynamicAdd / processLighting / hsvv).
+    //    IMPORTANT: edgeK (rim-band mask) multiplies rawLight — the native
+    //    processLighting only runs OUTSIDE the inner box; applying the lift
+    //    across the whole surface floods the glass (overexposed + flat).
+    float zR = clamp(bionicShapeThicknessPx * 0.15, 2.5, 12.0);
+    float edgeK = 1.0 - clamp(interiorDist / zR, 0.0, 1.0);
+    vec3 dirL = normalize(vec3(bionicDirX, bionicDirY, bionicDirZ));
+    vec3 n3 = vec3(n2d.x, -n2d.y, sqrt(max(0.0, 1.0 - dot(n2d, n2d))));
+    float ndl1 = max(dot(n3, dirL), 0.0);
+    float light1 = ndl1 * max(1.0 - acos(clamp(ndl1, -1.0, 1.0))
+                    / (3.14159 * max(bionicDirAngleRange, 0.05)), 0.0) * bionicDirIntensity;
+    vec3 dirL2 = dirL * vec3(-1.0, -1.0, 1.0);
+    float ndl2 = max(dot(n3, dirL2), 0.0);
+    float light2 = ndl2 * max(1.0 - acos(clamp(ndl2, -1.0, 1.0))
+                    / (3.14159 * max(bionicDirAngleRange, 0.05)), 0.0) * bionicDirOppositeIntensity;
+
+    // dynamicAdd(color) + rawLight + knee -> lightenParam (verbatim chain,
+    // restricted to the rim band so the interior stays untouched).
+    float whiteDis = distance(vec3(1.0), rgb);
+    whiteDis = smoothstep(0.2, 1.0, whiteDis);
+    whiteDis = mix(0.2, 1.0, whiteDis);
+    float lumin0 = dot(rgb, lumaW);
+    float lightRatio = mix(0.8, whiteDis, lumin0);
+    float rawLight = (light1 + light2) * lightRatio * edgeK;
+    rawLight = pow(clamp(rawLight, 0.0, 1.0), 0.85);
+    float knee = mix(1.0, 0.7, smoothstep(0.0, 0.5, lumin0));
+    float lightenParam = rawLight / (rawLight + knee);
+
+    // hsvv(col, lighten): centre-gain lift (native soft-light)
+    {
+        float v = dot(rgb, lumaW);
+        float w = smoothstep(0.0, 0.5, v);
+        float k = mix(1.0 - v, v, w);
+        float g = 1.0 + smoothstep(0.0, 1.0, lightenParam) * mix(0.75, 0.4, w) * max(bionicHsvvBoost, 0.0);
+        rgb = (rgb + vec3(k)) * g - vec3(k);
+    }
+    // clamp (native renderGlassShape does clamp(col, 0, 1) after colorPow)
+    rgb = clamp(rgb, 0.0, 1.0);
+
+
+    // Reflection pair / inner-surface passes removed — they were OUR
+    // approximations (no native formula available); keeping them made the
+    // material diverge from OS4.
+
+    // 4) colorPow — native `pow(color, uColorPow)` (bloom_stroke.sksl).
+    rgb = pow(max(rgb, vec3(0.0)), vec3(max(bionicColorPow, 0.05)));
+
+    // 5) transparency (BionicOverallAlpha) — glass-layer opacity multiplier:
+    //    lower = more see-through (background shows); no longer darkens rgb.
+    float alphaScale = clamp(bionicOverallAlpha, 0.0, 1.0);
+
+    // 6) shape.edge — soft edge transition width, clamped to 25 as in the
+    //    native renderer. Applied at a reduced scale (0.2) so the Qt-side
+    //    surfaces keep a crisp inner edge.
+    // Soft edge width: edgePx maps to pixels at 1:5 scale, clamped to the
+    // native 25px ceiling (72 -> 14.4px... too soft; 25 -> 5px; 125 -> 25px).
+    float edgeSoft = clamp(bionicShapeEdgePx / 5.0, 0.1, 25.0);
+    float edgeT = clamp(-dist / max(edgeSoft, 0.1), 0.0, 1.0);
+    return vec4(rgb, smoothstep(0.0, 1.0, edgeT) * alphaScale);
+}
+
+// ── HyperOS light-frosted (Classic) render path ───────────────────────
+// Native composition: the three colour layers are composited with the
+// *blend modes* from the miuix ColorBlendToken tables instead of plain
+// alpha stacking (the alpha stack read as a grey film).
+//   Pured_Thin_Glass Dark : [PLUS_DARKER, LUMINOSITY, OVERLAY]
+//   Pured_Thin_Glass Light: [PLUS_DARKER, SOFT_LIGHT, HARD_LIGHT]
+float blendSoftLight(float a, float b)
+{
+    return (1.0 - 2.0 * b) * a * a + 2.0 * b * a;
+}
+vec3 blendSoftLight(vec3 a, vec3 b)
+{
+    return vec3(blendSoftLight(a.r, b.r), blendSoftLight(a.g, b.g), blendSoftLight(a.b, b.b));
+}
+vec3 blendOverlay(vec3 a, vec3 b)
+{
+    return mix(2.0 * a * b, 1.0 - 2.0 * (1.0 - a) * (1.0 - b), step(0.5, a));
+}
+vec3 blendHardLight(vec3 a, vec3 b)
+{
+    return blendOverlay(b, a);
+}
+vec3 blendPlusDarker(vec3 a, vec3 b)
+{
+    return max(vec3(0.0), a + b - 1.0);
+}
+vec3 blendLuminosity(vec3 a, vec3 b)
+{
+    // Keep the backdrop's chroma, take the layer's luminance.
+    float lb = dot(b, vec3(0.299, 0.587, 0.114));
+    float la = dot(a, vec3(0.299, 0.587, 0.114));
+    return clamp(a + (lb - la), 0.0, 1.0);
+}
+
+vec3 classicDarkLayers(vec3 c, vec4 l0, vec4 l1, vec4 l2)
+{
+    c = mix(c, blendPlusDarker(c, l0.rgb), l0.a);
+    c = mix(c, blendLuminosity(c, l1.rgb), l1.a);
+    c = mix(c, blendOverlay(c, l2.rgb), l2.a);
+    return c;
+}
+vec3 classicLightLayers(vec3 c, vec4 l0, vec4 l1, vec4 l2)
+{
+    c = mix(c, blendPlusDarker(c, l0.rgb), l0.a);
+    c = mix(c, blendSoftLight(c, l1.rgb), l1.a);
+    c = mix(c, blendHardLight(c, l2.rgb), l2.a);
+    return c;
+}
+
+vec4 classicGlass(vec4 sum, vec4 cornerRadius)
+{
+    vec2 halfBlurSize = blurSize * 0.5;
+    float minHalfSize = min(halfBlurSize.x, halfBlurSize.y);
+
+    vec2 position = uv * blurSize - halfBlurSize.xy;
+    float dist = roundedRectangleDist(position, halfBlurSize, cornerRadius);
+    if (dist >= 0.0) {
+        return sum;
+    }
+
+    float interiorDist = -dist;
+
+    // Rim normal (used by refraction and the bloom-stroke gradient).
+    float minR = min(min(cornerRadius.x, cornerRadius.y), min(cornerRadius.z, cornerRadius.w));
+    float gradRadius = min(minR * 1.5, minHalfSize);
+    vec2 gradient2 = gradSdRoundedBox(position, halfBlurSize, gradRadius);
+    vec2 n2d = length(gradient2) > 1e-5 ? -normalize(gradient2) : vec2(0.0, 1.0);
+
+    // 1) Refraction — GlassToken$Refract.ior (1.5, thin-glass family):
+    //    gentle lens inside the edge band (band ~= shape.thickness 60 * 0.3).
+    float clRefAmp = clamp((classicRefractIOR - 1.0) * 0.15, 0.0, 0.4);
+    float clBandW = 18.0;
+    float clBandT = 1.0 - clamp(interiorDist / clBandW, 0.0, 1.0);
+    float clLens = circleMap(clBandT);
+    vec2 clRefrUv = clamp(uv + n2d * (clRefAmp * clLens), 0.0, 1.0);
+    vec3 base = texture(texUnit, clRefrUv).rgb;
+
+    // Scene-dependent layer stack (dark scene vs light scene).
+    float bgLum = dot(base, vec3(0.299, 0.587, 0.114));
+    vec3 darkSide = classicDarkLayers(base, classicDark0, classicDark1, classicDark2);
+    vec3 lightSide = classicLightLayers(base, classicLight0, classicLight1, classicLight2);
+    vec3 rgb = mix(darkSide, lightSide, smoothstep(0.25, 0.55, bgLum));
+
+    // ── Bloom stroke (Glass_Stroke_Middle_Light / _Dark, native recipe) ──
+    //   line: width 0.8dp (~2px), colour white @ 10%, 24-degree gradient.
+    //   The previous build mistook the gradient angle (24) for the width,
+    //   which painted a 24px white band -> the halo.
+    float strokePx = max(classicStroke.x, 0.5);
+    float lineT = 1.0 - clamp(interiorDist / strokePx, 0.0, 1.0);
+    float line = lineT * lineT;                       // crisp, thin falloff
+    float gradA = radians(classicStroke.z);
+    vec2 gradDir = normalize(vec2(cos(gradA), -sin(gradA)));
+    float gradFace = 0.5 + 0.5 * dot(-n2d, gradDir);  // 0..1 along rim
+    float grad = mix(0.35, 1.0, gradFace);
+    rgb += vec3(1.0) * line * grad * classicStroke.y;
+
+    // ── Double light sources (BloomStrokeToken native values) ───────────
+    // Light preset:  src1 rgb(1.0,0.5,0.7) a0.8 @(0.2,0.5,0)
+    //                src2 rgb(1,1,1)      a0.3 @(0,1,1)
+    // Dark preset:   src1 rgb(1.0,0.4,0.7) a0.8
+    //                src2 rgb(1,1,1)      a0.2
+    // Scene blend mirrors the colour-layer stack above; positions are the
+    // native XY (screen y down), raking the stroke from the upper side.
+    float srcScene = smoothstep(0.25, 0.55, bgLum);
+    vec3 src1Col = mix(vec3(1.0, 0.4, 0.7), vec3(1.0, 0.5, 0.7), srcScene);
+    float src1A = 0.8;
+    vec3 src2Col = vec3(1.0);
+    float src2A = mix(0.2, 0.3, srcScene);
+    vec2 src1Dir = normalize(vec2(0.2, -0.5));   // native position (0.2, 0.5)
+    vec2 src2Dir = normalize(vec2(0.0, -1.0));   // native position (0.0, 1.0)
+    float beam1 = pow(clamp(dot(-n2d, src1Dir), 0.0, 1.0), 2.0);
+    float beam2 = pow(clamp(dot(-n2d, src2Dir), 0.0, 1.0), 2.0);
+    rgb += (src1Col * (beam1 * src1A) + src2Col * (beam2 * src2A)) * line * 0.35;
+
+    // 2) Reflection — GlassToken$Reflect (lighten 2.0 / strength 0.6):
+    //    the rim brightens where it faces the light.
+    float clFace = max(n2d.y, 0.0) + max(-n2d.y, 0.0) * 0.35;
+    // Gate the reflection to the stroke band: n2d is only meaningful near the
+    // rim; in the flat interior it carries SDF-gradient quantization that the
+    // ×lighten boost amplified into raster lines.
+    float clReflK = clamp(clFace * classicReflStrength * 0.24, 0.0, 1.0) * line;
+    rgb = mix(rgb, rgb * max(classicReflLighten, 0.0), clReflK);
+
+    // ── maskBlur (native setMaskBlur(0x14 = 20)): feather the shape mask ─
+    float maskSoft = max(classicMaskSoft, 0.1);
+    float maskT = clamp(-dist / maskSoft, 0.0, 1.0);
+    return vec4(rgb, smoothstep(0.0, 1.0, maskT));
+}
+
 vec4 glass(vec4 sum, vec4 cornerRadius)
 {
+    if (bionicMode == 1) {
+        // Soft glass (HyperOS): fully independent of the KOS material.
+        return bionicGlass(sum, cornerRadius);
+    }
+    if (classicMode == 1) {
+        // Light frosted (HyperOS Classic): blur + colour layers + stroke.
+        return classicGlass(sum, cornerRadius);
+    }
+
     vec2 halfBlurSize = blurSize * 0.5;
     float minHalfSize = min(halfBlurSize.x, halfBlurSize.y);
 

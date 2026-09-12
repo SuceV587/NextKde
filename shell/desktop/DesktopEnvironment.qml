@@ -143,12 +143,53 @@ Item {
                 // the value as an object and fall back to its previous tint.
                 iconTintColor: IconAppearanceService.tintColor.toString(),
                 shellStyle: AppearanceConfigService.shellStyle,
+                materialStyle: AppearanceConfigService.materialStyle,
                 barIntegratedWithDock:
                     AppearanceConfigService.barIntegratedWithDock,
                 barVisibilityMode: AppearanceConfigService.barVisibilityMode,
                 barLayoutMode: AppearanceConfigService.barLayoutMode,
                 dockWindowAnimationStyle:
                     AppearanceConfigService.dockWindowAnimationStyle,
+                // Dock surface tuning (DDE-derived). The Dock resolves these
+                // against the active shell style; the Settings app round-trips
+                // the raw multipliers so its sliders stay where the user left
+                // them instead of snapping to a recomputed absolute.
+                bionicRefract: AppearanceConfigService.bionicRefract,
+                bionicEdgeLight: AppearanceConfigService.bionicEdgeLight,
+                bionicSoftEdgePx: AppearanceConfigService.bionicSoftEdgePx,
+                bionicHsvv: AppearanceConfigService.bionicHsvv,
+                classicRefract: AppearanceConfigService.classicRefract,
+                classicReflect: AppearanceConfigService.classicReflect,
+                classicEdgeLight: AppearanceConfigService.classicEdgeLight,
+                classicSoftEdgePx: AppearanceConfigService.classicSoftEdgePx,
+                bionicRefractMin: AppearanceConfigService.bionicRefractMin,
+                bionicRefractMax: AppearanceConfigService.bionicRefractMax,
+                bionicEdgeLightMin: AppearanceConfigService.bionicEdgeLightMin,
+                bionicEdgeLightMax: AppearanceConfigService.bionicEdgeLightMax,
+                bionicSoftEdgePxMin: AppearanceConfigService.bionicSoftEdgePxMin,
+                bionicSoftEdgePxMax: AppearanceConfigService.bionicSoftEdgePxMax,
+                bionicHsvvMin: AppearanceConfigService.bionicHsvvMin,
+                bionicHsvvMax: AppearanceConfigService.bionicHsvvMax,
+                classicRefractMin: AppearanceConfigService.classicRefractMin,
+                classicRefractMax: AppearanceConfigService.classicRefractMax,
+                classicReflectMin: AppearanceConfigService.classicReflectMin,
+                classicReflectMax: AppearanceConfigService.classicReflectMax,
+                classicEdgeLightMin: AppearanceConfigService.classicEdgeLightMin,
+                classicEdgeLightMax: AppearanceConfigService.classicEdgeLightMax,
+                classicSoftEdgePxMin: AppearanceConfigService.classicSoftEdgePxMin,
+                classicSoftEdgePxMax: AppearanceConfigService.classicSoftEdgePxMax,
+                bionicTransparency: AppearanceConfigService.bionicTransparency,
+                bionicTransparencyMin: AppearanceConfigService.bionicTransparencyMin,
+                bionicTransparencyMax: AppearanceConfigService.bionicTransparencyMax,
+                // What the tuning currently resolves to, so Settings can show
+                // the user a concrete pixel/alpha readout rather than the
+                // opaque multiplier alone.
+                resolvedDockRadius: AppearanceTokens.resolvedDockRadius,
+                resolvedDockDarkAlpha: AppearanceTokens.resolvedDockDarkAlpha,
+                resolvedDockBorderTopAlpha:
+                    AppearanceTokens.resolvedDockBorderTopAlpha,
+                resolvedDockBorderBottomAlpha:
+                    AppearanceTokens.resolvedDockBorderBottomAlpha,
                 tokenVersion: AppearanceTokens.version,
             })
         }
@@ -193,6 +234,11 @@ Item {
             return snapshot()
         }
 
+        function updateMaterialStyle(style: string): string {
+            AppearanceConfigService.updateMaterialStyle(style)
+            return snapshot()
+        }
+
         function updateBarIntegratedWithDock(enabled: bool): string {
             AppearanceConfigService.updateBarIntegratedWithDock(enabled)
             return snapshot()
@@ -210,6 +256,76 @@ Item {
 
         function updateDockWindowAnimationStyle(style: string): string {
             AppearanceConfigService.updateDockWindowAnimationStyle(style)
+            return snapshot()
+        }
+
+        function updateDockRadiusScale(value: real): string {
+            AppearanceConfigService.updateDockRadiusScale(value)
+            return snapshot()
+        }
+
+        function updateDockDarkDensity(value: real): string {
+            AppearanceConfigService.updateDockDarkDensity(value)
+            return snapshot()
+        }
+
+        function updateDockEdgeStrength(value: real): string {
+            AppearanceConfigService.updateDockEdgeStrength(value)
+            return snapshot()
+        }
+
+        function updateBionicRefract(value: real): string {
+            AppearanceConfigService.updateBionicRefract(value)
+            return snapshot()
+        }
+
+        function updateBionicEdgeLight(value: real): string {
+            AppearanceConfigService.updateBionicEdgeLight(value)
+            return snapshot()
+        }
+
+        function updateBionicSoftEdgePx(value: real): string {
+            AppearanceConfigService.updateBionicSoftEdgePx(value)
+            return snapshot()
+        }
+
+        function updateBionicHsvv(value: real): string {
+            AppearanceConfigService.updateBionicHsvv(value)
+            return snapshot()
+        }
+
+        function updateClassicRefract(value: real): string {
+            AppearanceConfigService.updateClassicRefract(value)
+            return snapshot()
+        }
+
+        function updateClassicReflect(value: real): string {
+            AppearanceConfigService.updateClassicReflect(value)
+            return snapshot()
+        }
+
+        function updateClassicEdgeLight(value: real): string {
+            AppearanceConfigService.updateClassicEdgeLight(value)
+            return snapshot()
+        }
+
+        function updateClassicSoftEdgePx(value: real): string {
+            AppearanceConfigService.updateClassicSoftEdgePx(value)
+            return snapshot()
+        }
+
+        function updateBionicTransparency(value: real): string {
+            AppearanceConfigService.updateBionicTransparency(value)
+            return snapshot()
+        }
+
+        function resetMaterialTuning(): string {
+            AppearanceConfigService.resetMaterialTuning()
+            return snapshot()
+        }
+
+        function resetDockSurfaceTuning(): string {
+            AppearanceConfigService.resetDockSurfaceTuning()
             return snapshot()
         }
 

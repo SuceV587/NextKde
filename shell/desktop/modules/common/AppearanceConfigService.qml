@@ -33,28 +33,69 @@ QtObject {
 
     // "macos" matches the shell geometry that predates selectable styles,
     // so upgrading an existing installation does not unexpectedly reshape it.
-    property string shellStyle: "macos"
-    // Global colour-scheme preference shared by every shell style. The Dock
-    // settings page historically persisted this value in DockConfigService;
-    // that service mirrors the legacy value here during migration.
+    // Global colour-scheme preference shared by every shell style (mainline v10).
     property string themeMode: "system" // "system" | "light" | "dark"
-    // AppearanceTokens' wallpaper bridge persists this once the shared
-    // WallpaperColorSource reports a sampled seed; AppearanceTokens falls back
-    // to the KDE accent until then.
     property color wallpaperSeedColor: "transparent"
+    property string shellStyle: "macos"
+    // 材质风格（对标澎湃 HyperOS 4「材质风格」）
+    // "bionic" = 柔光玻璃 | "classic" = 轻透磨砂
+    property string materialStyle: "liquid"
     property bool barIntegratedWithDock: false
     property string barVisibilityMode: "always" // "always" | "smart" | "persistent"
     property string barLayoutMode: "transparent" // "full" | "floating" | "transparent"
     property string dockWindowAnimationStyle: "scale"
     property bool ready: false
 
-    function isValidShellStyle(value) {
-        return value === "windows12" || value === "macos"
-            || value === "material"
-    }
+    // ── 材质专属微调（柔光玻璃 / 轻透磨砂）───────────────────────────
+    // 每组只在对应材质激活时写入 kwinrc 的 [Effect-blurplus] 键；
+    // 材质切换时由 _syncMaterialTuning() 按 materialStyle 分支落盘。
+    // bionic（柔光玻璃）
+    property real bionicRefract: 4.0        // → BionicIOR（包值 refractIOR=4.0）
+    property real bionicEdgeLight: 1.4      // → BionicActivatedDirIntensity（悬停点亮强度）
+    property real bionicSoftEdgePx: 1.5     // → BionicShapeEdgePx（×5）
+    property real bionicHsvv: 1.0           // → BionicHsvvBoost（柔光提亮强度，1.0 = 原生）
+    // classic（轻透磨砂）
+    property real classicRefract: 1.5       // → ClassicRefractIOR
+    property real classicReflect: 0.06     // → ClassicReflStrength
+    property real classicEdgeLight: 0.1     // → ClassicStrokeStrength（描边强度）
+    property real classicSoftEdgePx: 1.5    // → ClassicMaskSoft
+    property real bionicTransparency: 1.0  // → BionicOverallAlpha（1.0=标准；调低更透）
+    readonly property real bionicRefractMin: 1.0
+    readonly property real bionicRefractMax: 5.0
+    readonly property real bionicEdgeLightMin: 0.0
+    readonly property real bionicEdgeLightMax: 3.0
+    readonly property real bionicSoftEdgePxMin: 0.1
+    readonly property real bionicSoftEdgePxMax: 25.0
+    readonly property real bionicHsvvMin: 0.0
+    readonly property real bionicHsvvMax: 2.0
+    readonly property real bionicTransparencyMin: 0.0
+    readonly property real bionicTransparencyMax: 1.0
+    readonly property real classicRefractMin: 1.0
+    readonly property real classicRefractMax: 2.0
+    readonly property real classicReflectMin: 0.0
+    readonly property real classicReflectMax: 1.5
+    readonly property real classicEdgeLightMin: 0.0
+    readonly property real classicEdgeLightMax: 0.5
+    readonly property real classicSoftEdgePxMin: 0.5
+    readonly property real classicSoftEdgePxMax: 25.0
 
     function isValidThemeMode(value) {
         return value === "system" || value === "light" || value === "dark"
+    }
+
+    function updateThemeMode(rawMode) {
+        const mode = String(rawMode)
+        if (!isValidThemeMode(mode) || themeMode === mode)
+            return false
+        themeMode = mode
+        saveTimer.restart()
+        return true
+    }
+
+    function isValidShellStyle(value) {
+        return value === "windows12" || value === "macos"
+            || value === "material" || value === "dde"
+            || value === "hyperos"
     }
 
     function isValidBarVisibilityMode(value) {
@@ -133,13 +174,93 @@ QtObject {
         return true
     }
 
-    function updateThemeMode(rawMode) {
-        const mode = String(rawMode)
-        if (!isValidThemeMode(mode) || themeMode === mode)
+    // ── 材质风格（液态玻璃[KOS原有] / 柔光玻璃 / 轻透磨砂）──
+    function isValidMaterialStyle(value) {
+        return value === "liquid" || value === "bionic" || value === "classic"
+    }
+
+    function updateMaterialStyle(rawStyle) {
+        const style = String(rawStyle)
+        if (!isValidMaterialStyle(style))
             return false
-        themeMode = mode
+        materialStyle = style
+        _applyKwinGlass(style)
+        materialTuningSyncTimer.restart()
         saveTimer.restart()
         return true
+    }
+
+    // 材质风格 → KWin 玻璃特效完整参数
+    //   liquid  = KOS 原有液态玻璃（默认）
+    //   bionic  = 柔光玻璃（物理光场全开：斯涅尔折射 + 色散 + 边缘光 + 双向色调）
+    //   classic = 轻透磨砂（物理关，经典磨砂）
+    // 参数映射自 18 Fold 的 BionicToken 37 参数配方
+    function _materialKwinParams(style) {
+        if (style === "bionic")
+            return {
+                BionicMode: "true",
+                ClassicMode: "false",
+                BlurStrength: "12",
+                RefractionStrength: "14",
+                PhysicallyBasedRefraction: "true",
+                RefractionRGBFringing: "0.7",
+                RefractionEdgeSize: "28",
+                RefractionBevelIntensity: "14",
+                HighlightWidthPx: "4",
+                EdgeLightingDock: "true",
+                AutoTintAlpha: "true",
+                TintColor: "#281c1c1e",
+                NoiseStrength: "3",
+            }
+        if (style === "classic")
+            return {
+                BionicMode: "false",
+                ClassicMode: "true",
+                BlurStrength: "6",
+                RefractionStrength: "3",
+                PhysicallyBasedRefraction: "false",
+                RefractionRGBFringing: "0.3",
+                RefractionEdgeSize: "12",
+                RefractionBevelIntensity: "10",
+                HighlightWidthPx: "3",
+                EdgeLightingDock: "false",
+                AutoTintAlpha: "false",
+                TintColor: "#3c0a0a0a",
+                NoiseStrength: "5",
+            }
+        // liquid（KOS 原有）
+        return {
+            BionicMode: "false",
+            ClassicMode: "false",
+            BlurStrength: "3",
+            RefractionStrength: "8",
+            PhysicallyBasedRefraction: "false",
+            RefractionRGBFringing: "1.0",
+            RefractionEdgeSize: "20",
+            RefractionBevelIntensity: "10",
+            HighlightWidthPx: "3",
+            EdgeLightingDock: "false",
+            AutoTintAlpha: "false",
+            TintColor: "#3c0a0a0a",
+            NoiseStrength: "5",
+        }
+    }
+
+    function _applyKwinGlass(style) {
+        const params = _materialKwinParams(style)
+        let cmd = ""
+        for (const key in params) {
+            cmd += "kwriteconfig6 --file kwinrc --group Effect-blurplus --key " + key
+                + " '" + params[key] + "'; "
+        }
+        cmd += "kwriteconfig6 --file kwinrc --group Effect-blurplus --key DecorationBlurStrength " + params.BlurStrength
+            + "; kwriteconfig6 --file kwinrc --group Effect-blurplus --key DockBlurStrength " + params.BlurStrength
+            + "; qdbus6 org.kde.KWin /KWin reconfigure 2>/dev/null || true; "
+            // BionicMode 切换的是渲染路径，需要重载已加载的玻璃特效才会生效
+            + "for e in glass glass5 glass6 glass7 glass8 glass10; do if qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.isEffectLoaded \"$e\" 2>/dev/null | grep -q true; then qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect \"$e\"; sleep 0.3; qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect \"$e\"; fi; done"
+        const process = _makeProcess(["bash", "-c", cmd])
+        if (process)
+            process.running = true
     }
 
     function updateBarIntegratedWithDock(rawValue) {
@@ -198,6 +319,160 @@ QtObject {
         return changed
     }
 
+    // ── 材质微调 updaters（每个参数只在对应材质生效）─────────────────
+    function updateBionicRefract(rawValue) {
+        const value = _clampInRange(rawValue, bionicRefractMin, bionicRefractMax)
+        if (!Number.isFinite(value) || Math.abs(bionicRefract - value) <= 0.001)
+            return false
+        bionicRefract = value
+        saveTimer.restart()
+        materialTuningSyncTimer.restart()
+        return true
+    }
+
+    function updateBionicEdgeLight(rawValue) {
+        const value = _clampInRange(rawValue, bionicEdgeLightMin, bionicEdgeLightMax)
+        if (!Number.isFinite(value) || Math.abs(bionicEdgeLight - value) <= 0.001)
+            return false
+        bionicEdgeLight = value
+        saveTimer.restart()
+        materialTuningSyncTimer.restart()
+        return true
+    }
+
+    function updateBionicSoftEdgePx(rawValue) {
+        const value = _clampInRange(rawValue, bionicSoftEdgePxMin, bionicSoftEdgePxMax)
+        if (!Number.isFinite(value) || Math.abs(bionicSoftEdgePx - value) <= 0.001)
+            return false
+        bionicSoftEdgePx = value
+        saveTimer.restart()
+        materialTuningSyncTimer.restart()
+        return true
+    }
+
+    function updateBionicHsvv(rawValue) {
+        const value = _clampInRange(rawValue, bionicHsvvMin, bionicHsvvMax)
+        if (!Number.isFinite(value) || Math.abs(bionicHsvv - value) <= 0.001)
+            return false
+        bionicHsvv = value
+        saveTimer.restart()
+        materialTuningSyncTimer.restart()
+        return true
+    }
+
+    function updateClassicRefract(rawValue) {
+        const value = _clampInRange(rawValue, classicRefractMin, classicRefractMax)
+        if (!Number.isFinite(value) || Math.abs(classicRefract - value) <= 0.001)
+            return false
+        classicRefract = value
+        saveTimer.restart()
+        materialTuningSyncTimer.restart()
+        return true
+    }
+
+    function updateClassicReflect(rawValue) {
+        const value = _clampInRange(rawValue, classicReflectMin, classicReflectMax)
+        if (!Number.isFinite(value) || Math.abs(classicReflect - value) <= 0.001)
+            return false
+        classicReflect = value
+        saveTimer.restart()
+        materialTuningSyncTimer.restart()
+        return true
+    }
+
+    function updateClassicEdgeLight(rawValue) {
+        const value = _clampInRange(rawValue, classicEdgeLightMin, classicEdgeLightMax)
+        if (!Number.isFinite(value) || Math.abs(classicEdgeLight - value) <= 0.001)
+            return false
+        classicEdgeLight = value
+        saveTimer.restart()
+        materialTuningSyncTimer.restart()
+        return true
+    }
+
+    function updateClassicSoftEdgePx(rawValue) {
+        const value = _clampInRange(rawValue, classicSoftEdgePxMin, classicSoftEdgePxMax)
+        if (!Number.isFinite(value) || Math.abs(classicSoftEdgePx - value) <= 0.001)
+            return false
+        classicSoftEdgePx = value
+        saveTimer.restart()
+        materialTuningSyncTimer.restart()
+        return true
+    }
+
+    function updateBionicTransparency(rawValue) {
+        const value = _clampInRange(rawValue, bionicTransparencyMin, bionicTransparencyMax)
+        if (!Number.isFinite(value) || Math.abs(bionicTransparency - value) <= 0.001)
+            return false
+        bionicTransparency = value
+        saveTimer.restart()
+        materialTuningSyncTimer.restart()
+        return true
+    }
+
+    function resetMaterialTuning() {
+        const changed = Math.abs(bionicRefract - 4.0) > 0.001
+            || Math.abs(bionicEdgeLight - 1.4) > 0.001
+            || Math.abs(bionicSoftEdgePx - 1.5) > 0.001
+            || Math.abs(bionicHsvv - 1.0) > 0.001
+            || Math.abs(classicRefract - 1.5) > 0.001
+            || Math.abs(classicReflect - 0.06) > 0.001
+            || Math.abs(classicEdgeLight - 0.1) > 0.001
+            || Math.abs(classicSoftEdgePx - 1.5) > 0.001
+            || Math.abs(bionicTransparency - 1.0) > 0.001
+        bionicRefract = 4.0
+        bionicEdgeLight = 1.4
+        bionicSoftEdgePx = 1.5
+        bionicHsvv = 1.0
+        classicRefract = 1.5
+        classicReflect = 0.06
+        classicEdgeLight = 0.1
+        classicSoftEdgePx = 1.5
+        bionicTransparency = 1.0
+        if (changed) {
+            saveTimer.restart()
+            materialTuningSyncTimer.restart()
+        }
+        return changed
+    }
+
+    // 材质专属参数 → kwinrc（materialStyle 门控：只写当前材质的键）
+    function _syncMaterialTuning() {
+        let cmd = ""
+        if (service.materialStyle === "bionic") {
+            cmd = "kwriteconfig6 --file kwinrc --group Effect-blurplus --key BionicIOR '" + service.bionicRefract + "'; "
+                + "kwriteconfig6 --file kwinrc --group Effect-blurplus --key BionicActivatedDirIntensity '" + service.bionicEdgeLight + "'; "
+                + "kwriteconfig6 --file kwinrc --group Effect-blurplus --key BionicActivatedDirOppositeIntensity '" + (service.bionicEdgeLight * 0.5) + "'; "
+                + "kwriteconfig6 --file kwinrc --group Effect-blurplus --key BionicShapeEdgePx '" + (service.bionicSoftEdgePx * 5.0) + "'; "
+                + "kwriteconfig6 --file kwinrc --group Effect-blurplus --key BionicHsvvBoost '" + service.bionicHsvv + "'; "
+                + "kwriteconfig6 --file kwinrc --group Effect-blurplus --key BionicOverallAlpha '" + service.bionicTransparency + "'; "
+        } else if (service.materialStyle === "classic") {
+            cmd = "kwriteconfig6 --file kwinrc --group Effect-blurplus --key ClassicRefractIOR '" + service.classicRefract + "'; "
+                + "kwriteconfig6 --file kwinrc --group Effect-blurplus --key ClassicReflStrength '" + service.classicReflect + "'; "
+                + "kwriteconfig6 --file kwinrc --group Effect-blurplus --key ClassicStrokeStrength '" + service.classicEdgeLight + "'; "
+                + "kwriteconfig6 --file kwinrc --group Effect-blurplus --key ClassicMaskSoft '" + service.classicSoftEdgePx + "'; "
+        } else {
+            return
+        }
+        cmd += "qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.reconfigureEffect glass 2>/dev/null || true"
+        const process = _makeProcess(["bash", "-c", cmd])
+        if (process)
+            process.running = true
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Dock surface tuning updaters
+    // ────────────────────────────────────────────────────────────────
+    // Each returns false when the value is rejected (non-finite or outside the
+    // documented range) so the Settings UI can tell a no-op from a real change.
+    function _clampInRange(rawValue, min, max) {
+        const number = Number(rawValue)
+        if (!Number.isFinite(number))
+            return NaN
+        return Math.max(min, Math.min(max, number))
+    }
+    // Restore the DDE-derived surface defaults without touching the selected
+    // shell style, blur or liquid strengths.
     property Timer saveTimer: Timer {
         interval: 350
         repeat: false
@@ -213,6 +488,13 @@ QtObject {
         interval: 80
         repeat: false
         onTriggered: service._syncGlassEffect()
+    }
+
+    // 材质微调专用（延迟稍长，避开 _applyKwinGlass 的并行写入）
+    property Timer materialTuningSyncTimer: Timer {
+        interval: 250
+        repeat: false
+        onTriggered: service._syncMaterialTuning()
     }
 
     property Timer dockAnimationEffectSyncTimer: Timer {
@@ -239,17 +521,27 @@ QtObject {
 
     function _save() {
         const payload = JSON.stringify({
-            version: 10,
+            version: 12,
             globalBlurStrength: service.globalBlurStrength,
             globalLiquidStrength: service.globalLiquidStrength,
             blurStrength: service.globalBlurStrength,
             liquidStrength: service.globalLiquidStrength,
             shellStyle: service.shellStyle,
+            materialStyle: service.materialStyle,
             themeMode: service.themeMode,
             barIntegratedWithDock: service.barIntegratedWithDock,
             barVisibilityMode: service.barVisibilityMode,
             barLayoutMode: service.barLayoutMode,
             dockWindowAnimationStyle: service.dockWindowAnimationStyle,
+            bionicRefract: service.bionicRefract,
+            bionicEdgeLight: service.bionicEdgeLight,
+            bionicSoftEdgePx: service.bionicSoftEdgePx,
+            bionicHsvv: service.bionicHsvv,
+            classicRefract: service.classicRefract,
+            classicReflect: service.classicReflect,
+            classicEdgeLight: service.classicEdgeLight,
+            classicSoftEdgePx: service.classicSoftEdgePx,
+            bionicTransparency: service.bionicTransparency,
         }, null, 2)
         const process = _makeProcess([
             "sh", "-c",
@@ -269,7 +561,34 @@ QtObject {
         process.running = true
     }
 
+    // 材质风格专属的玻璃参数（非 liquid 时接管，忽略用户滑条）
+    function _materialGlassParams(style) {
+        if (style === "bionic")
+            return { blur: 12, refr: 14 }
+        if (style === "classic")
+            return { blur: 6, refr: 3 }
+        return null
+    }
+
     function _syncGlassEffect() {
+        // 材质模式：强制模式参数，用户滑条不参与
+        const materialParams = service._materialGlassParams(service.materialStyle)
+        if (materialParams) {
+            PlatformClient.request("theme.sync-glass", {
+                contentBlurLevel: materialParams.blur,
+                dockBlurLevel: materialParams.blur,
+                refractionLevel: materialParams.refr,
+            }, function(response) {
+                if (!response?.ok)
+                    console.warn("[AppearanceConfig] Material glass sync failed: "
+                        + (response?.error?.message || "platform unavailable"))
+                else
+                    console.log("[AppearanceConfig] Material glass=" + service.materialStyle
+                        + " blur=" + materialParams.blur + " refr=" + materialParams.refr)
+            })
+            return
+        }
+        // liquid（KOS 原有）：用户滑条逻辑
         const dockBlurLevel = service._compositorBlurLevel(
             service.globalBlurStrength)
         const contentBlurLevel = service._compositorBlurLevel(
@@ -330,7 +649,6 @@ QtObject {
                     const barVisibility = String(object.barVisibilityMode ?? "")
                     const barLayout = String(object.barLayoutMode ?? "")
                     const animationStyle = String(object.dockWindowAnimationStyle ?? "")
-
                     if (Number.isFinite(globalBlur)) {
                         service.globalBlurStrength = globalBlur
                         service.blurStrength = globalBlur
@@ -339,10 +657,10 @@ QtObject {
                         service.globalLiquidStrength = globalLiquid
                         service.liquidStrength = globalLiquid
                     }
-                    if (service.isValidShellStyle(style))
-                        service.shellStyle = style
                     if (service.isValidThemeMode(themeMode))
                         service.themeMode = themeMode
+                    if (service.isValidShellStyle(style))
+                        service.shellStyle = style
                     if (hasBarIntegration)
                         service.barIntegratedWithDock = object.barIntegratedWithDock
                     if (service.isValidBarVisibilityMode(barVisibility))
@@ -351,14 +669,61 @@ QtObject {
                         service.barLayoutMode = barLayout
                     if (service.isValidDockWindowAnimationStyle(animationStyle))
                         service.dockWindowAnimationStyle = animationStyle
+                    // v11 adds material-specific tuning (bionic/classic).
+                    const bRefract = service._clampInRange(
+                        object.bionicRefract ?? 1.2, service.bionicRefractMin, service.bionicRefractMax)
+                    const bEdge = service._clampInRange(
+                        object.bionicEdgeLight ?? 1.4, service.bionicEdgeLightMin, service.bionicEdgeLightMax)
+                    const bSoft = service._clampInRange(
+                        object.bionicSoftEdgePx ?? 1.5, service.bionicSoftEdgePxMin, service.bionicSoftEdgePxMax)
+                    const bHsvv = service._clampInRange(
+                        object.bionicHsvv ?? 1.0, service.bionicHsvvMin, service.bionicHsvvMax)
+                    if (Number.isFinite(bHsvv))
+                        service.bionicHsvv = bHsvv
+                    const bTrans = service._clampInRange(
+                        object.bionicTransparency ?? 1.0, service.bionicTransparencyMin, service.bionicTransparencyMax)
+                    const cRefract = service._clampInRange(
+                        object.classicRefract ?? 1.5, service.classicRefractMin, service.classicRefractMax)
+                    const cReflect = service._clampInRange(
+                        object.classicReflect ?? 0.6, service.classicReflectMin, service.classicReflectMax)
+                    const cEdge = service._clampInRange(
+                        object.classicEdgeLight ?? 0.1, service.classicEdgeLightMin, service.classicEdgeLightMax)
+                    const cSoft = service._clampInRange(
+                        object.classicSoftEdgePx ?? 1.5, service.classicSoftEdgePxMin, service.classicSoftEdgePxMax)
+                    if (Number.isFinite(bRefract))
+                        service.bionicRefract = bRefract
+                    if (Number.isFinite(bEdge))
+                        service.bionicEdgeLight = bEdge
+                    if (Number.isFinite(bSoft))
+                        service.bionicSoftEdgePx = bSoft
+                    if (Number.isFinite(cRefract))
+                        service.classicRefract = cRefract
+                    if (Number.isFinite(cReflect))
+                        service.classicReflect = cReflect
+                    if (Number.isFinite(cEdge))
+                        service.classicEdgeLight = cEdge
+                    if (Number.isFinite(cSoft))
+                        service.classicSoftEdgePx = cSoft
+                    if (Number.isFinite(bTrans))
+                        service.bionicTransparency = bTrans
 
-                    if (Number(object.version) !== 10
+                    if (Number(object.version) !== 12
                             || !service.isValidShellStyle(style)
-                            || !service.isValidThemeMode(themeMode)
                             || !hasBarIntegration
                             || !service.isValidBarVisibilityMode(barVisibility)
                             || !service.isValidBarLayoutMode(barLayout)
-                            || !service.isValidDockWindowAnimationStyle(animationStyle))
+                            || !service.isValidDockWindowAnimationStyle(animationStyle)
+                            || !Number.isFinite(radiusScale)
+                            || !Number.isFinite(darkDensity)
+                            || !Number.isFinite(edgeStrength)
+                            || !Number.isFinite(bRefract)
+                            || !Number.isFinite(bEdge)
+                            || !Number.isFinite(bSoft)
+                            || !Number.isFinite(bHsvv)
+                            || !Number.isFinite(cRefract)
+                            || !Number.isFinite(cReflect)
+                            || !Number.isFinite(cEdge)
+                            || !Number.isFinite(cSoft))
                         service.saveTimer.restart()
                 } catch (error) {
                     console.warn("[AppearanceConfig] parse error: " + error)

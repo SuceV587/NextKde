@@ -108,6 +108,71 @@ public:
             QStringLiteral("updateShellStyle"), style}));
     }
 
+    Q_INVOKABLE QVariantMap updateMaterialStyle(const QString &style) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateMaterialStyle"), style}));
+    }
+
+    Q_INVOKABLE QVariantMap updateBionicRefract(double value) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateBionicRefract"),
+            QString::number(value, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateBionicEdgeLight(double value) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateBionicEdgeLight"),
+            QString::number(value, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateBionicSoftEdgePx(double value) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateBionicSoftEdgePx"),
+            QString::number(value, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateBionicHsvv(double value) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateBionicHsvv"),
+            QString::number(value, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateClassicRefract(double value) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateClassicRefract"),
+            QString::number(value, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateClassicReflect(double value) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateClassicReflect"),
+            QString::number(value, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateClassicEdgeLight(double value) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateClassicEdgeLight"),
+            QString::number(value, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateClassicSoftEdgePx(double value) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateClassicSoftEdgePx"),
+            QString::number(value, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap updateBionicTransparency(double value) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateBionicTransparency"),
+            QString::number(value, 'f', 3)}));
+    }
+
+    Q_INVOKABLE QVariantMap resetMaterialTuning() {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("resetMaterialTuning")}));
+    }
+
+
     Q_INVOKABLE QVariantMap updateBarIntegratedWithDock(bool enabled) {
         return appearanceSnapshotFromReply(callAppearance({
             QStringLiteral("updateBarIntegratedWithDock"),
@@ -337,6 +402,8 @@ private:
             {QStringLiteral("iconOpacity"), object.value(QStringLiteral("iconOpacity")).toDouble(0.5)},
             {QStringLiteral("iconTintColor"), object.value(QStringLiteral("iconTintColor")).toString(QStringLiteral("#a855f7"))},
             {QStringLiteral("shellStyle"), object.value(QStringLiteral("shellStyle")).toString()},
+            {QStringLiteral("materialStyle"),
+                object.value(QStringLiteral("materialStyle")).toString(QStringLiteral("liquid"))},
             {QStringLiteral("barIntegratedWithDock"),
                 object.value(QStringLiteral("barIntegratedWithDock")).toBool()},
             {QStringLiteral("barVisibilityMode"),
@@ -345,6 +412,61 @@ private:
                 object.value(QStringLiteral("barLayoutMode")).toString(QStringLiteral("transparent"))},
             {QStringLiteral("dockWindowAnimationStyle"),
                 object.value(QStringLiteral("dockWindowAnimationStyle")).toString()},
+            // 材质微调（柔光玻璃 / 轻透磨砂）
+            {QStringLiteral("bionicRefract"),
+                object.value(QStringLiteral("bionicRefract")).toDouble(4.0)},
+            {QStringLiteral("bionicEdgeLight"),
+                object.value(QStringLiteral("bionicEdgeLight")).toDouble(1.4)},
+            {QStringLiteral("bionicSoftEdgePx"),
+                object.value(QStringLiteral("bionicSoftEdgePx")).toDouble(1.5)},
+            {QStringLiteral("bionicHsvv"),
+                object.value(QStringLiteral("bionicHsvv")).toDouble(1.0)},
+            {QStringLiteral("classicRefract"),
+                object.value(QStringLiteral("classicRefract")).toDouble(1.5)},
+            {QStringLiteral("classicReflect"),
+                object.value(QStringLiteral("classicReflect")).toDouble(0.06)},
+            {QStringLiteral("classicEdgeLight"),
+                object.value(QStringLiteral("classicEdgeLight")).toDouble(0.1)},
+            {QStringLiteral("classicSoftEdgePx"),
+                object.value(QStringLiteral("classicSoftEdgePx")).toDouble(1.5)},
+            {QStringLiteral("bionicRefractMin"),
+                object.value(QStringLiteral("bionicRefractMin")).toDouble(1.0)},
+            {QStringLiteral("bionicRefractMax"),
+                object.value(QStringLiteral("bionicRefractMax")).toDouble(5.0)},
+            {QStringLiteral("bionicEdgeLightMin"),
+                object.value(QStringLiteral("bionicEdgeLightMin")).toDouble(0.0)},
+            {QStringLiteral("bionicEdgeLightMax"),
+                object.value(QStringLiteral("bionicEdgeLightMax")).toDouble(3.0)},
+            {QStringLiteral("bionicSoftEdgePxMin"),
+                object.value(QStringLiteral("bionicSoftEdgePxMin")).toDouble(0.1)},
+            {QStringLiteral("bionicSoftEdgePxMax"),
+                object.value(QStringLiteral("bionicSoftEdgePxMax")).toDouble(25.0)},
+            {QStringLiteral("bionicHsvvMin"),
+                object.value(QStringLiteral("bionicHsvvMin")).toDouble(0.0)},
+            {QStringLiteral("bionicHsvvMax"),
+                object.value(QStringLiteral("bionicHsvvMax")).toDouble(2.0)},
+            {QStringLiteral("classicRefractMin"),
+                object.value(QStringLiteral("classicRefractMin")).toDouble(1.0)},
+            {QStringLiteral("classicRefractMax"),
+                object.value(QStringLiteral("classicRefractMax")).toDouble(2.0)},
+            {QStringLiteral("classicReflectMin"),
+                object.value(QStringLiteral("classicReflectMin")).toDouble(0.0)},
+            {QStringLiteral("classicReflectMax"),
+                object.value(QStringLiteral("classicReflectMax")).toDouble(1.5)},
+            {QStringLiteral("classicEdgeLightMin"),
+                object.value(QStringLiteral("classicEdgeLightMin")).toDouble(0.0)},
+            {QStringLiteral("classicEdgeLightMax"),
+                object.value(QStringLiteral("classicEdgeLightMax")).toDouble(0.5)},
+            {QStringLiteral("classicSoftEdgePxMin"),
+                object.value(QStringLiteral("classicSoftEdgePxMin")).toDouble(0.5)},
+            {QStringLiteral("classicSoftEdgePxMax"),
+                object.value(QStringLiteral("classicSoftEdgePxMax")).toDouble(25.0)},
+            {QStringLiteral("bionicTransparency"),
+                object.value(QStringLiteral("bionicTransparency")).toDouble(1.0)},
+            {QStringLiteral("bionicTransparencyMin"),
+                object.value(QStringLiteral("bionicTransparencyMin")).toDouble(0.0)},
+            {QStringLiteral("bionicTransparencyMax"),
+                object.value(QStringLiteral("bionicTransparencyMax")).toDouble(1.0)},
             {QStringLiteral("tokenVersion"), object.value(QStringLiteral("tokenVersion")).toInt()},
         };
     }
