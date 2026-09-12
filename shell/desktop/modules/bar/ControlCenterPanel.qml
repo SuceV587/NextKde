@@ -322,7 +322,7 @@ Item {
                 Canvas {
                     id: wifiBusyArc
                     anchors.fill: parent
-                    property color glyphColor: "white"
+                    property color glyphColor: ThemeService.isDark ? "white" : Qt.rgba(0.06, 0.08, 0.12, 1.0)
                     onGlyphColorChanged: requestPaint()
                     onPaint: {
                         const ctx = getContext("2d")
@@ -431,7 +431,7 @@ Item {
                 anchors.centerIn: parent
                 width: 21; height: 21
                 property bool active: ControlCenterService.bluetoothPowered
-                property color glyphColor: "white"
+                property color glyphColor: active ? "white" : (ThemeService.isDark ? "white" : Qt.rgba(0.06, 0.08, 0.12, 1.0))
                 opacity: ControlCenterService.bluetoothChangeInProgress ? 0 : 1
                 Behavior on opacity { NumberAnimation { duration: 140 } }
                 onActiveChanged: requestPaint()
@@ -475,7 +475,7 @@ Item {
                 Canvas {
                     id: bluetoothBusyArc
                     anchors.fill: parent
-                    property color glyphColor: "white"
+                    property color glyphColor: ThemeService.isDark ? "white" : Qt.rgba(0.06, 0.08, 0.12, 1.0)
                     onGlyphColorChanged: requestPaint()
                     onPaint: {
                         const ctx = getContext("2d")
@@ -967,7 +967,9 @@ Item {
             anchors { left: parent.left; leftMargin: 12; bottom: parent.bottom; bottomMargin: 12 }
             width: 15
             height: 15
-            property color glyphColor: "white"
+            readonly property bool isDark: ThemeService.isDark
+            property color glyphColor: isDark ? "white" : Qt.rgba(0.06, 0.08, 0.12, 1.0)
+            onIsDarkChanged: requestPaint()
             onGlyphColorChanged: requestPaint()
             onPaint: {
                 const ctx = getContext("2d")
@@ -1249,7 +1251,7 @@ Item {
                     GlassText {
                         anchors.centerIn: parent
                         text: "×"
-                        color: "white"
+                        color: ThemeService.foregroundColor
                         font { pixelSize: 15; weight: Font.Bold }
                     }
                     MouseArea {
@@ -1646,7 +1648,7 @@ Item {
                     anchors.centerIn: parent
                     anchors.horizontalCenterOffset: -1
                     text: "‹"
-                    color: "white"
+                    color: ThemeService.foregroundColor
                     font { pixelSize: 18; weight: Font.Bold }
                 }
 
@@ -1670,7 +1672,7 @@ Item {
                     : (panel.activeSubmenu === "bluetooth" ? "蓝牙"
                     : (panel.activeSubmenu === "brightness" ? "显示亮度"
                     : (panel.activeSubmenu === "sound" ? "声音" : "")))
-                color: "white"
+                color: ThemeService.foregroundColor
                 font { pixelSize: 13; weight: Font.Bold; family: "Noto Sans CJK SC" }
             }
 
@@ -1759,13 +1761,14 @@ Item {
                     GlassText {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "Wi‑Fi 已关闭"
-                        color: "white"
+                        color: ThemeService.foregroundColor
                         font { pixelSize: 14; weight: Font.Bold; family: "Noto Sans CJK SC" }
                     }
                     GlassText {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "在上方开启开关以查看附近网络"
-                        color: "white"
+                        color: ThemeService.foregroundColor
+                        opacity: 0.55
                         font { pixelSize: 12; weight: Font.DemiBold; family: "Noto Sans CJK SC" }
                     }
                 }
@@ -1790,7 +1793,8 @@ Item {
                     GlassText {
                         anchors { left: parent.left; verticalCenter: parent.verticalCenter }
                         text: "附近网络"
-                        color: "white"
+                        color: ThemeService.foregroundColor
+                        opacity: 0.60
                         font { pixelSize: 11; weight: Font.Bold; family: "Noto Sans CJK SC" }
                     }
 
@@ -1798,7 +1802,8 @@ Item {
                         anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                         visible: NetworkService.wifiScanInProgress
                         text: "正在扫描…"
-                        color: "white"
+                        color: ThemeService.foregroundColor
+                        opacity: 0.50
                         font { pixelSize: 10; weight: Font.DemiBold; family: "Noto Sans CJK SC" }
                     }
                 }
@@ -1837,7 +1842,7 @@ Item {
                             visible: !!modelData.active
                             anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
                             text: "✓"
-                            color: "white"
+                            color: "#0a84ff"
                             font { pixelSize: 13; weight: Font.Bold }
                         }
 
@@ -1852,7 +1857,7 @@ Item {
                             wifiEnabled: true
                             connected: !!modelData.active
                             signalStrength: modelData.signalStrength !== undefined ? modelData.signalStrength : 70
-                            glyphColor: modelData.active ? "#0a84ff" : "white"
+                            glyphColor: modelData.active ? "#0a84ff" : (ThemeService.isDark ? "white" : Qt.rgba(0.06, 0.08, 0.12, 1.0))
                         }
 
                         GlassText {
@@ -1865,7 +1870,7 @@ Item {
                             }
                             text: modelData.ssid || "隐藏网络"
                             elide: Text.ElideRight
-                            color: "white"
+                            color: modelData.active ? "#0a84ff" : ThemeService.foregroundColor
                             font {
                                 pixelSize: 12
                                 weight: modelData.active ? Font.Bold : Font.DemiBold
@@ -1886,8 +1891,9 @@ Item {
                                 onPaint: {
                                     const ctx = getContext("2d")
                                     ctx.reset()
-                                    ctx.strokeStyle = "#ffffff"
-                                    ctx.fillStyle = "#ffffff"
+                                    const lockColor = ThemeService.isDark ? "#ffffff" : Qt.rgba(0.06, 0.08, 0.12, 0.60)
+                                    ctx.strokeStyle = lockColor
+                                    ctx.fillStyle = lockColor
                                     ctx.lineWidth = 1.5
                                     ctx.lineCap = "round"
                                     ctx.beginPath()
@@ -1920,7 +1926,7 @@ Item {
                                 GlassText {
                                     anchors.centerIn: parent
                                     text: "断开"
-                                    color: "white"
+                                    color: ThemeService.foregroundColor
                                     font { pixelSize: 10; weight: Font.DemiBold; family: "Noto Sans CJK SC" }
                                 }
                                 MouseArea {
@@ -1952,7 +1958,8 @@ Item {
                         anchors.centerIn: parent
                         visible: submenuWifiList.count === 0 && !NetworkService.wifiScanInProgress
                         text: "未搜索到 Wi‑Fi 网络"
-                        color: "white"
+                        color: ThemeService.foregroundColor
+                        opacity: 0.45
                         font { pixelSize: 12; weight: Font.DemiBold; family: "Noto Sans CJK SC" }
                     }
                 }
@@ -1972,14 +1979,15 @@ Item {
                 GlassText {
                     anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter }
                     text: "网络设置…"
-                    color: "white"
+                    color: wifiSettingsMouse.containsMouse ? "#0a84ff" : ThemeService.foregroundColor
                     font { pixelSize: 12; weight: Font.Bold; family: "Noto Sans CJK SC" }
                 }
 
                 GlassText {
                     anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
                     text: "›"
-                    color: "white"
+                    color: ThemeService.foregroundColor
+                    opacity: 0.45
                     font { pixelSize: 13; weight: Font.Bold }
                 }
 
@@ -2015,13 +2023,14 @@ Item {
                     GlassText {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "蓝牙已关闭"
-                        color: "white"
+                        color: ThemeService.foregroundColor
                         font { pixelSize: 13; weight: Font.Bold; family: "Noto Sans CJK SC" }
                     }
                     GlassText {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "在上方开启开关以连接设备"
-                        color: "white"
+                        color: ThemeService.foregroundColor
+                        opacity: 0.55
                         font { pixelSize: 11; family: "Noto Sans CJK SC" }
                     }
                 }
@@ -2045,7 +2054,8 @@ Item {
                     GlassText {
                         anchors { left: parent.left; verticalCenter: parent.verticalCenter }
                         text: "设备"
-                        color: "white"
+                        color: ThemeService.foregroundColor
+                        opacity: 0.60
                         font { pixelSize: 10; weight: Font.DemiBold; family: "Noto Sans CJK SC" }
                     }
 
@@ -2053,7 +2063,8 @@ Item {
                         anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                         visible: ControlCenterService.bluetoothDevicesRefreshInProgress
                         text: "正在刷新…"
-                        color: "white"
+                        color: ThemeService.foregroundColor
+                        opacity: 0.50
                         font { pixelSize: 9; family: "Noto Sans CJK SC" }
                     }
                 }
@@ -2091,7 +2102,7 @@ Item {
                             visible: !!modelData.connected
                             anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
                             text: "✓"
-                            color: "white"
+                            color: "#0a84ff"
                             font { pixelSize: 13; weight: Font.Bold }
                         }
 
@@ -2106,7 +2117,7 @@ Item {
                             onPaint: {
                                 const ctx = getContext("2d")
                                 ctx.reset()
-                                ctx.strokeStyle = modelData.connected ? "#0a84ff" : (ThemeService.isDark ? "white" : "#000000")
+                                ctx.strokeStyle = modelData.connected ? "#0a84ff" : (ThemeService.isDark ? "white" : Qt.rgba(0.06, 0.08, 0.12, 1.0))
                                 ctx.lineWidth = 1.6
                                 ctx.lineCap = "round"
                                 ctx.lineJoin = "round"
@@ -2139,13 +2150,14 @@ Item {
                                 width: parent.width
                                 text: modelData.name || "未知设备"
                                 elide: Text.ElideRight
-                                color: "white"
+                                color: ThemeService.foregroundColor
                                 font { pixelSize: 11; weight: modelData.connected ? Font.DemiBold : Font.Normal; family: "Noto Sans CJK SC" }
                             }
 
                             GlassText {
                                 text: modelData.connected ? "已连接" : "未连接"
-                                color: "white"
+                                color: ThemeService.foregroundColor
+                                opacity: 0.55
                                 font { pixelSize: 9; family: "Noto Sans CJK SC" }
                             }
                         }
@@ -2161,7 +2173,8 @@ Item {
                                 id: btBatteryText
                                 anchors.centerIn: parent
                                 text: (modelData.battery || 0) + "%"
-                                color: "white"
+                                color: ThemeService.foregroundColor
+                                opacity: 0.65
                                 font { pixelSize: 10; family: "Noto Sans CJK SC" }
                             }
                         }
@@ -2180,7 +2193,8 @@ Item {
                         anchors.centerIn: parent
                         visible: submenuBtList.count === 0 && !ControlCenterService.bluetoothDevicesRefreshInProgress
                         text: "未发现已配对设备"
-                        color: "white"
+                        color: ThemeService.foregroundColor
+                        opacity: 0.45
                         font { pixelSize: 11; family: "Noto Sans CJK SC" }
                     }
                 }
@@ -2200,14 +2214,15 @@ Item {
                 GlassText {
                     anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter }
                     text: "蓝牙设置…"
-                    color: "white"
+                    color: btSettingsMouse.containsMouse ? "#0a84ff" : ThemeService.foregroundColor
                     font { pixelSize: 11; weight: Font.DemiBold; family: "Noto Sans CJK SC" }
                 }
 
                 GlassText {
                     anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
                     text: "›"
-                    color: "white"
+                    color: ThemeService.foregroundColor
+                    opacity: 0.45
                     font { pixelSize: 13; weight: Font.Bold }
                 }
 
@@ -2259,20 +2274,22 @@ Item {
                             anchors { left: parent.left; right: displayBrightnessPercent.left; top: parent.top; rightMargin: 8 }
                             text: modelData.label || modelData.id || "显示器"
                             elide: Text.ElideRight
-                            color: "white"
+                            color: ThemeService.foregroundColor
                             font { pixelSize: 11; weight: Font.DemiBold; family: "Noto Sans CJK SC" }
                         }
                         GlassText {
                             id: displayBrightnessPercent
                             anchors { right: parent.right; top: parent.top }
                             text: Math.round(displayBrightnessRow.preview) + "%"
-                            color: "white"
+                            color: ThemeService.foregroundColor
+                            opacity: 0.65
                             font { pixelSize: 10; family: "Noto Sans CJK SC" }
                         }
                         GlassText {
                             anchors { left: parent.left; top: parent.top; topMargin: 20 }
                             text: modelData.isInternal ? "内置屏幕" : "外接显示器"
-                            color: "white"
+                            color: ThemeService.foregroundColor
+                            opacity: 0.55
                             font { pixelSize: 9; family: "Noto Sans CJK SC" }
                         }
                         ControlCenterSlider {
@@ -2294,7 +2311,8 @@ Item {
                 anchors.centerIn: parent
                 visible: ControlCenterService.brightnessDisplays.length === 0
                 text: "未发现可调节亮度的显示器"
-                color: "white"
+                color: ThemeService.foregroundColor
+                opacity: 0.45
                 font { pixelSize: 11; family: "Noto Sans CJK SC" }
             }
 
@@ -2309,13 +2327,14 @@ Item {
                 GlassText {
                     anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter }
                     text: "显示设置…"
-                    color: "white"
+                    color: displaySettingsMouse.containsMouse ? "#0a84ff" : ThemeService.foregroundColor
                     font { pixelSize: 11; weight: Font.DemiBold; family: "Noto Sans CJK SC" }
                 }
                 GlassText {
                     anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
                     text: "›"
-                    color: "white"
+                    color: ThemeService.foregroundColor
+                    opacity: 0.45
                     font { pixelSize: 13; weight: Font.Bold }
                 }
                 MouseArea {
