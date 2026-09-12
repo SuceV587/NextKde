@@ -1,4 +1,5 @@
 import QtQuick
+import qs.desktop.modules.dock
 
 // A QML-only liquid finish for surfaces that already use compositor blur.
 // Keeping the material in Qt Quick preserves anti-aliased rounded corners.
@@ -78,18 +79,18 @@ Rectangle {
         return Math.min(0.20, (base + protection)
             * (material === "thick" ? 1.18 : 1.0))
     }
-    // Glass controls use the same white foreground hierarchy in light and
-    // dark themes. Choosing black from the estimated wallpaper makes symbols
-    // flip while the material itself remains visually dark/transparent.
+    property bool _useDarkForeground: estimatedMaterialLuminance >= 0.58 || !ThemeService.isDark
     readonly property color foregroundColor: usesMaterialSurface
-        ? AppearanceTokens.colors.surfaceForeground : Qt.rgba(1, 1, 1, 1.0)
+        ? AppearanceTokens.colors.surfaceForeground
+        : (_useDarkForeground ? Qt.rgba(0.02, 0.025, 0.035, 1.0) : Qt.rgba(1, 1, 1, 1.0))
     readonly property color secondaryForegroundColor: usesMaterialSurface
-        ? AppearanceTokens.colors.surfaceVariantForeground : Qt.rgba(1, 1, 1, 0.82)
+        ? AppearanceTokens.colors.surfaceVariantForeground
+        : (_useDarkForeground ? Qt.rgba(0.02, 0.025, 0.035, 0.76) : Qt.rgba(1, 1, 1, 0.82))
     readonly property color tertiaryForegroundColor: usesMaterialSurface
         ? Qt.rgba(AppearanceTokens.colors.surfaceVariantForeground.r,
             AppearanceTokens.colors.surfaceVariantForeground.g,
             AppearanceTokens.colors.surfaceVariantForeground.b, 0.70)
-        : Qt.rgba(1, 1, 1, 0.66)
+        : (_useDarkForeground ? Qt.rgba(0.02, 0.025, 0.035, 0.62) : Qt.rgba(1, 1, 1, 0.66))
     readonly property real baseLuminance: baseColor.r * 0.2126
         + baseColor.g * 0.7152 + baseColor.b * 0.0722
     // Bright surfaces need less white overlay to remain translucent; darker
