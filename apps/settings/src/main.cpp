@@ -35,6 +35,11 @@ public:
                                            QString::number(height, 'f', 2)}));
     }
 
+    Q_INVOKABLE QVariantMap updateDockEdgeMargin(double margin) {
+        return snapshotFromReply(callDock({QStringLiteral("updateEdgeMargin"),
+                                           QString::number(margin, 'f', 2)}));
+    }
+
     Q_INVOKABLE QVariantMap updateDockPosition(const QString &position) {
         return snapshotFromReply(callDock({QStringLiteral("updatePosition"), position}));
     }
@@ -57,6 +62,121 @@ public:
 
     Q_INVOKABLE QVariantMap updateDockWindowGrouping(const QString &mode) {
         return snapshotFromReply(callDock({QStringLiteral("updateWindowGrouping"), mode}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockShowWidgets(bool enabled) {
+        return snapshotFromReply(callDock({QStringLiteral("updateShowWidgets"),
+                                           enabled ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockWidgetMode(const QString &mode) {
+        return snapshotFromReply(callDock({QStringLiteral("updateWidgetMode"), mode}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockFixedWidget(const QString &widget) {
+        return snapshotFromReply(callDock({QStringLiteral("updateFixedWidget"), widget}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockWidgetEnabled(const QString &id, bool enabled) {
+        return snapshotFromReply(callDock({QStringLiteral("updateDockWidgetEnabled"),
+                                           id,
+                                           enabled ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockCarouselInterval(int seconds) {
+        return snapshotFromReply(callDock({QStringLiteral("updateCarouselInterval"),
+                                           QString::number(seconds)}));
+    }
+
+    Q_INVOKABLE QVariantMap widgetsSnapshot() {
+        return widgetsSnapshotFromReply(callWidgets({QStringLiteral("snapshot")}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDesktopWidgetsEnabled(bool enabled) {
+        return widgetsSnapshotFromReply(callWidgets({QStringLiteral("updateDesktopWidgetsEnabled"),
+                                                    enabled ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDesktopWidgetEnabled(const QString &id, bool enabled) {
+        return widgetsSnapshotFromReply(callWidgets({QStringLiteral("updateDesktopWidgetEnabled"),
+                                                    id,
+                                                    enabled ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDesktopWidgetSize(const QString &id, const QString &size) {
+        return widgetsSnapshotFromReply(callWidgets({QStringLiteral("updateDesktopWidgetSize"),
+                                                    id, size}));
+    }
+
+    static QString weatherCtlBinary() {
+        QStringList candidates;
+        candidates.append(QDir::home().filePath(QStringLiteral(".local/bin/kos-weather-ctl")));
+        candidates.append(QDir(QStringLiteral(SETTINGS_SHELL_DIR)).filePath(QStringLiteral("tools/kos-weather-ctl")));
+        candidates.append(QStringLiteral("/usr/local/bin/kos-weather-ctl"));
+        candidates.append(QStringLiteral("/usr/bin/kos-weather-ctl"));
+        for (const QString &cand : candidates) {
+            if (QFileInfo::exists(cand))
+                return cand;
+        }
+        return QStringLiteral("kos-weather-ctl");
+    }
+
+    QByteArray runWeatherCtl(const QStringList &args) {
+        QProcess proc;
+        proc.start(weatherCtlBinary(), args);
+        if (!proc.waitForStarted(1500))
+            return {};
+        if (!proc.waitForFinished(6000)) {
+            proc.kill();
+            proc.waitForFinished();
+            return {};
+        }
+        return proc.readAllStandardOutput().trimmed();
+    }
+
+    Q_INVOKABLE QVariantMap weatherCurrentLocation() {
+        const QByteArray raw = runWeatherCtl({QStringLiteral("current")});
+        if (raw.isEmpty()) return {};
+        const auto doc = QJsonDocument::fromJson(raw);
+        if (doc.isObject() && doc.object().value(QStringLiteral("ok")).toBool()) {
+            return doc.object().value(QStringLiteral("location")).toObject().toVariantMap();
+        }
+        return {};
+    }
+
+    Q_INVOKABLE QVariantList searchWeatherCities(const QString &query) {
+        if (query.trimmed().isEmpty()) return {};
+        const QByteArray raw = runWeatherCtl({QStringLiteral("search"), query.trimmed()});
+        if (raw.isEmpty()) return {};
+        const auto doc = QJsonDocument::fromJson(raw);
+        if (doc.isObject() && doc.object().value(QStringLiteral("ok")).toBool()) {
+            QVariantList list;
+            for (const auto &item : doc.object().value(QStringLiteral("locations")).toArray()) {
+                list.append(item.toObject().toVariantMap());
+            }
+            return list;
+        }
+        return {};
+    }
+
+    Q_INVOKABLE QVariantMap autoDetectWeatherLocation() {
+        const QByteArray raw = runWeatherCtl({QStringLiteral("auto-locate")});
+        if (raw.isEmpty()) return {};
+        const auto doc = QJsonDocument::fromJson(raw);
+        if (doc.isObject() && doc.object().value(QStringLiteral("ok")).toBool()) {
+            QVariantMap res = doc.object().value(QStringLiteral("location")).toObject().toVariantMap();
+            res.insert(QStringLiteral("detected"), doc.object().value(QStringLiteral("detected")).toString());
+            return res;
+        }
+        return {};
+    }
+
+    Q_INVOKABLE bool setWeatherLocation(const QVariantMap &location) {
+        const QString locJson = QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(location)).toJson(QJsonDocument::Compact));
+        const QByteArray raw = runWeatherCtl({QStringLiteral("set"), locJson});
+        if (raw.isEmpty()) return false;
+        const auto doc = QJsonDocument::fromJson(raw);
+        return doc.isObject() && doc.object().value(QStringLiteral("ok")).toBool();
     }
 
     Q_INVOKABLE QVariantMap appearanceSnapshot() {
@@ -274,12 +394,65 @@ private:
         setLastError({});
         return {
             {QStringLiteral("baseHeight"), object.value(QStringLiteral("baseHeight")).toDouble()},
+            {QStringLiteral("edgeMargin"), object.value(QStringLiteral("edgeMargin")).toDouble(10.0)},
             {QStringLiteral("position"), object.value(QStringLiteral("position")).toString()},
             {QStringLiteral("iconMode"), object.value(QStringLiteral("iconMode")).toString()},
             {QStringLiteral("iconOpacity"), object.value(QStringLiteral("iconOpacity")).toDouble()},
             {QStringLiteral("iconTintColor"), object.value(QStringLiteral("iconTintColor")).toString()},
             {QStringLiteral("visibilityMode"), object.value(QStringLiteral("visibilityMode")).toString()},
             {QStringLiteral("windowGrouping"), object.value(QStringLiteral("windowGrouping")).toString()},
+            {QStringLiteral("showWidgets"), object.value(QStringLiteral("showWidgets")).toBool(true)},
+            {QStringLiteral("widgetMode"), object.value(QStringLiteral("widgetMode")).toString(QStringLiteral("carousel"))},
+            {QStringLiteral("fixedWidget"), object.value(QStringLiteral("fixedWidget")).toString(QStringLiteral("weather"))},
+            {QStringLiteral("enabledWidgets"), object.value(QStringLiteral("enabledWidgets")).toObject().toVariantMap()},
+            {QStringLiteral("carouselInterval"), object.value(QStringLiteral("carouselInterval")).toInt(30)},
+        };
+    }
+
+    QVariantMap widgetsSnapshotFromReply(const QString &payload) {
+        if (payload.isEmpty())
+            return {};
+
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(payload.toUtf8(), &parseError);
+        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+            setLastError(QStringLiteral("桌面环境返回了无效的小组件配置"));
+            return {};
+        }
+
+        const QJsonObject object = document.object();
+        setLastError({});
+
+        QVariantList widgetList;
+        for (const QJsonValue &val : object.value(QStringLiteral("widgets")).toArray()) {
+            const QJsonObject w = val.toObject();
+            widgetList.append(QVariantMap{
+                {QStringLiteral("id"), w.value(QStringLiteral("id")).toString()},
+                {QStringLiteral("name"), w.value(QStringLiteral("name")).toString()},
+                {QStringLiteral("desc"), w.value(QStringLiteral("desc")).toString()},
+                {QStringLiteral("icon"), w.value(QStringLiteral("icon")).toString()},
+                {QStringLiteral("enabled"), w.value(QStringLiteral("enabled")).toBool(true)},
+                {QStringLiteral("size"), w.value(QStringLiteral("size")).toString(QStringLiteral("medium"))}
+            });
+        }
+
+        const QVariantMap curWeather = weatherCurrentLocation();
+        const QString weatherCity = curWeather.value(QStringLiteral("name")).toString();
+        const QString weatherAdmin1 = curWeather.value(QStringLiteral("admin1")).toString();
+        const QString weatherCountry = curWeather.value(QStringLiteral("country")).toString();
+
+        return {
+            {QStringLiteral("desktopWidgetsEnabled"), object.value(QStringLiteral("desktopWidgetsEnabled")).toBool(true)},
+            {QStringLiteral("widgets"), widgetList},
+            {QStringLiteral("dockShowWidgets"), object.value(QStringLiteral("dockShowWidgets")).toBool(true)},
+            {QStringLiteral("dockWidgetMode"), object.value(QStringLiteral("dockWidgetMode")).toString(QStringLiteral("carousel"))},
+            {QStringLiteral("dockFixedWidget"), object.value(QStringLiteral("dockFixedWidget")).toString(QStringLiteral("weather"))},
+            {QStringLiteral("dockEnabledWidgets"), object.value(QStringLiteral("dockEnabledWidgets")).toObject().toVariantMap()},
+            {QStringLiteral("dockCarouselInterval"), object.value(QStringLiteral("dockCarouselInterval")).toInt(30)},
+            {QStringLiteral("weatherCity"), weatherCity},
+            {QStringLiteral("weatherAdmin1"), weatherAdmin1},
+            {QStringLiteral("weatherCountry"), weatherCountry},
+            {QStringLiteral("weatherLocation"), curWeather}
         };
     }
 
@@ -431,6 +604,11 @@ private:
     QString callDock(const QStringList &arguments) {
         return callShell(QStringLiteral("dock-settings"), arguments,
                          QStringLiteral("Dock 设置请求失败"));
+    }
+
+    QString callWidgets(const QStringList &arguments) {
+        return callShell(QStringLiteral("widget-settings"), arguments,
+                         QStringLiteral("小组件设置请求失败"));
     }
 
     QString callAppearance(const QStringList &arguments) {

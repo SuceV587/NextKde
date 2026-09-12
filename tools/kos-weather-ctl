@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+kos-weather-ctl: Weather location management helper for KOS Desktop.
+Supports:
+  - current: Get current weather location
+  - search <query>: Search locations via Open-Meteo
+  - set <location_json>: Set active weather location
+  - auto-locate: Automatically detect domestic location via direct IP & set it
+"""
+
+import sys
+import os
+import json
+import socket
+import urllib.request
+import re
+
+def get_socket_path():
+    xdg_runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    return os.path.join(xdg_runtime, "kos-data.sock")
+
+def send_data_request(operation, payload, timeout=5):
+    sock_path = get_socket_path()
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(timeout)
+    try:
+        s.connect(sock_path)
+    except Exception as e:
+        return {"ok": False, "error": f"无法连接到数据服务: {e}"}
+
+    request_id = f"wctl-{os.getpid()}-{int(os.times().system * 1000)}"
+    req = {
+        "version": 1,
+        "requestId": request_id,
+        "operation": operation,
+        "payload": payload or {}
+    }
+    
+    try:
+        s.sendall(json.dumps(req).encode("utf-8") + b"\n")
+        f = s.makefile("r", encoding="utf-8")
+        for line in f:
+            if not line.strip():
+                continue
+            msg = json.loads(line.strip())
+            if msg.get("requestId") == request_id:
+                s.close()
+                return msg
+    except Exception as e:
+        s.close()
+        return {"ok": False, "error": str(e)}
+    s.close()
+    return {"ok": False, "error": "超时无响应"}
+
+def get_domestic_ip_location():
+    # 优先请求国内直连 myip.ipip.net
+    try:
+        req = urllib.request.Request("https://myip.ipip.net/", headers={"User-Agent": "curl/7.88.1"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            text = resp.read().decode("utf-8", "ignore")
+            m = re.search(r"来自于：\s*(\S+)\s+(\S+)\s+(\S+)", text)
+            if m:
+                return m.group(1), m.group(2).replace("省", "").replace("市", ""), m.group(3).replace("市", "").replace("区", "").replace("县", "")
+    except Exception:
+        pass
+
+    # 备选请求 cip.cc
+    try:
+        req = urllib.request.Request("http://cip.cc/", headers={"User-Agent": "curl/7.88.1"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            text = resp.read().decode("utf-8", "ignore")
+            m = re.search(r"地址\s*:\s*(\S+)\s+(\S+)\s+(\S+)", text)
+            if m:
+                return m.group(1), m.group(2).replace("省", "").replace("市", ""), m.group(3).replace("市", "").replace("区", "").replace("县", "")
+    except Exception:
+        pass
+
+    return None, None, None
+
+def cmd_current():
+    state_path = os.path.expanduser("~/.local/state/quickshell/shell-data-service/state.json")
+    if os.path.exists(state_path):
+        try:
+            with open(state_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                loc = data.get("weather", {}).get("location", {})
+                if loc:
+                    print(json.dumps({"ok": True, "location": loc}, ensure_ascii=False))
+                    return
+        except Exception:
+            pass
+
+    # Fallback via socket
+    resp = send_data_request("weather.snapshot", {})
+    if resp.get("ok"):
+        loc = resp.get("result", {}).get("weather", {}).get("location", {})
+        print(json.dumps({"ok": True, "location": loc}, ensure_ascii=False))
+    else:
+        print(json.dumps({"ok": False, "error": resp.get("error", "获取失败")}, ensure_ascii=False))
+
+def cmd_search(query):
+    resp = send_data_request("weather.search", {"query": query, "language": "zh", "limit": 6})
+    if resp.get("ok"):
+        locs = resp.get("result", {}).get("locations", [])
+        print(json.dumps({"ok": True, "locations": locs}, ensure_ascii=False))
+    else:
+        print(json.dumps({"ok": False, "locations": [], "error": resp.get("error", "搜索失败")}, ensure_ascii=False))
+
+def cmd_set(location_json):
+    try:
+        loc = json.loads(location_json) if isinstance(location_json, str) else location_json
+    except Exception as e:
+        print(json.dumps({"ok": False, "error": f"无效的 JSON 数据: {e}"}, ensure_ascii=False))
+        return
+
+    resp = send_data_request("weather.set-location", {"location": loc})
+    if resp.get("ok"):
+        print(json.dumps({"ok": True}, ensure_ascii=False))
+    else:
+        print(json.dumps({"ok": False, "error": resp.get("error", "设置失败")}, ensure_ascii=False))
+
+def cmd_auto_locate():
+    country, province, city = get_domestic_ip_location()
+    if not city:
+        print(json.dumps({"ok": False, "error": "未能通过国内 IP 探测到城市"}, ensure_ascii=False))
+        return
+
+    # 搜索城市
+    search_resp = send_data_request("weather.search", {"query": city, "language": "zh", "limit": 8})
+    locs = search_resp.get("result", {}).get("locations", []) if search_resp.get("ok") else []
+    
+    selected = None
+    if locs:
+        # 优先匹配省份
+        if province:
+            for l in locs:
+                if province in l.get("admin1", ""):
+                    selected = l
+                    break
+        if not selected:
+            selected = locs[0]
+
+    if not selected:
+        print(json.dumps({"ok": False, "error": f"识别到城市「{city}」但地理编码未匹配到坐标"}, ensure_ascii=False))
+        return
+
+    set_resp = send_data_request("weather.set-location", {"location": selected})
+    if set_resp.get("ok"):
+        print(json.dumps({"ok": True, "location": selected, "detected": f"{country} {province} {city}"}, ensure_ascii=False))
+    else:
+        print(json.dumps({"ok": False, "error": set_resp.get("error", "写入位置失败")}, ensure_ascii=False))
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: kos-weather-ctl <current|search <query>|set <json>|auto-locate>")
+        sys.exit(1)
+
+    cmd = sys.argv[1]
+    if cmd == "current":
+        cmd_current()
+    elif cmd == "search":
+        query = sys.argv[2] if len(sys.argv) > 2 else ""
+        cmd_search(query)
+    elif cmd == "set":
+        loc_arg = sys.argv[2] if len(sys.argv) > 2 else "{}"
+        cmd_set(loc_arg)
+    elif cmd == "auto-locate":
+        cmd_auto_locate()
+    else:
+        print(f"Unknown command: {cmd}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
