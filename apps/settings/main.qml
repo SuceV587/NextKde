@@ -86,6 +86,10 @@ ApplicationWindow {
         {
             subtitle: "接入状态",
             groups: []
+        },
+        {
+            subtitle: "小组件",
+            groups: []
         }
     ]
 
@@ -412,6 +416,856 @@ ApplicationWindow {
         Component.onCompleted: refresh()
     }
 
+    component WidgetsSettingsPage: ColumnLayout {
+        id: widgetsPage
+
+        Layout.fillWidth: true
+        spacing: 7
+        property var bridge: (typeof settingsBridge !== "undefined") ? settingsBridge : null
+        property bool desktopWidgetsEnabled: true
+        property var widgetsList: []
+        property bool dockShowWidgets: true
+        property string dockWidgetMode: "carousel" // "carousel" | "fixed"
+        property string dockFixedWidget: "weather"  // "weather" | "temperature" | "clock" | "music"
+        property var dockEnabledWidgets: ({})
+        property int dockCarouselInterval: 30
+        property string errorText: ""
+        property string weatherCity: "威海"
+        property string weatherAdmin1: "山东"
+        property string weatherCountry: "中国"
+        property var weatherSearchResults: []
+        property bool isAutoLocating: false
+        property string weatherStatusNotice: ""
+
+        function refresh() {
+            if (!bridge) {
+                errorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            applySnapshot(bridge.widgetsSnapshot())
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function applySnapshot(snap) {
+            if (!snap) return
+            if (snap.desktopWidgetsEnabled !== undefined)
+                desktopWidgetsEnabled = Boolean(snap.desktopWidgetsEnabled)
+            if (snap.widgets !== undefined)
+                widgetsList = snap.widgets
+            if (snap.dockShowWidgets !== undefined)
+                dockShowWidgets = Boolean(snap.dockShowWidgets)
+            if (snap.dockWidgetMode !== undefined)
+                dockWidgetMode = String(snap.dockWidgetMode)
+            if (snap.dockFixedWidget !== undefined)
+                dockFixedWidget = String(snap.dockFixedWidget)
+            if (snap.dockEnabledWidgets !== undefined)
+                dockEnabledWidgets = snap.dockEnabledWidgets
+            if (snap.dockCarouselInterval !== undefined)
+                dockCarouselInterval = Number(snap.dockCarouselInterval)
+            if (snap.weatherCity !== undefined && snap.weatherCity.length > 0)
+                weatherCity = String(snap.weatherCity)
+            if (snap.weatherAdmin1 !== undefined)
+                weatherAdmin1 = String(snap.weatherAdmin1)
+            if (snap.weatherCountry !== undefined)
+                weatherCountry = String(snap.weatherCountry)
+        }
+
+        function autoLocateWeather() {
+            if (!bridge) return
+            isAutoLocating = true
+            weatherStatusNotice = "正在通过国内网络探测位置..."
+            autoLocateTimer.restart()
+        }
+
+        Timer {
+            id: autoLocateTimer
+            interval: 50
+            repeat: false
+            onTriggered: {
+                const res = bridge.autoDetectWeatherLocation()
+                widgetsPage.isAutoLocating = false
+                if (res && res.name) {
+                    widgetsPage.weatherCity = String(res.name)
+                    widgetsPage.weatherAdmin1 = String(res.admin1 || "")
+                    widgetsPage.weatherCountry = String(res.country || "")
+                    widgetsPage.weatherStatusNotice = "已自动匹配并更新为: " + res.name + (res.admin1 ? " (" + res.admin1 + ")" : "")
+                } else {
+                    widgetsPage.weatherStatusNotice = res && res.error ? String(res.error) : "未能探测到位置"
+                }
+            }
+        }
+
+        function searchCities(query) {
+            if (!bridge) return
+            if (!query || query.trim() === "") {
+                weatherSearchResults = []
+                return
+            }
+            weatherSearchResults = bridge.searchWeatherCities(query.trim())
+        }
+
+        function selectCity(loc) {
+            if (!bridge) return
+            if (bridge.setWeatherLocation(loc)) {
+                weatherCity = String(loc.name || "")
+                weatherAdmin1 = String(loc.admin1 || "")
+                weatherCountry = String(loc.country || "")
+                weatherSearchResults = []
+                weatherStatusNotice = "已成功切换为: " + loc.name + (loc.admin1 ? " (" + loc.admin1 + ")" : "")
+            }
+        }
+
+        function toggleDesktopWidgets(enabled) {
+            if (!bridge) return
+            applySnapshot(bridge.updateDesktopWidgetsEnabled(enabled))
+        }
+
+        function toggleWidget(id, enabled) {
+            if (!bridge) return
+            applySnapshot(bridge.updateDesktopWidgetEnabled(id, enabled))
+        }
+
+        function changeWidgetSize(id, size) {
+            if (!bridge) return
+            applySnapshot(bridge.updateDesktopWidgetSize(id, size))
+        }
+
+        function toggleDockWidgets(enabled) {
+            if (!bridge) return
+            applySnapshot(bridge.updateDockShowWidgets(enabled))
+        }
+
+        function changeDockWidgetMode(mode) {
+            if (!bridge) return
+            applySnapshot(bridge.updateDockWidgetMode(mode))
+        }
+
+        function changeDockFixedWidget(widget) {
+            if (!bridge) return
+            applySnapshot(bridge.updateDockFixedWidget(widget))
+        }
+
+        function toggleDockItem(id, enabled) {
+            if (!bridge) return
+            applySnapshot(bridge.updateDockWidgetEnabled(id, enabled))
+        }
+
+        function changeDockInterval(seconds) {
+            if (!bridge) return
+            applySnapshot(bridge.updateDockCarouselInterval(seconds))
+        }
+
+        Component.onCompleted: refresh()
+
+        // ── 桌面小组件部分 ──
+        Text {
+            text: "桌面小组件".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            color: theme.card
+            radius: 18
+            implicitHeight: 64
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 12
+                SettingIcon { symbol: "⊞"; tint: "#34c759" }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                        text: "启用桌面小组件"
+                        color: theme.primaryText
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        text: "在桌面左侧展示快捷卡片；关闭时隐藏全部卡片，还原纯净壁纸"
+                        color: theme.secondaryText
+                        font.pixelSize: 11
+                    }
+                }
+                LiquidControls.LiquidGlassSwitch {
+                    checked: widgetsPage.desktopWidgetsEnabled
+                    accentColor: "#34c759"
+                    trackColor: theme.divider
+                    onToggled: function(checked) {
+                        widgetsPage.toggleDesktopWidgets(checked)
+                    }
+                }
+            }
+        }
+
+        // 各小组件独立开关与尺寸
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 7
+            visible: widgetsPage.desktopWidgetsEnabled
+
+            Text {
+                text: "桌面组件管理 (独立开关与尺寸)".toUpperCase()
+                color: theme.secondaryText
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+                Layout.leftMargin: 13
+                Layout.topMargin: 6
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                color: theme.card
+                radius: 18
+                implicitHeight: widgetItemsCol.implicitHeight
+
+                Column {
+                    id: widgetItemsCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+
+                    Repeater {
+                        model: widgetsPage.widgetsList
+                        delegate: Column {
+                            width: parent.width
+                            Item {
+                                width: parent.width
+                                height: 58
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 16
+                                    anchors.rightMargin: 16
+                                    spacing: 12
+                                    SettingIcon {
+                                        symbol: modelData.icon || "▦"
+                                        tint: modelData.id === "weather" ? "#0a84ff"
+                                            : modelData.id === "clock" ? "#5856d6"
+                                            : modelData.id === "calendar" ? "#ff2d55"
+                                            : modelData.id === "todo" ? "#34c759"
+                                            : modelData.id === "system" ? "#ff9500"
+                                            : modelData.id === "activity" ? "#af52de"
+                                            : "#ff3b30"
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        Text {
+                                            text: modelData.name
+                                            color: theme.primaryText
+                                            font.pixelSize: 14
+                                            font.weight: Font.DemiBold
+                                        }
+                                        Text {
+                                            text: modelData.desc
+                                            color: theme.secondaryText
+                                            font.pixelSize: 11
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                    // 尺寸选择（小 / 中 / 大）
+                                    SettingsNavBar {
+                                        model: [
+                                            { id: "small", label: "小" },
+                                            { id: "medium", label: "中" },
+                                            { id: "large", label: "大" }
+                                        ]
+                                        itemWidthOverride: 42
+                                        currentIndex: modelData.size === "small" ? 0 : (modelData.size === "large" ? 2 : 1)
+                                        enabled: modelData.enabled
+                                        opacity: modelData.enabled ? 1.0 : 0.4
+                                        onSelectionChanged: function(idx) {
+                                            const s = idx === 0 ? "small" : (idx === 2 ? "large" : "medium")
+                                            if (s !== modelData.size) {
+                                                widgetsPage.changeWidgetSize(modelData.id, s)
+                                            }
+                                        }
+                                    }
+                                    LiquidControls.LiquidGlassSwitch {
+                                        checked: modelData.enabled
+                                        accentColor: "#0a84ff"
+                                        trackColor: theme.divider
+                                        onToggled: function(checked) {
+                                            widgetsPage.toggleWidget(modelData.id, checked)
+                                        }
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.leftMargin: 56
+                                height: 1
+                                color: theme.separator
+                                visible: index < widgetsPage.widgetsList.length - 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 天气预报位置管理 ──
+        Text {
+            text: "天气预报城市与定位".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 14
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            color: theme.card
+            radius: 18
+            implicitHeight: weatherLocationCardCol.implicitHeight
+
+            Column {
+                id: weatherLocationCardCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+
+                // 当前城市与自动定位按钮行
+                Item {
+                    width: parent.width
+                    height: 64
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+
+                        SettingIcon { symbol: "🌤"; tint: "#0a84ff" }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            RowLayout {
+                                spacing: 8
+                                Text {
+                                    text: "当前城市：" + (widgetsPage.weatherCity || "未设置")
+                                    color: theme.primaryText
+                                    font.pixelSize: 14
+                                    font.weight: Font.DemiBold
+                                }
+                                Text {
+                                    text: (widgetsPage.weatherAdmin1 || widgetsPage.weatherCountry)
+                                        ? ("· " + widgetsPage.weatherAdmin1 + (widgetsPage.weatherCountry ? ", " + widgetsPage.weatherCountry : ""))
+                                        : ""
+                                    color: theme.secondaryText
+                                    font.pixelSize: 12
+                                }
+                            }
+                            Text {
+                                text: widgetsPage.weatherStatusNotice.length > 0
+                                    ? widgetsPage.weatherStatusNotice
+                                    : "天气数据支持国内直连网络自动识别，或通过下方搜索自由切换"
+                                color: widgetsPage.weatherStatusNotice.length > 0 ? "#30d158" : theme.secondaryText
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        // 自动定位按钮
+                        Rectangle {
+                            implicitWidth: 126
+                            implicitHeight: 32
+                            radius: 16
+                            color: autoLocateMouse.containsMouse ? theme.sidebarHover : theme.card
+                            border.width: 1
+                            border.color: theme.floatingBorder
+
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 6
+                                Text {
+                                    text: widgetsPage.isAutoLocating ? "⏳" : "🛰"
+                                    font.pixelSize: 12
+                                }
+                                Text {
+                                    text: widgetsPage.isAutoLocating ? "定位中…" : "网络自动定位"
+                                    color: theme.primaryText
+                                    font.pixelSize: 12
+                                    font.weight: Font.DemiBold
+                                }
+                            }
+
+                            MouseArea {
+                                id: autoLocateMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                enabled: !widgetsPage.isAutoLocating
+                                onClicked: widgetsPage.autoLocateWeather()
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 56
+                    height: 1
+                    color: theme.separator
+                }
+
+                // 搜索输入框行
+                Item {
+                    width: parent.width
+                    height: 52
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+
+                        SettingIcon { symbol: "🔍"; tint: "#34c759" }
+
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 34
+
+                            LiquidControls.LiquidTextField {
+                                id: weatherSearchInput
+                                anchors.fill: parent
+                                leftPadding: 12
+                                rightPadding: 32
+                                placeholderText: "输入想要切换的城市（如：威海、青岛、北京、深圳、上海…）"
+                                glassColor: theme.searchField
+                                textColor: theme.primaryText
+                                mutedTextColor: theme.secondaryText
+                                font.pixelSize: 13
+                                onTextChanged: searchDebounceTimer.restart()
+                            }
+
+                            Text {
+                                anchors.right: parent.right
+                                anchors.rightMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: weatherSearchInput.text.length > 0
+                                text: "✕"
+                                color: theme.secondaryText
+                                font.pixelSize: 12
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        weatherSearchInput.text = ""
+                                        widgetsPage.weatherSearchResults = []
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 搜索结果候选列表
+                Column {
+                    width: parent.width
+                    visible: widgetsPage.weatherSearchResults.length > 0
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                    }
+
+                    Repeater {
+                        model: widgetsPage.weatherSearchResults
+                        delegate: Item {
+                            width: weatherLocationCardCol.width
+                            height: 40
+
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                radius: 8
+                                color: resultMouse.containsMouse ? theme.sidebarHover : "transparent"
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 48
+                                    anchors.rightMargin: 16
+                                    spacing: 10
+
+                                    Text {
+                                        text: "📍 " + (modelData.name || "")
+                                        color: theme.primaryText
+                                        font.pixelSize: 13
+                                        font.weight: Font.Medium
+                                    }
+                                    Text {
+                                        text: (modelData.admin1 ? modelData.admin1 + ", " : "") + (modelData.country || "")
+                                        color: theme.secondaryText
+                                        font.pixelSize: 11
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                    Text {
+                                        text: "点击切换"
+                                        color: "#0a84ff"
+                                        font.pixelSize: 12
+                                        visible: resultMouse.containsMouse
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: resultMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: widgetsPage.selectCity(modelData)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Timer {
+            id: searchDebounceTimer
+            interval: 350
+            repeat: false
+            onTriggered: widgetsPage.searchCities(weatherSearchInput.text)
+        }
+
+        // ── Dock 栏小组件部分 ──
+        Text {
+            text: "Dock 栏小组件".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 14
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            color: theme.card
+            radius: 18
+            implicitHeight: 64
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 12
+                SettingIcon { symbol: "▦"; tint: "#0a84ff" }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                        text: "显示 Dock 栏小组件"
+                        color: theme.primaryText
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        text: "在 Dock 栏右侧展示信息卡片；关闭后仅保留应用图标并缩紧 Dock 栏"
+                        color: theme.secondaryText
+                        font.pixelSize: 11
+                    }
+                }
+                LiquidControls.LiquidGlassSwitch {
+                    checked: widgetsPage.dockShowWidgets
+                    accentColor: "#0a84ff"
+                    trackColor: theme.divider
+                    onToggled: function(checked) {
+                        widgetsPage.toggleDockWidgets(checked)
+                    }
+                }
+            }
+        }
+
+        // Dock 小组件展示模式与细分项配置
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 7
+            visible: widgetsPage.dockShowWidgets
+
+            Text {
+                text: "Dock 小组件模式与项管理".toUpperCase()
+                color: theme.secondaryText
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+                Layout.leftMargin: 13
+                Layout.topMargin: 6
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                color: theme.card
+                radius: 18
+                implicitHeight: dockWidgetDetailCol.implicitHeight
+
+                Column {
+                    id: dockWidgetDetailCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+
+                    // 模式切换行：轮播模式 vs 固定某一个
+                    Item {
+                        width: parent.width
+                        height: 54
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🔄"; tint: "#5ac8fa" }
+                            Text {
+                                text: "显示方式"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Item { Layout.fillWidth: true }
+                            SettingsNavBar {
+                                model: [
+                                    { id: "carousel", label: "自动轮播" },
+                                    { id: "fixed", label: "固定显示某一个" }
+                                ]
+                                itemWidthOverride: 110
+                                currentIndex: widgetsPage.dockWidgetMode === "fixed" ? 1 : 0
+                                onSelectionChanged: function(idx) {
+                                    widgetsPage.changeDockWidgetMode(idx === 1 ? "fixed" : "carousel")
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                    }
+
+                    // 固定模式下：选择固定哪一个
+                    Item {
+                        width: parent.width
+                        height: 54
+                        visible: widgetsPage.dockWidgetMode === "fixed"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "📌"; tint: "#af52de" }
+                            Text {
+                                text: "固定展示项目"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Item { Layout.fillWidth: true }
+                            SettingsNavBar {
+                                model: [
+                                    { id: "weather", label: "天气" },
+                                    { id: "temperature", label: "温控" },
+                                    { id: "clock", label: "时钟" },
+                                    { id: "music", label: "音乐" }
+                                ]
+                                itemWidthOverride: 56
+                                currentIndex: widgetsPage.dockFixedWidget === "temperature" ? 1
+                                    : widgetsPage.dockFixedWidget === "clock" ? 2
+                                    : widgetsPage.dockFixedWidget === "music" ? 3 : 0
+                                onSelectionChanged: function(idx) {
+                                    const choices = ["weather", "temperature", "clock", "music"]
+                                    widgetsPage.changeDockFixedWidget(choices[idx])
+                                }
+                            }
+                        }
+                    }
+
+                    // 轮播模式下：轮播周期选择
+                    Item {
+                        width: parent.width
+                        height: 54
+                        visible: widgetsPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "⏱"; tint: "#ff9500" }
+                            Text {
+                                text: "轮播间隔时间"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Item { Layout.fillWidth: true }
+                            SettingsNavBar {
+                                model: [
+                                    { id: 10, label: "10 秒" },
+                                    { id: 30, label: "30 秒" },
+                                    { id: 60, label: "60 秒" }
+                                ]
+                                itemWidthOverride: 64
+                                currentIndex: widgetsPage.dockCarouselInterval <= 15 ? 0
+                                    : widgetsPage.dockCarouselInterval >= 45 ? 2 : 1
+                                onSelectionChanged: function(idx) {
+                                    const intervals = [10, 30, 60]
+                                    widgetsPage.changeDockInterval(intervals[idx])
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                        visible: widgetsPage.dockWidgetMode === "carousel"
+                    }
+
+                    // 轮播模式下：勾选哪些项参与轮播
+                    Item {
+                        width: parent.width
+                        height: 48
+                        visible: widgetsPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🌤"; tint: "#0a84ff" }
+                            Text {
+                                text: "轮播天气卡片"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                            }
+                            Item { Layout.fillWidth: true }
+                            LiquidControls.LiquidGlassSwitch {
+                                checked: widgetsPage.dockEnabledWidgets.weather !== false
+                                accentColor: "#0a84ff"
+                                trackColor: theme.divider
+                                onToggled: function(val) { widgetsPage.toggleDockItem("weather", val) }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                        visible: widgetsPage.dockWidgetMode === "carousel"
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 48
+                        visible: widgetsPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🌡"; tint: "#ff9500" }
+                            Text {
+                                text: "轮播温控卡片"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                            }
+                            Item { Layout.fillWidth: true }
+                            LiquidControls.LiquidGlassSwitch {
+                                checked: widgetsPage.dockEnabledWidgets.temperature !== false
+                                accentColor: "#0a84ff"
+                                trackColor: theme.divider
+                                onToggled: function(val) { widgetsPage.toggleDockItem("temperature", val) }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                        visible: widgetsPage.dockWidgetMode === "carousel"
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 48
+                        visible: widgetsPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🕒"; tint: "#5856d6" }
+                            Text {
+                                text: "轮播数字时钟卡片"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                            }
+                            Item { Layout.fillWidth: true }
+                            LiquidControls.LiquidGlassSwitch {
+                                checked: widgetsPage.dockEnabledWidgets.clock === true
+                                accentColor: "#0a84ff"
+                                trackColor: theme.divider
+                                onToggled: function(val) { widgetsPage.toggleDockItem("clock", val) }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                        visible: widgetsPage.dockWidgetMode === "carousel"
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 48
+                        visible: widgetsPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🎵"; tint: "#ff2d55" }
+                            Text {
+                                text: "轮播正在播放音乐卡片"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                            }
+                            Item { Layout.fillWidth: true }
+                            LiquidControls.LiquidGlassSwitch {
+                                checked: widgetsPage.dockEnabledWidgets.music !== false
+                                accentColor: "#0a84ff"
+                                trackColor: theme.divider
+                                onToggled: function(val) { widgetsPage.toggleDockItem("music", val) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     component DockSettingsPage: ColumnLayout {
         id: dockPage
 
@@ -419,6 +1273,8 @@ ApplicationWindow {
         spacing: 7
         property var bridge: (typeof settingsBridge !== "undefined") ? settingsBridge : null
         property real dockHeight: 60
+        property real dockEdgeMargin: 10
+        property bool edgeMarginDirty: false
         property int dockPositionIndex: 0
         readonly property var dockPositions: ["bottom", "left", "right"]
         property int iconModeIndex: 0
@@ -427,6 +1283,11 @@ ApplicationWindow {
         readonly property var visibilityModes: ["always", "smart", "persistent"]
         property int windowGroupingIndex: 0
         readonly property var windowGroupings: ["grouped", "separate"]
+        property bool dockShowWidgets: true
+        property string dockWidgetMode: "carousel" // "carousel" | "fixed"
+        property string dockFixedWidget: "weather"  // "weather" | "temperature" | "clock" | "music"
+        property var dockEnabledWidgets: ({})
+        property int dockCarouselInterval: 30
         property real iconOpacity: 0.5
         property string iconTintColor: "#a855f7"
         readonly property var tintPresets: [
@@ -490,6 +1351,28 @@ ApplicationWindow {
             onTriggered: {
                 if (dockPage.bridge && dockPage.dockLiquidDirty) {
                     dockPage.bridge.updateDockLiquidStrength(dockPage.dockLiquidStrength)
+                }
+            }
+        }
+
+        Timer {
+            id: liveDockHeightDebounce
+            interval: 50
+            repeat: false
+            onTriggered: {
+                if (dockPage.bridge && dockPage.layoutDirty) {
+                    dockPage.saveLayout()
+                }
+            }
+        }
+
+        Timer {
+            id: liveDockEdgeMarginDebounce
+            interval: 50
+            repeat: false
+            onTriggered: {
+                if (dockPage.bridge && dockPage.edgeMarginDirty) {
+                    dockPage.saveEdgeMargin()
                 }
             }
         }
@@ -649,6 +1532,8 @@ ApplicationWindow {
             if (!state || state.baseHeight === undefined)
                 return
             dockHeight = Number(state.baseHeight)
+            if (state.edgeMargin !== undefined)
+                dockEdgeMargin = Number(state.edgeMargin)
             dockPositionIndex = positionIndexFromString(state.position)
             iconModeIndex = iconModeIndexFromString(state.iconMode)
             iconOpacity = Number(state.iconOpacity)
@@ -656,9 +1541,55 @@ ApplicationWindow {
             syncTintControls(colorFromHex(iconTintColor))
             visibilityModeIndex = visibilityModeIndexFromString(state.visibilityMode)
             windowGroupingIndex = windowGroupingIndexFromString(state.windowGrouping)
+            if (state.showWidgets !== undefined)
+                dockShowWidgets = Boolean(state.showWidgets)
+            if (state.widgetMode !== undefined)
+                dockWidgetMode = String(state.widgetMode)
+            if (state.fixedWidget !== undefined)
+                dockFixedWidget = String(state.fixedWidget)
+            if (state.enabledWidgets !== undefined && typeof state.enabledWidgets === "object")
+                dockEnabledWidgets = state.enabledWidgets
+            if (state.carouselInterval !== undefined)
+                dockCarouselInterval = Number(state.carouselInterval)
             iconOpacityDirty = false
             layoutDirty = false
+            edgeMarginDirty = false
             errorText = ""
+        }
+
+        function saveShowWidgets(enabled) {
+            if (!bridge) return
+            applyState(bridge.updateDockShowWidgets(enabled))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function saveDockWidgetMode(mode) {
+            if (!bridge) return
+            applyState(bridge.updateDockWidgetMode(mode))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function saveDockFixedWidget(widget) {
+            if (!bridge) return
+            applyState(bridge.updateDockFixedWidget(widget))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function saveDockWidgetEnabled(id, enabled) {
+            if (!bridge) return
+            applyState(bridge.updateDockWidgetEnabled(id, enabled))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function saveDockCarouselInterval(seconds) {
+            if (!bridge) return
+            applyState(bridge.updateDockCarouselInterval(seconds))
+            if (bridge.lastError)
+                errorText = bridge.lastError
         }
 
         function savePosition(index) {
@@ -734,13 +1665,44 @@ ApplicationWindow {
                 return
             dockHeight = nextHeight
             layoutDirty = true
+            liveDockHeightDebounce.restart()
         }
 
         function commitLayout() {
+            liveDockHeightDebounce.stop()
             if (!layoutDirty)
                 return
             layoutDirty = false
             saveLayout()
+        }
+
+        function saveEdgeMargin() {
+            if (!bridge)
+                return
+            if (typeof bridge.updateDockEdgeMargin === "function") {
+                applyState(bridge.updateDockEdgeMargin(dockEdgeMargin))
+            } else {
+                console.warn("[DockSettings] bridge.updateDockEdgeMargin is unavailable")
+            }
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function previewEdgeMargin(position) {
+            const nextMargin = Math.round(position * 72)
+            if (nextMargin === dockEdgeMargin)
+                return
+            dockEdgeMargin = nextMargin
+            edgeMarginDirty = true
+            liveDockEdgeMarginDebounce.restart()
+        }
+
+        function commitEdgeMargin() {
+            liveDockEdgeMarginDebounce.stop()
+            if (!edgeMarginDirty)
+                return
+            edgeMarginDirty = false
+            saveEdgeMargin()
         }
 
         function previewIconOpacity(position) {
@@ -789,7 +1751,7 @@ ApplicationWindow {
                         spacing: 12
                         SettingIcon { symbol: "▰"; tint: "#0a84ff" }
                         Text {
-                            text: "Dock 高度"
+                            text: "Dock 大小"
                             color: theme.primaryText
                             font.pixelSize: 14
                         }
@@ -807,6 +1769,45 @@ ApplicationWindow {
                                 dockPage.previewDockHeight(position)
                             }
                             onCommitRequested: dockPage.commitLayout()
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: parent.width - 32
+                    height: 1
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: theme.separator
+                }
+
+                Item {
+                    width: parent.width
+                    height: 48
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "⇲"; tint: "#5ac8fa" }
+                        Text {
+                            text: "边缘距离"
+                            color: theme.primaryText
+                            font.pixelSize: 14
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: Math.round(dockPage.dockEdgeMargin) + " pt"
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                        }
+                        LiquidControls.LiquidSlider {
+                            Layout.preferredWidth: 190
+                            value: Math.max(0, Math.min(1, dockPage.dockEdgeMargin / 72))
+                            trackColor: theme.divider
+                            onPreviewChanged: function(position) {
+                                dockPage.previewEdgeMargin(position)
+                            }
+                            onCommitRequested: dockPage.commitEdgeMargin()
                         }
                     }
                 }
@@ -854,6 +1855,320 @@ ApplicationWindow {
                         // The shared switch owns its checked state after a
                         // click. Put it back to the IPC-confirmed value.
                         windowGroupingSwitch.checked = dockPage.windowGroupingIndex === 0
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: "DOCK 小组件与信息轮播".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 14
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            color: theme.card
+            radius: 18
+            implicitHeight: 64
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 12
+                SettingIcon { symbol: "▦"; tint: "#0a84ff" }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                        text: "显示 Dock 栏小组件"
+                        color: theme.primaryText
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        text: "在 Dock 栏右侧展示天气、温控、时钟与播放卡片；关闭后仅保留应用图标并缩紧 Dock 栏"
+                        color: theme.secondaryText
+                        font.pixelSize: 11
+                    }
+                }
+                LiquidControls.LiquidGlassSwitch {
+                    checked: dockPage.dockShowWidgets
+                    accentColor: "#0a84ff"
+                    trackColor: theme.divider
+                    onToggled: function(checked) {
+                        dockPage.saveShowWidgets(checked)
+                    }
+                }
+            }
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 7
+            visible: dockPage.dockShowWidgets
+
+            Rectangle {
+                Layout.fillWidth: true
+                color: theme.card
+                radius: 18
+                implicitHeight: dockWidgetPageSettingsCol.implicitHeight
+
+                Column {
+                    id: dockWidgetPageSettingsCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+
+                    // 模式切换行：轮播模式 vs 固定某一个
+                    Item {
+                        width: parent.width
+                        height: 54
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🔄"; tint: "#5ac8fa" }
+                            Text {
+                                text: "显示方式"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Item { Layout.fillWidth: true }
+                            SettingsNavBar {
+                                model: [
+                                    { id: "carousel", label: "自动轮播" },
+                                    { id: "fixed", label: "固定显示某一个" }
+                                ]
+                                itemWidthOverride: 110
+                                currentIndex: dockPage.dockWidgetMode === "fixed" ? 1 : 0
+                                onSelectionChanged: function(idx) {
+                                    dockPage.saveDockWidgetMode(idx === 1 ? "fixed" : "carousel")
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                    }
+
+                    // 固定模式下：选择固定哪一个
+                    Item {
+                        width: parent.width
+                        height: 54
+                        visible: dockPage.dockWidgetMode === "fixed"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "📌"; tint: "#af52de" }
+                            Text {
+                                text: "固定展示项目"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Item { Layout.fillWidth: true }
+                            SettingsNavBar {
+                                model: [
+                                    { id: "weather", label: "天气" },
+                                    { id: "temperature", label: "温控" },
+                                    { id: "clock", label: "时钟" },
+                                    { id: "music", label: "音乐" }
+                                ]
+                                itemWidthOverride: 56
+                                currentIndex: dockPage.dockFixedWidget === "temperature" ? 1
+                                    : dockPage.dockFixedWidget === "clock" ? 2
+                                    : dockPage.dockFixedWidget === "music" ? 3 : 0
+                                onSelectionChanged: function(idx) {
+                                    const choices = ["weather", "temperature", "clock", "music"]
+                                    dockPage.saveDockFixedWidget(choices[idx])
+                                }
+                            }
+                        }
+                    }
+
+                    // 轮播模式下：轮播周期选择
+                    Item {
+                        width: parent.width
+                        height: 54
+                        visible: dockPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "⏱"; tint: "#ff9500" }
+                            Text {
+                                text: "轮播间隔时间"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Item { Layout.fillWidth: true }
+                            SettingsNavBar {
+                                model: [
+                                    { id: 10, label: "10 秒" },
+                                    { id: 30, label: "30 秒" },
+                                    { id: 60, label: "60 秒" }
+                                ]
+                                itemWidthOverride: 64
+                                currentIndex: dockPage.dockCarouselInterval <= 15 ? 0
+                                    : dockPage.dockCarouselInterval >= 45 ? 2 : 1
+                                onSelectionChanged: function(idx) {
+                                    const intervals = [10, 30, 60]
+                                    dockPage.saveDockCarouselInterval(intervals[idx])
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                        visible: dockPage.dockWidgetMode === "carousel"
+                    }
+
+                    // 轮播模式下：勾选哪些项参与轮播
+                    Item {
+                        width: parent.width
+                        height: 48
+                        visible: dockPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🌤"; tint: "#0a84ff" }
+                            Text {
+                                text: "轮播天气卡片"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                            }
+                            Item { Layout.fillWidth: true }
+                            LiquidControls.LiquidGlassSwitch {
+                                checked: dockPage.dockEnabledWidgets.weather !== false
+                                accentColor: "#0a84ff"
+                                trackColor: theme.divider
+                                onToggled: function(val) { dockPage.saveDockWidgetEnabled("weather", val) }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                        visible: dockPage.dockWidgetMode === "carousel"
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 48
+                        visible: dockPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🌡"; tint: "#ff9500" }
+                            Text {
+                                text: "轮播温控卡片"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                            }
+                            Item { Layout.fillWidth: true }
+                            LiquidControls.LiquidGlassSwitch {
+                                checked: dockPage.dockEnabledWidgets.temperature !== false
+                                accentColor: "#0a84ff"
+                                trackColor: theme.divider
+                                onToggled: function(val) { dockPage.saveDockWidgetEnabled("temperature", val) }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                        visible: dockPage.dockWidgetMode === "carousel"
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 48
+                        visible: dockPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🕒"; tint: "#5856d6" }
+                            Text {
+                                text: "轮播数字时钟卡片"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                            }
+                            Item { Layout.fillWidth: true }
+                            LiquidControls.LiquidGlassSwitch {
+                                checked: dockPage.dockEnabledWidgets.clock === true
+                                accentColor: "#0a84ff"
+                                trackColor: theme.divider
+                                onToggled: function(val) { dockPage.saveDockWidgetEnabled("clock", val) }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                        visible: dockPage.dockWidgetMode === "carousel"
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 48
+                        visible: dockPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🎵"; tint: "#ff2d55" }
+                            Text {
+                                text: "轮播正在播放音乐卡片"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                            }
+                            Item { Layout.fillWidth: true }
+                            LiquidControls.LiquidGlassSwitch {
+                                checked: dockPage.dockEnabledWidgets.music !== false
+                                accentColor: "#0a84ff"
+                                trackColor: theme.divider
+                                onToggled: function(val) { dockPage.saveDockWidgetEnabled("music", val) }
+                            }
+                        }
                     }
                 }
             }
@@ -3343,6 +4658,15 @@ ApplicationWindow {
                     navTint: "#30d158"
                 }
 
+                SidebarEntry {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 1
+                    pageIndex: 7
+                    label: "小组件"
+                    navSymbol: "⊞"
+                    navTint: "#ff2d55"
+                }
+
                 Item {
                     Layout.fillHeight: true
                 }
@@ -3385,7 +4709,7 @@ ApplicationWindow {
                         Layout.bottomMargin: 18
                     }
                     Repeater {
-                        model: (window.currentPage >= 0 && window.currentPage <= 6)
+                        model: (window.currentPage >= 0 && window.currentPage <= 7)
                             ? [] : window.contentByPage[window.currentPage].groups
                         delegate: ColumnLayout {
                             required property var modelData
@@ -3414,6 +4738,10 @@ ApplicationWindow {
                             }
                             Item { Layout.preferredHeight: 14 }
                         }
+                    }
+
+                    WidgetsSettingsPage {
+                        visible: window.currentPage === 7
                     }
 
                     LauncherSettingsPage {
