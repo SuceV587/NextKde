@@ -574,6 +574,16 @@ sync_qml() {
     mkdir -p "$shell_config/shared/qml"
     rm -rf "$shell_config/shared/qml/controls"
     cp -a "$project_dir/shared/qml/controls" "$shell_config/shared/qml/"
+    mkdir -p "$prefix/share/kos/settings"
+    install -m 0644 "$project_dir/apps/settings/main.qml" "$prefix/share/kos/settings/main.qml"
+    if [[ -f "$build_dir/apps/settings/kos-settings" ]]; then
+        install -m 0755 "$build_dir/apps/settings/kos-settings" "$prefix/bin/kos-settings"
+        printf 'Updated kos-settings binary in %s/bin/\n' "$prefix"
+    fi
+    if [[ -f "$project_dir/tools/kos-weather-ctl" ]]; then
+        install -m 0755 "$project_dir/tools/kos-weather-ctl" "$prefix/bin/kos-weather-ctl"
+        printf 'Updated kos-weather-ctl binary in %s/bin/\n' "$prefix"
+    fi
     printf 'Synced shell QML to %s; run ./tools/kosctl start to apply it.\n' "$shell_config"
 }
 
