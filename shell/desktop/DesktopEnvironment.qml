@@ -143,12 +143,91 @@ Item {
                 // the value as an object and fall back to its previous tint.
                 iconTintColor: IconAppearanceService.tintColor.toString(),
                 shellStyle: AppearanceConfigService.shellStyle,
+                materialStyle: AppearanceConfigService.materialStyle,
                 barIntegratedWithDock:
                     AppearanceConfigService.barIntegratedWithDock,
                 barVisibilityMode: AppearanceConfigService.barVisibilityMode,
                 barLayoutMode: AppearanceConfigService.barLayoutMode,
                 dockWindowAnimationStyle:
                     AppearanceConfigService.dockWindowAnimationStyle,
+                // Dock surface tuning (DDE-derived). The Dock resolves these
+                // against the active shell style; the Settings app round-trips
+                // the raw multipliers so its sliders stay where the user left
+                // them instead of snapping to a recomputed absolute.
+                bionicRefract: AppearanceConfigService.bionicRefract,
+                bionicEdgeLight: AppearanceConfigService.bionicEdgeLight,
+                bionicSoftEdgePx: AppearanceConfigService.bionicSoftEdgePx,
+                bionicHsvv: AppearanceConfigService.bionicHsvv,
+                classicRefract: AppearanceConfigService.classicRefract,
+                classicReflect: AppearanceConfigService.classicReflect,
+                classicEdgeLight: AppearanceConfigService.classicEdgeLight,
+                classicSoftEdgePx: AppearanceConfigService.classicSoftEdgePx,
+                classicStrokeDegree: AppearanceConfigService.classicStrokeDegree,
+                classicStrokeSize: AppearanceConfigService.classicStrokeSize,
+                classicReflLighten: AppearanceConfigService.classicReflLighten,
+                bionicRefractMin: AppearanceConfigService.bionicRefractMin,
+                bionicRefractMax: AppearanceConfigService.bionicRefractMax,
+                bionicEdgeLightMin: AppearanceConfigService.bionicEdgeLightMin,
+                bionicEdgeLightMax: AppearanceConfigService.bionicEdgeLightMax,
+                bionicSoftEdgePxMin: AppearanceConfigService.bionicSoftEdgePxMin,
+                bionicSoftEdgePxMax: AppearanceConfigService.bionicSoftEdgePxMax,
+                bionicHsvvMin: AppearanceConfigService.bionicHsvvMin,
+                bionicHsvvMax: AppearanceConfigService.bionicHsvvMax,
+                classicRefractMin: AppearanceConfigService.classicRefractMin,
+                classicRefractMax: AppearanceConfigService.classicRefractMax,
+                classicReflectMin: AppearanceConfigService.classicReflectMin,
+                classicReflectMax: AppearanceConfigService.classicReflectMax,
+                classicEdgeLightMin: AppearanceConfigService.classicEdgeLightMin,
+                classicEdgeLightMax: AppearanceConfigService.classicEdgeLightMax,
+                classicSoftEdgePxMin: AppearanceConfigService.classicSoftEdgePxMin,
+                classicSoftEdgePxMax: AppearanceConfigService.classicSoftEdgePxMax,
+                bionicTransparency: AppearanceConfigService.bionicTransparency,
+                bionicActDarken: AppearanceConfigService.bionicActDarken,
+                bionicActEdgeLight: AppearanceConfigService.bionicActEdgeLight,
+                bionicActOpposite: AppearanceConfigService.bionicActOpposite,
+                bionicActHsvv: AppearanceConfigService.bionicActHsvv,
+                bionicActRefl: AppearanceConfigService.bionicActRefl,
+                bionicActRefract: AppearanceConfigService.bionicActRefract,
+                bionicLum0: AppearanceConfigService.bionicLum0,
+                bionicLum1: AppearanceConfigService.bionicLum1,
+                bionicLum2: AppearanceConfigService.bionicLum2,
+                bionicLum3: AppearanceConfigService.bionicLum3,
+                bionicLumAmount: AppearanceConfigService.bionicLumAmount,
+                bionicDarkBase: AppearanceConfigService.bionicDarkBase,
+                bionicDarkRange0: AppearanceConfigService.bionicDarkRange0,
+                bionicDarkRange1: AppearanceConfigService.bionicDarkRange1,
+                bionicBrightBase: AppearanceConfigService.bionicBrightBase,
+                bionicInnerBottom: AppearanceConfigService.bionicInnerBottom,
+                bionicInnerWhite: AppearanceConfigService.bionicInnerWhite,
+                bionicInnerMix: AppearanceConfigService.bionicInnerMix,
+                bionicColorPow: AppearanceConfigService.bionicColorPow,
+                bionicAlphaLayer: AppearanceConfigService.bionicAlphaLayer,
+                bionicShapeEdgePow: AppearanceConfigService.bionicShapeEdgePow,
+                bionicShapeThickness: AppearanceConfigService.bionicShapeThickness,
+                bionicReflectOffset: AppearanceConfigService.bionicReflectOffset,
+                bionicReflLighten: AppearanceConfigService.bionicReflLighten,
+                bionicReflStrength: AppearanceConfigService.bionicReflStrength,
+                bionicDirX: AppearanceConfigService.bionicDirX,
+                bionicDirY: AppearanceConfigService.bionicDirY,
+                bionicDirZ: AppearanceConfigService.bionicDirZ,
+                bionicDirInt: AppearanceConfigService.bionicDirInt,
+                bionicDirOpp: AppearanceConfigService.bionicDirOpp,
+                bionicDirAngle: AppearanceConfigService.bionicDirAngle,
+                bionicDirEdgePow: AppearanceConfigService.bionicDirEdgePow,
+                bionicBgSat: AppearanceConfigService.bionicBgSat,
+                bionicBgBri: AppearanceConfigService.bionicBgBri,
+                bionicActColorPow: AppearanceConfigService.bionicActColorPow,
+                bionicTransparencyMin: AppearanceConfigService.bionicTransparencyMin,
+                bionicTransparencyMax: AppearanceConfigService.bionicTransparencyMax,
+                // What the tuning currently resolves to, so Settings can show
+                // the user a concrete pixel/alpha readout rather than the
+                // opaque multiplier alone.
+                resolvedDockRadius: AppearanceTokens.resolvedDockRadius,
+                resolvedDockDarkAlpha: AppearanceTokens.resolvedDockDarkAlpha,
+                resolvedDockBorderTopAlpha:
+                    AppearanceTokens.resolvedDockBorderTopAlpha,
+                resolvedDockBorderBottomAlpha:
+                    AppearanceTokens.resolvedDockBorderBottomAlpha,
                 tokenVersion: AppearanceTokens.version,
             })
         }
@@ -193,6 +272,11 @@ Item {
             return snapshot()
         }
 
+        function updateMaterialStyle(style: string): string {
+            AppearanceConfigService.updateMaterialStyle(style)
+            return snapshot()
+        }
+
         function updateBarIntegratedWithDock(enabled: bool): string {
             AppearanceConfigService.updateBarIntegratedWithDock(enabled)
             return snapshot()
@@ -210,6 +294,267 @@ Item {
 
         function updateDockWindowAnimationStyle(style: string): string {
             AppearanceConfigService.updateDockWindowAnimationStyle(style)
+            return snapshot()
+        }
+
+        function updateDockRadiusScale(value: real): string {
+            AppearanceConfigService.updateDockRadiusScale(value)
+            return snapshot()
+        }
+
+        function updateDockDarkDensity(value: real): string {
+            AppearanceConfigService.updateDockDarkDensity(value)
+            return snapshot()
+        }
+
+        function updateDockEdgeStrength(value: real): string {
+            AppearanceConfigService.updateDockEdgeStrength(value)
+            return snapshot()
+        }
+
+        function updateBionicRefract(value: real): string {
+            AppearanceConfigService.updateBionicRefract(value)
+            return snapshot()
+        }
+
+        function updateBionicEdgeLight(value: real): string {
+            AppearanceConfigService.updateBionicEdgeLight(value)
+            return snapshot()
+        }
+
+        function updateBionicSoftEdgePx(value: real): string {
+            AppearanceConfigService.updateBionicSoftEdgePx(value)
+            return snapshot()
+        }
+
+        function updateBionicHsvv(value: real): string {
+            AppearanceConfigService.updateBionicHsvv(value)
+            return snapshot()
+        }
+
+        function updateClassicRefract(value: real): string {
+            AppearanceConfigService.updateClassicRefract(value)
+            return snapshot()
+        }
+
+        function updateClassicReflect(value: real): string {
+            AppearanceConfigService.updateClassicReflect(value)
+            return snapshot()
+        }
+
+        function updateClassicEdgeLight(value: real): string {
+            AppearanceConfigService.updateClassicEdgeLight(value)
+            return snapshot()
+        }
+
+        function updateClassicSoftEdgePx(value: real): string {
+            AppearanceConfigService.updateClassicSoftEdgePx(value)
+            return snapshot()
+        }
+
+        function updateClassicStrokeDegree(value: real): string {
+            AppearanceConfigService.updateClassicStrokeDegree(value)
+            return snapshot()
+        }
+
+        function updateClassicStrokeSize(value: real): string {
+            AppearanceConfigService.updateClassicStrokeSize(value)
+            return snapshot()
+        }
+
+        function updateClassicReflLighten(value: real): string {
+            AppearanceConfigService.updateClassicReflLighten(value)
+            return snapshot()
+        }
+
+        function updateBionicTransparency(value: real): string {
+            AppearanceConfigService.updateBionicTransparency(value)
+            return snapshot()
+        }
+
+        function updateBionicActDarken(value: real): string {
+            AppearanceConfigService.updateBionicActDarken(value)
+            return snapshot()
+        }
+
+        function updateBionicActEdgeLight(value: real): string {
+            AppearanceConfigService.updateBionicActEdgeLight(value)
+            return snapshot()
+        }
+
+        function updateBionicActOpposite(value: real): string {
+            AppearanceConfigService.updateBionicActOpposite(value)
+            return snapshot()
+        }
+
+        function updateBionicActHsvv(value: real): string {
+            AppearanceConfigService.updateBionicActHsvv(value)
+            return snapshot()
+        }
+
+        function updateBionicActRefl(value: real): string {
+            AppearanceConfigService.updateBionicActRefl(value)
+            return snapshot()
+        }
+
+        function updateBionicActRefract(value: real): string {
+            AppearanceConfigService.updateBionicActRefract(value)
+            return snapshot()
+        }
+
+        function updateBionicLum0(value: real): string {
+            AppearanceConfigService.updateBionicLum0(value)
+            return snapshot()
+        }
+
+        function updateBionicLum1(value: real): string {
+            AppearanceConfigService.updateBionicLum1(value)
+            return snapshot()
+        }
+
+        function updateBionicLum2(value: real): string {
+            AppearanceConfigService.updateBionicLum2(value)
+            return snapshot()
+        }
+
+        function updateBionicLum3(value: real): string {
+            AppearanceConfigService.updateBionicLum3(value)
+            return snapshot()
+        }
+
+        function updateBionicLumAmount(value: real): string {
+            AppearanceConfigService.updateBionicLumAmount(value)
+            return snapshot()
+        }
+
+        function updateBionicDarkBase(value: real): string {
+            AppearanceConfigService.updateBionicDarkBase(value)
+            return snapshot()
+        }
+
+        function updateBionicDarkRange0(value: real): string {
+            AppearanceConfigService.updateBionicDarkRange0(value)
+            return snapshot()
+        }
+
+        function updateBionicDarkRange1(value: real): string {
+            AppearanceConfigService.updateBionicDarkRange1(value)
+            return snapshot()
+        }
+
+        function updateBionicBrightBase(value: real): string {
+            AppearanceConfigService.updateBionicBrightBase(value)
+            return snapshot()
+        }
+
+        function updateBionicInnerBottom(value: real): string {
+            AppearanceConfigService.updateBionicInnerBottom(value)
+            return snapshot()
+        }
+
+        function updateBionicInnerWhite(value: real): string {
+            AppearanceConfigService.updateBionicInnerWhite(value)
+            return snapshot()
+        }
+
+        function updateBionicInnerMix(value: real): string {
+            AppearanceConfigService.updateBionicInnerMix(value)
+            return snapshot()
+        }
+
+        function updateBionicColorPow(value: real): string {
+            AppearanceConfigService.updateBionicColorPow(value)
+            return snapshot()
+        }
+
+        function updateBionicAlphaLayer(value: real): string {
+            AppearanceConfigService.updateBionicAlphaLayer(value)
+            return snapshot()
+        }
+
+        function updateBionicShapeEdgePow(value: real): string {
+            AppearanceConfigService.updateBionicShapeEdgePow(value)
+            return snapshot()
+        }
+
+        function updateBionicShapeThickness(value: real): string {
+            AppearanceConfigService.updateBionicShapeThickness(value)
+            return snapshot()
+        }
+
+        function updateBionicReflectOffset(value: real): string {
+            AppearanceConfigService.updateBionicReflectOffset(value)
+            return snapshot()
+        }
+
+        function updateBionicReflLighten(value: real): string {
+            AppearanceConfigService.updateBionicReflLighten(value)
+            return snapshot()
+        }
+
+        function updateBionicReflStrength(value: real): string {
+            AppearanceConfigService.updateBionicReflStrength(value)
+            return snapshot()
+        }
+
+        function updateBionicDirX(value: real): string {
+            AppearanceConfigService.updateBionicDirX(value)
+            return snapshot()
+        }
+
+        function updateBionicDirY(value: real): string {
+            AppearanceConfigService.updateBionicDirY(value)
+            return snapshot()
+        }
+
+        function updateBionicDirZ(value: real): string {
+            AppearanceConfigService.updateBionicDirZ(value)
+            return snapshot()
+        }
+
+        function updateBionicDirInt(value: real): string {
+            AppearanceConfigService.updateBionicDirInt(value)
+            return snapshot()
+        }
+
+        function updateBionicDirOpp(value: real): string {
+            AppearanceConfigService.updateBionicDirOpp(value)
+            return snapshot()
+        }
+
+        function updateBionicDirAngle(value: real): string {
+            AppearanceConfigService.updateBionicDirAngle(value)
+            return snapshot()
+        }
+
+        function updateBionicDirEdgePow(value: real): string {
+            AppearanceConfigService.updateBionicDirEdgePow(value)
+            return snapshot()
+        }
+
+        function updateBionicBgSat(value: real): string {
+            AppearanceConfigService.updateBionicBgSat(value)
+            return snapshot()
+        }
+
+        function updateBionicBgBri(value: real): string {
+            AppearanceConfigService.updateBionicBgBri(value)
+            return snapshot()
+        }
+
+        function updateBionicActColorPow(value: real): string {
+            AppearanceConfigService.updateBionicActColorPow(value)
+            return snapshot()
+        }
+
+
+        function resetMaterialTuning(): string {
+            AppearanceConfigService.resetMaterialTuning()
+            return snapshot()
+        }
+
+        function resetDockSurfaceTuning(): string {
+            AppearanceConfigService.resetDockSurfaceTuning()
             return snapshot()
         }
 

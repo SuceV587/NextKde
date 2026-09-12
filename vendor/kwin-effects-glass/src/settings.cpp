@@ -100,6 +100,63 @@ void BlurSettings::read()
     refraction.refractionOffsetStrength = BlurConfig::refractionOffsetStrength() / 2.0;
     refraction.refractionBevelIntensity = BlurConfig::refractionBevelIntensity() / 10.0;
     refraction.physicallyBased = BlurConfig::physicallyBasedRefraction();
+
+    bionic.enabled = BlurConfig::bionicMode();
+    bionic.lumValue0 = BlurConfig::bionicLumValue0();
+    bionic.lumValue1 = BlurConfig::bionicLumValue1();
+    bionic.lumValue2 = BlurConfig::bionicLumValue2();
+    bionic.lumValue3 = BlurConfig::bionicLumValue3();
+    bionic.lumAmount = BlurConfig::bionicLumAmount();
+    bionic.brightness = BlurConfig::bionicBrightness();
+    bionic.darker = BlurConfig::bionicDarker();
+    bionic.darkerRange0 = BlurConfig::bionicDarkerRange0();
+    bionic.darkerRange1 = BlurConfig::bionicDarkerRange1();
+    bionic.innerBottom = BlurConfig::bionicInnerBottom();
+    bionic.innerColorWhite = BlurConfig::bionicInnerColorWhite();
+    bionic.innerColorMix = BlurConfig::bionicInnerColorMix();
+    bionic.colorPow = BlurConfig::bionicColorPow();
+    bionic.alpha = BlurConfig::bionicAlpha();
+    bionic.overallAlpha = BlurConfig::bionicOverallAlpha();
+    bionic.shapeEdgePx = BlurConfig::bionicShapeEdgePx();
+    bionic.shapeEdgePow = BlurConfig::bionicShapeEdgePow();
+    bionic.shapeThicknessPx = BlurConfig::bionicShapeThicknessPx();
+    bionic.shapeReflectOffsetPx = BlurConfig::bionicShapeReflectOffsetPx();
+    bionic.reflLighten = BlurConfig::bionicReflLighten();
+    bionic.reflStrength = BlurConfig::bionicReflStrength();
+    bionic.dirX = BlurConfig::bionicDirX();
+    bionic.dirY = BlurConfig::bionicDirY();
+    bionic.dirZ = BlurConfig::bionicDirZ();
+    bionic.dirIntensity = BlurConfig::bionicDirIntensity();
+    bionic.dirOppositeIntensity = BlurConfig::bionicDirOppositeIntensity();
+    bionic.dirAngleRange = BlurConfig::bionicDirAngleRange();
+    bionic.dirEdgePow = BlurConfig::bionicDirEdgePow();
+    bionic.blur = BlurConfig::bionicBlur();
+    bionic.ior = BlurConfig::bionicIOR();
+    bionic.bgColorSaturation = BlurConfig::bionicBgColorSaturation();
+    bionic.bgColorBrightness = BlurConfig::bionicBgColorBrightness();
+    bionic.hsvvBoost = BlurConfig::bionicHsvvBoost();
+    bionic.darkerActivated = BlurConfig::bionicActivatedDarker();
+    bionic.dirIntensityActivated = BlurConfig::bionicActivatedDirIntensity();
+    bionic.dirOppositeIntensityActivated = BlurConfig::bionicActivatedDirOppositeIntensity();
+    bionic.colorPowActivated = BlurConfig::bionicActivatedColorPow();
+    bionic.hsvvBoostActivated = BlurConfig::bionicActivatedHsvvBoost();
+    bionic.reflStrengthActivated = BlurConfig::bionicActivatedReflStrength();
+    bionic.refractActivated = BlurConfig::bionicActivatedRefract();
+
+    classic.enabled = BlurConfig::classicMode();
+    classic.dark0 = BlurConfig::classicDark0();
+    classic.dark1 = BlurConfig::classicDark1();
+    classic.dark2 = BlurConfig::classicDark2();
+    classic.light0 = BlurConfig::classicLight0();
+    classic.light1 = BlurConfig::classicLight1();
+    classic.light2 = BlurConfig::classicLight2();
+    classic.strokeSize = BlurConfig::classicStrokeSize();
+    classic.strokeStrength = BlurConfig::classicStrokeStrength();
+    classic.strokeDegree = BlurConfig::classicStrokeDegree();
+    classic.refractIOR = BlurConfig::classicRefractIOR();
+    classic.reflLighten = BlurConfig::classicReflLighten();
+    classic.reflStrength = BlurConfig::classicReflStrength();
+    classic.maskSoft = BlurConfig::classicMaskSoft();
 }
 
 }
