@@ -24,8 +24,12 @@ function(generate_shader_variants input_glsl output_base)
     string(REPLACE "#include \"oklab.glsl\"" "${OKLAB_SHADER}" SHADER_SRC_EXPANDED "${SHADER_SRC}")
     string(REPLACE "#include \"glass.glsl\"" "${GLASS_SHADER}" SHADER_SRC_EXPANDED "${SHADER_SRC_EXPANDED}")
 
-    # Core variant
+    # The generated sources already carry the core compatibility preamble.
+    # KWin <= 6.6 resolves a second, core-profile variant of every shader by
+    # appending a "_core" suffix to the resource name (6.7 merged the two
+    # variants into one), so publish the same bytes under both names.
     file(WRITE "generated/${output_base}${ARGN}" "${COMPAT_CORE}\n${SHADER_SRC_EXPANDED}")
+    file(WRITE "generated/${output_base}_core${ARGN}" "${COMPAT_CORE}\n${SHADER_SRC_EXPANDED}")
 endfunction()
 
 # Generate vertex shaders
