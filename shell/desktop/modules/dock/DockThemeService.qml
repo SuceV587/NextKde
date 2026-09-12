@@ -28,7 +28,7 @@ QtObject {
     readonly property color darkAccent: Qt.rgba(0.20, 0.60, 1.0, 1.0)
     readonly property color darkDivider: Qt.rgba(1.0, 1.0, 1.0, 0.18)
     readonly property color darkTooltipBg: Qt.rgba(0.18, 0.18, 0.20, 0.95)
-    readonly property color darkIndicator: Qt.rgba(0.20, 0.60, 1.0, 0.85)
+    readonly property color darkIndicator: Qt.rgba(0.985, 0.990, 1.000, 0.90)
     readonly property color darkBorder: Qt.rgba(1.0, 1.0, 1.0, 0.16)
     readonly property color darkHighlight: Qt.rgba(1.0, 1.0, 1.0, 0.28)
 
@@ -42,7 +42,7 @@ QtObject {
     readonly property color lightAccent: Qt.rgba(0.0, 0.50, 0.90, 1.0)
     readonly property color lightDivider: Qt.rgba(0.055, 0.065, 0.085, 0.16)
     readonly property color lightTooltipBg: Qt.rgba(0.92, 0.92, 0.94, 0.95)
-    readonly property color lightIndicator: Qt.rgba(0.0, 0.50, 0.90, 0.75)
+    readonly property color lightIndicator: Qt.rgba(0.055, 0.065, 0.085, 0.85)
     readonly property color lightBorder: Qt.rgba(0.055, 0.065, 0.085, 0.14)
     readonly property color lightHighlight: Qt.rgba(1.0, 1.0, 1.0, 0.55)
 

@@ -81,13 +81,19 @@ for (const mode of ["dark", "light"]) {
     const primary = rgbaProperty(shellThemeSource, `${mode}Fg`);
     const secondary = rgbaProperty(shellThemeSource, `${mode}SecondaryFg`);
     const tertiary = rgbaProperty(shellThemeSource, `${mode}TertiaryFg`);
+    const indicator = rgbaProperty(shellThemeSource, `${mode}Indicator`);
     assert.ok(contrast(primary, background) >= 7,
         `${mode} primary shell text reaches enhanced contrast`);
     assert.ok(contrast(composite(secondary, background), background) >= 4.5,
         `${mode} secondary shell text reaches AA contrast`);
     assert.ok(contrast(composite(tertiary, background), background) >= 4.5,
         `${mode} tertiary shell text remains readable at small sizes`);
+    assert.ok(contrast(composite(indicator, background), background) >= 4.5,
+        `${mode} dock indicator reaches AA contrast against dock background`);
 }
+const dockIconSource = read("../../shell/desktop/modules/dock/DockIcon.qml");
+assert.match(dockIconSource, /color:\s*ThemeService\.indicatorColor/,
+    "dock running dots adapt dynamically to theme indicator color");
 const glassTextSource = read("../../shell/desktop/modules/common/GlassText.qml");
 assert.match(glassTextSource,
     /inkLuminance[\s\S]*styleColor:[\s\S]*inkLuminance\s*>=\s*0\.55/,
