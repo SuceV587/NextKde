@@ -599,7 +599,11 @@ Item {
                     width: runningIndicator.dotSize
                     height: width
                     radius: width / 2
-                    color: Qt.rgba(1, 1, 1, 0.95)
+                    color: ThemeService.indicatorColor
+
+                    Behavior on color {
+                        ColorAnimation { duration: 150; easing.type: Easing.OutCubic }
+                    }
                 }
             }
         }
@@ -609,6 +613,10 @@ Item {
             visible: !icon.dotIndicator
             radius: width / 2
             color: ThemeService.accentColor
+
+            Behavior on color {
+                ColorAnimation { duration: 150; easing.type: Easing.OutCubic }
+            }
         }
     }
 
