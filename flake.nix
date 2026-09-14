@@ -166,13 +166,23 @@ EOF
                       --key "$effect""Enabled" true --type bool --notify false
                   done
 
-                  # Select the compiled Liquid Glass window decoration. `theme`
-                  # only applies to multi-theme packages such as Aurorae, so a
-                  # stale value must be removed.
-                  "$kwriteconfig" --file kwinrc --group org.kde.kdecoration3 \
+                  # Select the compiled Liquid Glass window decoration. KWin
+                  # reads the selected plugin from the legacy
+                  # `org.kde.kdecoration2` config group even though KDecoration3
+                  # plugins install under an `org.kde.kdecoration3` directory;
+                  # writing the directory name never selects the plugin and
+                  # leaves KWin on the previous decoration. `theme` only applies
+                  # to multi-theme packages such as Aurorae, so a stale value
+                  # must be removed.
+                  "$kwriteconfig" --file kwinrc --group org.kde.kdecoration2 \
                     --key library kos_liquid_glass --notify false
-                  "$kwriteconfig" --file kwinrc --group org.kde.kdecoration3 \
+                  "$kwriteconfig" --file kwinrc --group org.kde.kdecoration2 \
                     --key theme --delete --notify false || true
+                  # Clear a stale selection from the directory-named group that
+                  # older KOS revisions wrote, so it cannot confuse a future
+                  # config-group rename.
+                  "$kwriteconfig" --file kwinrc --group org.kde.kdecoration3 \
+                    --key library --delete --notify false || true
                   "$kwriteconfig" --file kwinrc --group Effect-blurplus \
                     --key BlurDecorations true --type bool --notify false
 
