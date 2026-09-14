@@ -21,8 +21,13 @@ Item {
     property real widthUnits: 2
     property bool showClock: false
     property bool showTemperature: true
-    readonly property bool hasMusic: DockMprisService.hasPlayingPlayer
-    readonly property bool hasWeather: WeatherService.available
+    property string widgetMode: ConfigService.widgetMode
+    property string fixedWidget: ConfigService.fixedWidget
+    property int carouselInterval: ConfigService.carouselInterval
+    readonly property bool hasMusic: ConfigService.isDockWidgetEnabled("music") && DockMprisService.hasPlayingPlayer
+    readonly property bool hasWeather: ConfigService.isDockWidgetEnabled("weather") && WeatherService.available
+    readonly property bool hasClock: ConfigService.isDockWidgetEnabled("clock") && (showClock || widgetMode === "fixed")
+    readonly property bool hasTemperature: ConfigService.isDockWidgetEnabled("temperature") && showTemperature
     readonly property var player: DockMprisService.activePlayer
     readonly property url artworkSource: {
         const revision = DockMprisService.metadataRevision
@@ -31,7 +36,7 @@ Item {
     }
     readonly property bool monochrome: IconAppearanceService.mode !== "color"
     readonly property int availablePageCount: Number(hasMusic)
-        + Number(hasWeather) + Number(showClock) + Number(showTemperature)
+        + Number(hasWeather) + Number(hasClock) + Number(hasTemperature)
     property int page: clockPage
 
     width: iconSize * widthUnits + iconSize * 0.2
@@ -43,31 +48,50 @@ Item {
         precision: SystemClock.Minutes
     }
 
+    function fixedPageIndex() {
+        if (fixedWidget === "music") return musicPage
+        if (fixedWidget === "weather") return weatherPage
+        if (fixedWidget === "clock") return clockPage
+        if (fixedWidget === "temperature") return temperaturePage
+        return weatherPage
+    }
+
     function pageAvailable(candidate) {
+        if (widgetMode === "fixed")
+            return candidate === fixedPageIndex()
         if (candidate === musicPage)
             return hasMusic
         if (candidate === weatherPage)
             return hasWeather
         if (candidate === clockPage)
-            return showClock
-        return candidate === temperaturePage && showTemperature
+            return hasClock
+        return candidate === temperaturePage && hasTemperature
     }
 
     function availablePages() {
+        if (widgetMode === "fixed")
+            return [fixedPageIndex()]
         const pages = []
         if (hasMusic) pages.push(musicPage)
         if (hasWeather) pages.push(weatherPage)
-        if (showClock) pages.push(clockPage)
-        if (showTemperature) pages.push(temperaturePage)
+        if (hasClock) pages.push(clockPage)
+        if (hasTemperature) pages.push(temperaturePage)
         return pages
     }
 
     function ensureValidPage() {
+        if (widgetMode === "fixed") {
+            page = fixedPageIndex()
+            return
+        }
         if (pageAvailable(page))
             return
         const pages = availablePages()
         page = pages.length > 0 ? pages[0] : clockPage
     }
+
+    onWidgetModeChanged: ensureValidPage()
+    onFixedWidgetChanged: ensureValidPage()
 
     function switchPage(direction) {
         const pages = availablePages()
@@ -195,8 +219,8 @@ Item {
     }
 
     Timer {
-        interval: 30000
-        running: carousel.availablePageCount > 1
+        interval: Math.max(5, carousel.carouselInterval) * 1000
+        running: carousel.availablePageCount > 1 && carousel.widgetMode === "carousel"
         repeat: true
         onTriggered: {
             carousel.switchPage(1)

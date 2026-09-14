@@ -40,16 +40,16 @@ Item {
     // drag-reordering or persistence.
     readonly property int pinnedCount: DockModelService.pinnedCount + 2
     readonly property int windowCount: DockModelService.windowCount
-    readonly property bool hasPlayingMusic: DockMprisService.hasPlayingPlayer
-    readonly property bool hasWeather: WeatherService.available
+    readonly property bool hasPlayingMusic: ConfigService.isDockWidgetEnabled("music") && DockMprisService.hasPlayingPlayer
+    readonly property bool hasWeather: ConfigService.isDockWidgetEnabled("weather") && WeatherService.available
     // Side Dock Stack information keeps its clock page. The separate
     // top-of-Dock clock is intentionally not injected by DesktopEnvironment.
-    readonly property bool hasClock: clockInInfoCarousel || vertical
-    // Temperature is a permanent horizontal Dock page. MetricsService may
+    readonly property bool hasClock: ConfigService.isDockWidgetEnabled("clock") && (clockInInfoCarousel || vertical || ConfigService.widgetMode === "fixed")
+    // Temperature is a permanent horizontal Dock page when enabled. MetricsService may
     // still be loading its first snapshot; the card remains and shows "--".
-    readonly property bool hasTemperature: true
-    readonly property bool hasAvailableInfo: hasPlayingMusic || hasWeather || hasClock
-        || hasTemperature
+    readonly property bool hasTemperature: ConfigService.isDockWidgetEnabled("temperature")
+    readonly property bool hasAvailableInfo: ConfigService.showWidgets && (hasPlayingMusic || hasWeather || hasClock
+        || hasTemperature)
     readonly property int screenWidth: targetScreen?.width
         ?? Quickshell.screens[0]?.width ?? 1920
     readonly property int screenHeight: targetScreen?.height
@@ -329,8 +329,8 @@ Item {
         property bool hasBeenVisible: false
 
         Component.onCompleted: setItems([
-            { icon: "", label: "打开回收站", cmd: "open" },
-            { icon: "", label: "清空回收站", cmd: "empty" }
+            { icon: "📁", label: "打开回收站", cmd: "open" },
+            { icon: "🗑", label: "清空回收站", cmd: "empty" }
         ])
 
         onAboutToShow: hasBeenVisible = true
@@ -365,28 +365,25 @@ Item {
         function rebuildItems() {
             setItems([
                 {
-                    icon: "",
-                    label: "底部吸附",
+                    icon: "↓", label: "底部吸附",
                     cmd: "bottom",
                     checkable: true,
                     checked: AppLauncherConfigService.displayMode === "bottom"
                 },
                 {
-                    icon: "",
-                    label: "屏幕居中",
+                    icon: "⊙", label: "屏幕居中",
                     cmd: "center",
                     checkable: true,
                     checked: AppLauncherConfigService.displayMode === "center"
                 },
                 {
-                    icon: "",
-                    label: "全屏覆盖",
+                    icon: "⛶", label: "全屏覆盖",
                     cmd: "fullscreen",
                     checkable: true,
                     checked: AppLauncherConfigService.displayMode === "fullscreen"
                 },
                 { separator: true },
-                { icon: "", label: "启动台设置…", cmd: "settings" }
+                { icon: "⚙", label: "启动台设置…", cmd: "settings" }
             ])
         }
 
@@ -821,6 +818,9 @@ Item {
             widthUnits: container.infoUnits
             showClock: container.hasClock
             showTemperature: container.hasTemperature
+            widgetMode: ConfigService.widgetMode
+            fixedWidget: ConfigService.fixedWidget
+            carouselInterval: ConfigService.carouselInterval
             visible: container.hasInfo && !container.vertical
         }
 
@@ -833,6 +833,9 @@ Item {
             widthUnits: container.infoUnits
             showClock: container.hasClock
             showTemperature: container.hasTemperature
+            widgetMode: ConfigService.widgetMode
+            fixedWidget: ConfigService.fixedWidget
+            carouselInterval: ConfigService.carouselInterval
             visible: container.hasInfo && container.vertical
         }
 

@@ -32,13 +32,41 @@ QtObject {
 
     function refresh() {
         const screens = _usableScreens()
-        const nextScreen = screens.length > 1
-            ? screens[1]
-            : (screens.length > 0 ? screens[0] : null)
+        let nextScreen = null
+
+        // 1. 优先精准匹配主屏幕名称（如用户的中间主显示器 DP-1）
+        for (let i = 0; i < screens.length; ++i) {
+            if (screens[i].name === "DP-1") {
+                nextScreen = screens[i]
+                break
+            }
+        }
+
+        // 2. 若未匹配到指定名称且存在多屏环境：
+        // 自动过滤笔记本内置屏幕 (eDP)，并对外部显示器按水平物理坐标排序，选取居中的主屏
+        if (!nextScreen && screens.length > 0) {
+            const externalScreens = screens.filter(function(s) {
+                return !String(s.name || "").startsWith("eDP")
+            })
+            if (externalScreens.length > 0) {
+                const sorted = externalScreens.slice().sort(function(a, b) {
+                    return Number(a.x || 0) - Number(b.x || 0)
+                })
+                const midIndex = Math.floor(sorted.length / 2)
+                nextScreen = sorted[midIndex]
+            }
+        }
+
+        // 3. 保底 fallback：当只有单个显示器或仅有内置屏时回退到首个可用屏幕
+        if (!nextScreen && screens.length > 0) {
+            nextScreen = screens[0]
+        }
 
         outputAvailable = nextScreen !== null
-        if (nextScreen !== null)
+        if (nextScreen !== null) {
+            console.log("[ScreenLifecycle] selected activeScreen:", nextScreen.name, "geometry:", nextScreen.x, nextScreen.y, nextScreen.width, nextScreen.height)
             activeScreen = nextScreen
+        }
     }
 
     function refreshAndSettle() {

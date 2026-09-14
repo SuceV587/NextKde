@@ -89,6 +89,11 @@ Item {
     readonly property real hitH: handle.active
         ? (handle.vertical ? handle.windowHeight : handle.hitThickness) : 0
 
+    onActiveChanged: {
+        if (!handle.active)
+            handle.exited()
+    }
+
     // ── Visual bar geometry ──
     readonly property real barX: vertical
         ? (handle.position === "right" ? handle.windowWidth - handle.edgeInset - handle.visualThickness : handle.edgeInset)
@@ -105,20 +110,22 @@ Item {
         y: handle.hitY
         width: handle.hitW
         height: handle.hitH
-        enabled: handle.active && handle.hitW > 0 && handle.hitH > 0
-        visible: true
+        enabled: handle.active
+        visible: handle.active
         opacity: 0
 
         HoverHandler {
             id: targetHover
-            enabled: parent.enabled
+            enabled: handle.active
             onHoveredChanged: {
-                if (parent.enabled)
-                    targetHover.hovered ? handle.entered() : handle.exited()
+                if (targetHover.hovered)
+                    handle.entered()
+                else
+                    handle.exited()
             }
         }
         TapHandler {
-            enabled: parent.enabled
+            enabled: handle.active
             onTapped: handle.clicked()
         }
     }
@@ -133,7 +140,7 @@ Item {
         // thickness in both cases).
         width: handle.vertical ? handle.visualThickness : handle.barLength
         height: handle.vertical ? handle.barLength : handle.visualThickness
-        visible: handle.active && handle.visualThickness > 0
+        visible: handle.active && handle.visualThickness > 0 && handle.fadeOpacity > 0.01
         opacity: handle.fadeOpacity
 
         scale: targetHover.hovered ? 1.08 : 1.0

@@ -38,7 +38,8 @@ PanelWindow {
     // to 1.0 so the transition reliably plays every time the window shows.
     property real contentRevealProgress: 0.0
     property bool gridEntranceActive: false
-    readonly property bool panelVisible: open && (AppLauncherService.dockWidth > 0 || isFullscreenMode || isCenterMode)
+    property bool isClosing: false
+    readonly property bool panelVisible: (open || isClosing) && (AppLauncherService.dockWidth > 0 || isFullscreenMode || isCenterMode)
 
     readonly property string displayMode: AppLauncherConfigService.displayMode
     readonly property var layoutProfile: AppLauncherConfigService.profileForMode(displayMode)
@@ -125,23 +126,35 @@ PanelWindow {
     onOpenChanged: {
         console.log("[AppLauncherWindow] received open=" + open);
         if (open) {
+            isClosing = false;
+            revealAnim.stop();
             root.cancelFullscreenPageTransition();
             root.syncPagerSlots();
-            contentRevealProgress = 0.0;
-            openForeground.restart();
+            revealAnim.from = contentRevealProgress;
+            revealAnim.to = 1.0;
+            revealAnim.duration = 200;
+            revealAnim.easing.type = Easing.OutCubic;
+            revealAnim.start();
         } else {
-            contentRevealProgress = 0.0;
+            isClosing = true;
+            revealAnim.stop();
+            revealAnim.from = contentRevealProgress;
+            revealAnim.to = 0.0;
+            revealAnim.duration = 160;
+            revealAnim.easing.type = Easing.InCubic;
+            revealAnim.start();
         }
     }
 
     NumberAnimation {
-        id: openForeground
+        id: revealAnim
         target: root
         property: "contentRevealProgress"
-        from: 0.0
-        to: 1.0
-        duration: AppearanceTokens.motion.popupOpenDuration
-        easing.type: Easing.OutCubic
+        onFinished: {
+            if (!root.open && root.contentRevealProgress <= 0.01) {
+                root.isClosing = false;
+            }
+        }
     }
     onScreenChanged: console.log("[AppLauncherWindow] screen changed=" + !!screen)
     readonly property real minimumLauncherWidth: screen ? Math.round(screen.width * 0.50) : 600
@@ -149,21 +162,18 @@ PanelWindow {
     readonly property bool usesMinimumSize: AppLauncherService.dockWidth < minimumLauncherWidth
     // Sizing depends on display mode: fullscreen fills screen, center floats
     // with comfortable dialogue dimensions, bottom follows the Dock.
+    // 托盘式抽屉尺寸：全屏占满、居中680-1040、底部吸附采用440px小托盘宽度
     readonly property real launcherWidth: isFullscreenMode
         ? (screen ? screen.width : 1920)
         : (isCenterMode
             ? (screen ? Math.min(Math.max(680, Math.round(screen.width * 0.65)), 1040) : 760)
-            : (usesMinimumSize ? minimumLauncherWidth : AppLauncherService.dockWidth))
+            : 440)
 
     readonly property real launcherHeight: isFullscreenMode
         ? (screen ? screen.height : 1080)
         : (isCenterMode
             ? (screen ? Math.min(Math.max(520, Math.round(screen.height * 0.68)), 760) : 560)
-            : (!dockAtBottom
-                ? Math.min(Math.max(minimumLauncherHeight, AppLauncherService.dockWidth),
-                    Math.round(screen.height * 0.85))
-                : (usesMinimumSize ? minimumLauncherHeight
-                    : Math.round(screen.height * 0.50))))
+            : 460)
     readonly property var applications: {
         // This window stays instantiated while hidden. Do not enumerate every
         // desktop entry or resolve its icon until the launcher is actually
@@ -377,9 +387,9 @@ PanelWindow {
         appContextMenu.application = app
         appContextMenu.anchorItem = anchorItem
         appContextMenu.clear()
-        appContextMenu.addItem("", "打开应用", "open")
-        appContextMenu.addItem("", "编辑应用", "edit")
-        appContextMenu.addItem("", "固定到 Dock", "pin")
+        appContextMenu.addItem("↗", "打开应用", "open")
+        appContextMenu.addItem("✏", "编辑应用", "edit")
+        appContextMenu.addItem("📌", "固定到 Dock", "pin")
         appContextMenu.show()
     }
 
@@ -1064,9 +1074,9 @@ PanelWindow {
     // makes the launcher's vertical centre line up with the Dock's centre
     // (the Dock lives in the bar-cleared area).
     margins.top: root.isFullscreenMode ? 0 : AppLauncherService.barHeight
-    margins.bottom: root.isFullscreenMode ? 0 : (root.dockAtBottom ? AppLauncherService.dockHeight + 15 : 0)
-    margins.left: root.isFullscreenMode ? 0 : (root.dockAtLeft ? AppLauncherService.dockHeight + 15 : 0)
-    margins.right: root.isFullscreenMode ? 0 : (root.dockAtRight ? AppLauncherService.dockHeight + 15 : 0)
+    margins.bottom: root.isFullscreenMode ? 0 : (root.dockAtBottom ? AppLauncherService.dockHeight + (ConfigService.edgeMargin !== undefined ? ConfigService.edgeMargin : 10) + 12 : 0)
+    margins.left: root.isFullscreenMode ? 0 : (root.dockAtLeft ? AppLauncherService.dockHeight + (ConfigService.edgeMargin !== undefined ? ConfigService.edgeMargin : 10) + 12 : 0)
+    margins.right: root.isFullscreenMode ? 0 : (root.dockAtRight ? AppLauncherService.dockHeight + (ConfigService.edgeMargin !== undefined ? ConfigService.edgeMargin : 10) + 12 : 0)
     implicitHeight: launcherHeight
 
     // The layer-shell surface spans the output so this catcher can dismiss
@@ -1107,7 +1117,7 @@ PanelWindow {
         anchors.right: (root.isBottomMode && root.dockAtRight) ? parent.right : undefined
         width: root.isFullscreenMode ? parent.width : root.launcherWidth
         height: root.isFullscreenMode ? parent.height : root.launcherHeight
-        clip: true
+        clip: root.isFullscreenMode
 
         // The fullscreen presentation owns the entire output, not merely the
         // centered app grid. Create this wheel receiver only for that mode so
@@ -1137,8 +1147,17 @@ PanelWindow {
         Item {
             id: launcherCard
             anchors.fill: parent
-            enabled: root.open
-            opacity: 1.0
+            enabled: root.open && !root.isClosing
+            opacity: root.contentRevealProgress
+            scale: root.isFullscreenMode
+                ? (0.96 + 0.04 * root.contentRevealProgress)
+                : (0.90 + 0.10 * root.contentRevealProgress)
+            transformOrigin: root.isBottomMode ? Item.Bottom : Item.Center
+            transform: Translate {
+                y: root.isBottomMode
+                    ? Math.round(24 * (1.0 - root.contentRevealProgress))
+                    : (root.isCenterMode ? Math.round(16 * (1.0 - root.contentRevealProgress)) : 0)
+            }
 
             Item {
                 id: background
@@ -1209,21 +1228,9 @@ PanelWindow {
                     // as the foreground fades in. Both fold into the same
                     // contentRevealProgress Behavior; the backdrop blur stays
                     // fixed at full card size, so this never fights it.
-                    transform: [
-                        Scale {
-                            origin.x: launcherContent.width / 2
-                            origin.y: launcherContent.height / 2
-                            xScale: AppearanceTokens.motion.popupStartScale
-                                + (1 - AppearanceTokens.motion.popupStartScale)
-                                    * root.contentRevealProgress
-                            yScale: AppearanceTokens.motion.popupStartScale
-                                + (1 - AppearanceTokens.motion.popupStartScale)
-                                    * root.contentRevealProgress
-                        },
-                        Translate {
-                            y: Math.round((root.isFullscreenMode ? 60 : 200) * (1.0 - root.contentRevealProgress))
-                        }
-                    ]
+                    transform: Translate {
+                        y: root.isFullscreenMode ? Math.round(40 * (1.0 - root.contentRevealProgress)) : 0
+                    }
 
                     MouseArea {
                         id: fullscreenBgDismiss
@@ -1313,7 +1320,7 @@ PanelWindow {
                                 }
                                 // The pill stays centered in the header band;
                                 // only its width follows the band.
-                                width: Math.min(460, Math.max(300, parent.width * 0.46))
+                                width: root.isFullscreenMode ? Math.min(460, parent.width * 0.46) : Math.min(360, parent.width - 32)
                                 height: 35
 
                                 placeholderText: "搜索应用"
