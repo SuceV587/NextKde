@@ -55,13 +55,13 @@ QtObject {
     // themes. The compositor material, rather than a black light-theme icon,
     // establishes contrast against the live backdrop.
     readonly property color foregroundColor: AppearanceTokens.isMaterial
-        ? AppearanceTokens.colors.surfaceForeground : darkFg
+        ? AppearanceTokens.colors.surfaceForeground : (isDark ? darkFg : lightFg)
     readonly property color secondaryForegroundColor: AppearanceTokens.isMaterial
-        ? AppearanceTokens.colors.surfaceVariantForeground : darkSecondaryFg
+        ? AppearanceTokens.colors.surfaceVariantForeground : (isDark ? darkSecondaryFg : lightSecondaryFg)
     readonly property color tertiaryForegroundColor: AppearanceTokens.isMaterial
         ? Qt.rgba(AppearanceTokens.colors.surfaceVariantForeground.r,
             AppearanceTokens.colors.surfaceVariantForeground.g,
-            AppearanceTokens.colors.surfaceVariantForeground.b, 0.70) : darkTertiaryFg
+            AppearanceTokens.colors.surfaceVariantForeground.b, 0.70) : (isDark ? darkTertiaryFg : lightTertiaryFg)
     readonly property color accentColor: AppearanceTokens.isMaterial
         ? AppearanceTokens.colors.primary : (isDark ? darkAccent : lightAccent)
     readonly property color dividerColor: AppearanceTokens.isMaterial
