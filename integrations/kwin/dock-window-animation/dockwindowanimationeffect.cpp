@@ -435,6 +435,20 @@ void DockWindowAnimationEffect::startAnimation(EffectWindow *window,
     }
     animation.target = target;
     animation.transition = transition;
+    // 固化记录 CSD 阴影缓冲区相对偏移量（用于 Wayland 客户端最小化几何补偿）
+    if (m_csdOffsets.contains(window)) {
+        animation.csdOffset = m_csdOffsets.value(window);
+    } else if (window && !window->isMinimized()) {
+        const QRectF frame = window->frameGeometry();
+        const QRectF buffer = window->bufferGeometry();
+        if (frame.isValid() && buffer.isValid()) {
+            const QPointF offset = buffer.topLeft() - frame.topLeft();
+            if (offset.x() < -1.0 || offset.y() < -1.0) {
+                animation.csdOffset = offset;
+                m_csdOffsets.insert(window, offset);
+            }
+        }
+    }
 
     QString action;
     switch (transition) {
@@ -469,7 +483,8 @@ void DockWindowAnimationEffect::startAnimation(EffectWindow *window,
     qCInfo(KWIN_KOS_DOCK_ANIMATION)
         << action << target.appId
         << "window" << window->internalId()
-        << "from/to Dock rect" << target.geometry;
+        << "from/to Dock rect" << target.geometry
+        << "csdOffset" << animation.csdOffset;
 
     redirect(window);
     effects->addRepaintFull();
@@ -484,19 +499,24 @@ void DockWindowAnimationEffect::drawWindow(
 
     if (it != m_animations.end()
         && it->transition != Transition::Open) {
-        // Cover the real-surface/offscreen-texture seam at progress zero.
-        // This is exactly where minimize begins and restore finishes. Keep a
-        // normally painted copy underneath for about 40ms so a late client
-        // buffer or first redirected snapshot cannot expose the wallpaper.
-        // The redirected copy is still painted below and remains fully opaque;
-        // this is not an opacity animation.
-        const int duration = it->transition == Transition::Minimize
-            ? m_minimizeDuration : m_restoreDuration;
-        const qreal seamSpan = std::clamp(40.0 / duration, 0.0, 1.0);
-        if (it->timeLine.value() <= seamSpan) {
-            WindowPaintData backingData = data;
-            effects->drawWindow(renderTarget, viewport, window, mask,
-                                deviceRegion, backingData);
+        // 对于存在 CSD 阴影缓冲区跳变的窗口，若其底层缓冲区在最小化瞬间已发生重置，
+        // 绘制底层未重定向表面会透出向下偏移的未补偿画面；因此带有 CSD 偏移的窗口直接跳过底层绘制
+        const bool hasCsdJump = (it->csdOffset.x() < -1.0 || it->csdOffset.y() < -1.0);
+        if (!hasCsdJump) {
+            // Cover the real-surface/offscreen-texture seam at progress zero.
+            // This is exactly where minimize begins and restore finishes. Keep a
+            // normally painted copy underneath for about 40ms so a late client
+            // buffer or first redirected snapshot cannot expose the wallpaper.
+            // The redirected copy is still painted below and remains fully opaque;
+            // this is not an opacity animation.
+            const int duration = it->transition == Transition::Minimize
+                ? m_minimizeDuration : m_restoreDuration;
+            const qreal seamSpan = std::clamp(40.0 / duration, 0.0, 1.0);
+            if (it->timeLine.value() <= seamSpan) {
+                WindowPaintData backingData = data;
+                effects->drawWindow(renderTarget, viewport, window, mask,
+                                    deviceRegion, backingData);
+            }
         }
     }
 
@@ -628,6 +648,31 @@ void DockWindowAnimationEffect::apply(EffectWindow *window, int mask,
     const auto it = m_animations.constFind(window);
     if (it == m_animations.cend())
         return;
+
+    // Compensate a CSD shadow offset only on axes whose complete quad bounds
+    // have collapsed to the local origin. WindowQuad ordering is not a
+    // geometry contract, so inspect the union rather than quads[0][0].
+    if (!quads.isEmpty() && (it->csdOffset.x() < -1.0 || it->csdOffset.y() < -1.0)) {
+        QRectF quadBounds;
+        bool haveQuadBounds = false;
+        for (const WindowQuad &quad : std::as_const(quads)) {
+            const QRectF bounds(quad.bounds());
+            quadBounds = haveQuadBounds ? quadBounds.united(bounds) : bounds;
+            haveQuadBounds = true;
+        }
+        const QPointF compensation(
+            haveQuadBounds && std::abs(quadBounds.left()) < 2.0 ? it->csdOffset.x() : 0.0,
+            haveQuadBounds && std::abs(quadBounds.top()) < 2.0 ? it->csdOffset.y() : 0.0);
+        if (!qFuzzyIsNull(compensation.x()) || !qFuzzyIsNull(compensation.y())) {
+            for (WindowQuad &quad : quads) {
+                for (int i = 0; i < 4; ++i) {
+                    quad[i].setX(quad[i].x() + compensation.x());
+                    quad[i].setY(quad[i].y() + compensation.y());
+                }
+            }
+        }
+    }
+
     // The window remains the only flying texture and simply disappears on
     // the final approach. Restore/open run the same curve in reverse.
     const qreal fadeProgress = smoothStep(
@@ -724,6 +769,30 @@ void DockWindowAnimationEffect::watchWindow(EffectWindow *window)
     connect(window, &EffectWindow::minimizedChanged,
             this, &DockWindowAnimationEffect::handleMinimizedChanged,
             Qt::UniqueConnection);
+    // Qt6 中 Lambda 仿函数不支持 Qt::UniqueConnection（会导致断言崩溃），指定上下文 this 已具备安全性
+    connect(window, &EffectWindow::windowFrameGeometryChanged,
+            this, [this, window]() {
+                updateWindowGeometryTracking(window);
+            });
+    updateWindowGeometryTracking(window);
+}
+
+void DockWindowAnimationEffect::updateWindowGeometryTracking(EffectWindow *window)
+{
+    if (!window || window->isMinimized())
+        return;
+    const QRectF frame = window->frameGeometry();
+    const QRectF buffer = window->bufferGeometry();
+    if (frame.isValid() && buffer.isValid() && frame.width() > 1 && frame.height() > 1) {
+        const QPointF offset = buffer.topLeft() - frame.topLeft();
+        if (offset.x() < -1.0 || offset.y() < -1.0) {
+            m_csdOffsets.insert(window, offset);
+        } else {
+            // Decoration changes and maximization can remove the client shadow.
+            // Do not reuse an offset captured for an earlier window geometry.
+            m_csdOffsets.remove(window);
+        }
+    }
 }
 
 void DockWindowAnimationEffect::tryStartTicketedOpenAnimation(
@@ -767,6 +836,7 @@ void DockWindowAnimationEffect::handleMinimizedChanged(EffectWindow *window)
 
 void DockWindowAnimationEffect::handleWindowDeleted(EffectWindow *window)
 {
+    m_csdOffsets.remove(window);
     m_animations.remove(window);
     m_claimedRoles.remove(window);
 }

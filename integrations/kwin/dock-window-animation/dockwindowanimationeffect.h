@@ -83,6 +83,8 @@ private:
         TimeLine timeLine;
         Target target;
         Transition transition = Transition::Minimize;
+        // CSD 客户端自绘阴影缓冲区相对于窗口 frameGeometry 的物理偏移量
+        QPointF csdOffset = QPointF(0, 0);
     };
 
     struct PendingLaunch {
@@ -93,6 +95,7 @@ private:
 
     void handleWindowAdded(EffectWindow *window);
     void watchWindow(EffectWindow *window);
+    void updateWindowGeometryTracking(EffectWindow *window);
     void tryStartTicketedOpenAnimation(EffectWindow *window,
                                        int remainingAttempts);
     void handleMinimizedChanged(EffectWindow *window);
@@ -117,6 +120,8 @@ private:
     QList<PendingLaunch> m_pendingLaunches;
     QHash<EffectWindow *, WindowAnimation> m_animations;
     QHash<EffectWindow *, int> m_claimedRoles;
+    // 跟踪各窗口在未最小化状态下的真实 CSD 阴影缓冲区偏移量
+    QHash<EffectWindow *, QPointF> m_csdOffsets;
 
     int m_openDuration = 300;
     int m_minimizeDuration = 300;

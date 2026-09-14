@@ -39,24 +39,22 @@ PopupWindow {
     readonly property int windowCount: effectiveWindows.length
     readonly property real cardWidth: 220
     readonly property real cardHeight: 160
-    readonly property real rowPadding: 10
+    readonly property real rowPadding: 8
     readonly property real rowSpacing: 8
 
     readonly property real calculatedWidth: rowPadding * 2
-        + windowCount * cardWidth
-        + Math.max(0, windowCount - 1) * rowSpacing
+        + (windowCount > 0
+           ? windowCount * cardWidth + (windowCount - 1) * rowSpacing
+           : 0)
 
     readonly property real maxAllowedWidth: {
         const screenW = anchorItem?.targetScreen?.width ?? Quickshell.screens[0]?.width ?? 1920
         return Math.max(300, screenW * 0.88)
     }
 
-    // A single 220px card needs only its two 10px margins. The previous 300px
-    // floor existed for the removed new-window card and left a visible blank
-    // strip to the right of a lone preview.
-    implicitWidth: Math.min(maxAllowedWidth,
-                            Math.max(cardWidth + rowPadding * 2, calculatedWidth))
-    implicitHeight: 184
+    implicitWidth: Math.min(maxAllowedWidth, Math.max(cardWidth + rowPadding * 2, calculatedWidth))
+    // The secondary action has its own toolbar row above the thumbnails.
+    implicitHeight: 204
     color: "transparent"
     grabFocus: false
 
@@ -173,19 +171,98 @@ PopupWindow {
             acceptedButtons: Qt.NoButton
         }
 
-        Flickable {
-            id: cardsFlickable
+        Column {
             anchors.fill: parent
             anchors.margins: preview.rowPadding
-            contentWidth: cardsRow.implicitWidth
-            contentHeight: height
-            boundsBehavior: Flickable.StopAtBounds
-            clip: true
+            spacing: 2
 
-            Row {
-                id: cardsRow
-                spacing: preview.rowSpacing
-                height: parent.height
+            Item {
+                id: previewToolbar
+                width: parent.width
+                height: 26
+
+                Text {
+                    id: previewTitle
+                    anchors.left: parent.left
+                    anchors.right: plusBg.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: preview.title || preview.effectiveWindows[0]?.title || "窗口"
+                    color: ThemeService.foregroundColor
+                    elide: Text.ElideRight
+                    font {
+                        pixelSize: 12
+                        weight: Font.DemiBold
+                    }
+                }
+
+                Rectangle {
+                    id: plusBg
+                    width: 34
+                    height: 26
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    radius: 8
+                    color: plusMouse.containsMouse
+                        ? Qt.rgba(ThemeService.accentColor.r, ThemeService.accentColor.g, ThemeService.accentColor.b, 0.35)
+                        : (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.07))
+                    border.width: 1
+                    border.color: plusMouse.containsMouse
+                        ? Qt.rgba(ThemeService.accentColor.r, ThemeService.accentColor.g, ThemeService.accentColor.b, 0.65)
+                        : (ThemeService.isDark ? Qt.rgba(1, 1, 1, 0.20) : Qt.rgba(0, 0, 0, 0.16))
+
+                    Behavior on color {
+                        ColorAnimation { duration: 100 }
+                    }
+                    Behavior on border.color {
+                        ColorAnimation { duration: 100 }
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "+"
+                        color: ThemeService.foregroundColor
+                        font.pixelSize: 21
+                        font.weight: Font.Medium
+                    }
+
+                    MouseArea {
+                        id: plusMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.LeftButton
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            const targetAppId = preview.appId
+                                || (preview.effectiveWindows.length > 0
+                                    ? (preview.effectiveWindows[0].identity?.desktopId
+                                       || preview.effectiveWindows[0].desktopId
+                                       || preview.effectiveWindows[0].appId
+                                       || preview.effectiveWindows[0].identity?.rawAppId
+                                       || preview.effectiveWindows[0].rawAppId)
+                                    : "")
+                            console.log("[DockPreview] new window clicked targetAppId=" + targetAppId)
+                            if (targetAppId)
+                                DockModelService.launchNewWindow(targetAppId)
+                            DockModelService.setDockPopupVisible(preview, false)
+                        }
+                    }
+                }
+            }
+
+            Flickable {
+                id: cardsFlickable
+                width: parent.width
+                height: preview.cardHeight
+                contentWidth: cardsRow.implicitWidth
+                contentHeight: height
+                boundsBehavior: Flickable.StopAtBounds
+                clip: true
+
+                Row {
+                    id: cardsRow
+                    spacing: preview.rowSpacing
+                    height: parent.height
 
                 Repeater {
                     model: preview.effectiveWindows
@@ -230,17 +307,13 @@ PopupWindow {
                             Item {
                                 id: thumbnailBox
                                 anchors.top: parent.top
-                                anchors.bottom: titleText.top
+                                anchors.bottom: parent.bottom
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.topMargin: 6
                                 anchors.leftMargin: 6
                                 anchors.rightMargin: 6
-                                // Keep a compact, deliberate gap above the
-                                // title instead of reserving a fixed-height
-                                // thumbnail area that makes short previews
-                                // appear detached from their label.
-                                anchors.bottomMargin: 5
+                                anchors.bottomMargin: 6
 
                                 Image {
                                     id: thumbMetrics
@@ -307,25 +380,6 @@ PopupWindow {
                                 }
                             }
 
-                            // Window title bar at bottom of card
-                            Text {
-                                id: titleText
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                anchors.margins: 7
-                                text: cardDelegate.winTitle || "窗口"
-                                color: ThemeService.foregroundColor
-                                style: Text.Outline
-                                styleColor: Qt.rgba(0, 0, 0, 0.45)
-                                font {
-                                    pixelSize: 11
-                                    weight: Font.DemiBold
-                                }
-                                elide: Text.ElideRight
-                                horizontalAlignment: Text.AlignHCenter
-                            }
-
                             // Close button '×'
                             Rectangle {
                                 id: closeBtn
@@ -387,9 +441,12 @@ PopupWindow {
                         }
                     }
                 }
+
             }
         }
     }
+
+        }
 
     BackgroundEffect.blurRegion: preview.visible ? previewBlurHolder : null
 
