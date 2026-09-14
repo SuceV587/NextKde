@@ -88,6 +88,69 @@ struct RefractionSettings
     bool physicallyBased;
 };
 
+struct BionicSettings
+{
+    bool enabled;
+    float lumValue0;
+    float lumValue1;
+    float lumValue2;
+    float lumValue3;
+    float lumAmount;
+    float brightness;
+    float darker;
+    float darkerRange0;
+    float darkerRange1;
+    float innerBottom;
+    float innerColorWhite;
+    float innerColorMix;
+    float colorPow;
+    float alpha;
+    float overallAlpha;
+    float shapeEdgePx;
+    float shapeEdgePow;
+    float shapeThicknessPx;
+    float shapeReflectOffsetPx;
+    float reflLighten;
+    float reflStrength;
+    float dirX;
+    float dirY;
+    float dirZ;
+    float dirIntensity;
+    float dirOppositeIntensity;
+    float dirAngleRange;
+    float dirEdgePow;
+    int blur;
+    float ior;
+    float bgColorSaturation;
+    float bgColorBrightness;
+    float hsvvBoost;
+    float darkerActivated;
+    float dirIntensityActivated;
+    float dirOppositeIntensityActivated;
+    float colorPowActivated;
+    float hsvvBoostActivated;
+    float reflStrengthActivated;
+    float refractActivated;
+};
+
+struct ClassicSettings
+{
+    bool enabled;
+    QString dark0;
+    QString dark1;
+    QString dark2;
+    QString light0;
+    QString light1;
+    QString light2;
+    float strokeSize;
+    float strokeStrength;
+    float strokeDegree;
+    float refractIOR;
+    float reflLighten;
+    float reflStrength;
+    float maskSoft;
+};
+
 class BlurSettings
 {
 public:
@@ -95,6 +158,8 @@ public:
     ForceBlurSettings forceBlur{};
     RoundedCornersSettings roundedCorners{};
     RefractionSettings refraction{};
+    BionicSettings bionic{};
+    ClassicSettings classic{};
 
     void read();
 };
