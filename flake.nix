@@ -214,10 +214,18 @@ EOF
               partOf = [ "graphical-session.target" ];
               serviceConfig = {
                 Type = "simple";
-                ExecStart = "${kos}/libexec/kos-platform daemon";
+                # Prepend the store tools instead of replacing PATH. The user
+                # manager's PATH carries the per-user and home-manager profiles
+                # (`/etc/profiles/per-user/<user>/bin`, `~/.nix-profile/bin`),
+                # which is where NixOS installs applications; replacing PATH
+                # made `application.launch` fail to find any user-installed app
+                # ("无法找到程序").
+                ExecStart = pkgs.writeShellScript "kos-platform-start" ''
+                  export PATH=${lib.makeBinPath [ pkgs.bash pkgs.coreutils ]}:$PATH
+                  exec ${kos}/libexec/kos-platform daemon
+                '';
                 Environment = [
                   "KOS_PLATFORM_KWIN_SCRIPT=${kos}/share/kos/platform/kwin/window-bridge.js"
-                  "PATH=/run/current-system/sw/bin:${pkgs.bash}/bin:${pkgs.coreutils}/bin"
                 ];
                 Restart = "on-failure";
                 RestartSec = 2;
@@ -248,10 +256,15 @@ EOF
               serviceConfig = {
                 Type = "simple";
                 KillMode = "process";
-                ExecStart = "${qs_bin} --no-duplicate -c kos";
+                # Keep the user manager's PATH so Shell-spawned launches resolve
+                # user-installed applications; prepend the shell helpers the
+                # QML process wrappers rely on.
+                ExecStart = pkgs.writeShellScript "kos-shell-start" ''
+                  export PATH=${lib.makeBinPath [ pkgs.bash pkgs.coreutils pkgs.findutils pkgs.gnugrep pkgs.gnused ]}:$PATH
+                  exec ${qs_bin} --no-duplicate -c kos
+                '';
                 Environment = [
                   "QS_DISABLE_FILE_WATCHER=1"
-                  "PATH=/run/current-system/sw/bin:${pkgs.bash}/bin:${pkgs.coreutils}/bin:${pkgs.findutils}/bin:${pkgs.gnugrep}/bin:${pkgs.gnused}/bin"
                 ];
                 Restart = "on-failure";
                 RestartSec = 2;

@@ -518,6 +518,17 @@ assert.match(flake, /hoverHints = lib\.mkOption[\s\S]{0,160}default = true/,
 assert.match(flake,
     /kos-appearance-init = \{[\s\S]{0,500}before = \[ "kos-shell\.service" \]/,
     "a NixOS oneshot seeds readability defaults before the Shell starts");
+// NixOS installs applications in the per-user profile, which lives on the
+// systemd user manager's PATH. Replacing PATH in the units hides every
+// user-installed app from `application.launch`.
+assert.match(flake,
+    /ExecStart = pkgs\.writeShellScript "kos-shell-start"[\s\S]{0,320}:\$PATH/,
+    "the Shell unit prepends helpers to the inherited user profile PATH");
+assert.match(flake,
+    /ExecStart = pkgs\.writeShellScript "kos-platform-start"[\s\S]{0,220}:\$PATH/,
+    "the platform unit keeps the user profile PATH for app launching");
+assert.doesNotMatch(flake, /"PATH=\/run\/current-system\/sw\/bin/,
+    "NixOS KOS units never replace the user profile PATH");
 const kosctl = read("../../tools/kosctl");
 assert.match(kosctl,
     /appearance_ipc\(\)[\s\S]{0,420}ipc call appearance-settings/,
