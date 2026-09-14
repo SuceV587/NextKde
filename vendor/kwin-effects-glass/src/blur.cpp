@@ -415,7 +415,7 @@ void BlurEffect::reconfigure(ReconfigureFlags flags)
     // (material tuning written by the shell) never reached the shader until
     // the whole compositor was restarted. Reparse the very config object
     // BlurConfig is bound to before reading it back.
-    if (auto config = effects->config()) {
+    if (auto config = BlurConfig::self()->config()) {
         config->reparseConfiguration();
     }
     m_settings.read();
