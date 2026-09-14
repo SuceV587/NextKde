@@ -1,0 +1,5 @@
+module qs.desktop.modules.clipboard
+
+singleton ClipboardService 1.0 ClipboardService.qml
+Clipboard 1.0 Clipboard.qml
+ClipboardWindow 1.0 ClipboardWindow.qml
