@@ -214,14 +214,12 @@ EOF
               partOf = [ "graphical-session.target" ];
               serviceConfig = {
                 Type = "simple";
-                # Prepend the store tools instead of replacing PATH. The user
-                # manager's PATH carries the per-user and home-manager profiles
-                # (`/etc/profiles/per-user/<user>/bin`, `~/.nix-profile/bin`),
-                # which is where NixOS installs applications; replacing PATH
-                # made `application.launch` fail to find any user-installed app
-                # ("无法找到程序").
+                # systemd user services do not inherit the user manager's PATH;
+                # they get a minimal store-only PATH. Add the NixOS profile
+                # directories (system profile plus per-user / home-manager
+                # profiles) so `application.launch` can find installed apps.
                 ExecStart = pkgs.writeShellScript "kos-platform-start" ''
-                  export PATH=${lib.makeBinPath [ pkgs.bash pkgs.coreutils ]}:$PATH
+                  export PATH=${lib.makeBinPath [ pkgs.bash pkgs.coreutils ]}:/run/current-system/sw/bin:$HOME/.nix-profile/bin:/etc/profiles/per-user/$USER/bin:/nix/profile/bin:$HOME/.local/state/nix/profile/bin:/nix/var/nix/profiles/default/bin:$PATH
                   exec ${kos}/libexec/kos-platform daemon
                 '';
                 Environment = [
@@ -258,9 +256,11 @@ EOF
                 KillMode = "process";
                 # Keep the user manager's PATH so Shell-spawned launches resolve
                 # user-installed applications; prepend the shell helpers the
-                # QML process wrappers rely on.
+                # QML process wrappers rely on. systemd user services do not
+                # inherit the manager PATH, so the NixOS profile directories
+                # are added explicitly.
                 ExecStart = pkgs.writeShellScript "kos-shell-start" ''
-                  export PATH=${lib.makeBinPath [ pkgs.bash pkgs.coreutils pkgs.findutils pkgs.gnugrep pkgs.gnused ]}:$PATH
+                  export PATH=${lib.makeBinPath [ pkgs.bash pkgs.coreutils pkgs.findutils pkgs.gnugrep pkgs.gnused ]}:/run/current-system/sw/bin:$HOME/.nix-profile/bin:/etc/profiles/per-user/$USER/bin:/nix/profile/bin:$HOME/.local/state/nix/profile/bin:/nix/var/nix/profiles/default/bin:$PATH
                   exec ${qs_bin} --no-duplicate -c kos
                 '';
                 Environment = [

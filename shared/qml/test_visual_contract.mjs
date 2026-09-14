@@ -522,11 +522,11 @@ assert.match(flake,
 // systemd user manager's PATH. Replacing PATH in the units hides every
 // user-installed app from `application.launch`.
 assert.match(flake,
-    /ExecStart = pkgs\.writeShellScript "kos-shell-start"[\s\S]{0,320}:\$PATH/,
-    "the Shell unit prepends helpers to the inherited user profile PATH");
+    /ExecStart = pkgs\.writeShellScript "kos-shell-start"[\s\S]{0,700}\$HOME\/\.nix-profile\/bin[\s\S]{0,200}:\$PATH/,
+    "the Shell unit restores the NixOS user profile PATH for app launching");
 assert.match(flake,
-    /ExecStart = pkgs\.writeShellScript "kos-platform-start"[\s\S]{0,220}:\$PATH/,
-    "the platform unit keeps the user profile PATH for app launching");
+    /ExecStart = pkgs\.writeShellScript "kos-platform-start"[\s\S]{0,700}\/etc\/profiles\/per-user[\s\S]{0,200}:\$PATH/,
+    "the platform unit restores the NixOS user profile PATH for app launching");
 assert.doesNotMatch(flake, /"PATH=\/run\/current-system\/sw\/bin/,
     "NixOS KOS units never replace the user profile PATH");
 const kosctl = read("../../tools/kosctl");
