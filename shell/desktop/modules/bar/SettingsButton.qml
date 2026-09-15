@@ -9,6 +9,7 @@ Item {
     id: root
 
     property bool dockHosted: false
+    property string dockEdge: "bottom"
     property bool verticalDock: false
     property real iconSize: 18
     rotation: verticalDock ? -90 : 0
@@ -39,5 +40,13 @@ Item {
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: DesktopAppLauncher.openSettings()
+    }
+
+    StatusTooltip {
+        anchorItem: root
+        shown: pointer.containsMouse
+        dockHosted: root.dockHosted
+        dockEdge: root.dockEdge
+        primaryText: "设置"
     }
 }

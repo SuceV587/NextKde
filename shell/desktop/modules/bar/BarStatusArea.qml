@@ -101,6 +101,7 @@ Item {
                 anchors.centerIn: parent
                 iconSize: systemTray.iconSize
                 dockHosted: root.dockHosted
+                dockEdge: root.dockEdge
                 verticalDock: root.verticalDock
             }
         }

@@ -94,15 +94,15 @@ EOF
     # Copy shell QML (follow symlinks, ignore source permissions)
     cp -rL --no-preserve=mode "$kos_store/share/kos-desktop/shell/." "$SHELL_CONFIG/"
 
-    # Copy shared controls
-    local controls_src=""
-    if [[ -d "$kos_store/share/shared/qml/controls" ]]; then
-      controls_src="$kos_store/share/shared/qml/controls"
-    elif [[ -d "$kos_store/share/kos-desktop/shared/qml/controls" ]]; then
-      controls_src="$kos_store/share/kos-desktop/shared/qml/controls"
+    # Copy shared QML (controls, foundation, colorize)
+    local shared_src=""
+    if [[ -d "$kos_store/share/shared/qml" ]]; then
+      shared_src="$kos_store/share/shared/qml"
+    elif [[ -d "$kos_store/share/kos-desktop/shared/qml" ]]; then
+      shared_src="$kos_store/share/kos-desktop/shared/qml"
     fi
-    if [[ -n "$controls_src" ]]; then
-      cp -rL --no-preserve=mode "$controls_src" "$SHELL_CONFIG/shared/qml/"
+    if [[ -n "$shared_src" ]]; then
+      cp -rL --no-preserve=mode "$shared_src/." "$SHELL_CONFIG/shared/qml/"
     fi
 
     print_ok "Shell config synced"

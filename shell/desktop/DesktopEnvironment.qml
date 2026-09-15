@@ -149,6 +149,9 @@ Item {
                 barLayoutMode: AppearanceConfigService.barLayoutMode,
                 dockWindowAnimationStyle:
                     AppearanceConfigService.dockWindowAnimationStyle,
+                adaptiveTextColor:
+                    AppearanceConfigService.adaptiveTextColor,
+                hoverHints: AppearanceConfigService.hoverHints,
                 tokenVersion: AppearanceTokens.version,
             })
         }
@@ -210,6 +213,16 @@ Item {
 
         function updateDockWindowAnimationStyle(style: string): string {
             AppearanceConfigService.updateDockWindowAnimationStyle(style)
+            return snapshot()
+        }
+
+        function updateAdaptiveTextColor(enabled: bool): string {
+            AppearanceConfigService.updateAdaptiveTextColor(enabled)
+            return snapshot()
+        }
+
+        function updateHoverHints(enabled: bool): string {
+            AppearanceConfigService.updateHoverHints(enabled)
             return snapshot()
         }
 

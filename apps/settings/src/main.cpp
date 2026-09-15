@@ -129,6 +129,18 @@ public:
             QStringLiteral("updateDockWindowAnimationStyle"), style}));
     }
 
+    Q_INVOKABLE QVariantMap updateAdaptiveTextColor(bool enabled) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateAdaptiveTextColor"),
+            enabled ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
+    Q_INVOKABLE QVariantMap updateHoverHints(bool enabled) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateHoverHints"),
+            enabled ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
     Q_INVOKABLE QVariantMap resetAppearanceStrengths() {
         return appearanceSnapshotFromReply(callAppearance({QStringLiteral("resetStrengths")}));
     }
@@ -345,6 +357,10 @@ private:
                 object.value(QStringLiteral("barLayoutMode")).toString(QStringLiteral("transparent"))},
             {QStringLiteral("dockWindowAnimationStyle"),
                 object.value(QStringLiteral("dockWindowAnimationStyle")).toString()},
+            {QStringLiteral("adaptiveTextColor"),
+                object.value(QStringLiteral("adaptiveTextColor")).toBool(true)},
+            {QStringLiteral("hoverHints"),
+                object.value(QStringLiteral("hoverHints")).toBool(true)},
             {QStringLiteral("tokenVersion"), object.value(QStringLiteral("tokenVersion")).toInt()},
         };
     }

@@ -31,7 +31,15 @@ KOS 提供了专门针对 NixOS 的控制接口，简化了在 NixOS 上的安�
     inputs.nextkde.nixosModules.kos
   ];
 
-  services.kos.enable = true;
+  services.kos = {
+    enable = true;
+
+    # 可选的独立天气应用
+    weather.enable = true;
+
+    # 可选的独立应用（日历、待办、音乐）与按需启动的 PIM 服务
+    apps.enable = true;
+  };
 }
 ```
 
@@ -119,7 +127,17 @@ KOS 在 NixOS 上使用以下组件:
 - **kos-shell**: Quickshell 桌面界面
 - **kos-shell-init**: 配置初始化服务
 
+以下为可选项，需显式开启：
+
+- **kos-weather** (`weather.enable`)：独立天气应用
+- **kos-apps** (`apps.enable`)：日历、待办、音乐三个独立应用，以及由 D-Bus
+  按需启动的 **kos-pim-service**
+
 所有组件都通过 systemd 用户服务管理，支持自动重启和会话集成。
+
+模块还会通过 `kos-kwin-effects` 用户服务把 KWin 的 Glass 特效与 Liquid Glass
+窗口装饰写入 `kwinrc`，并在 KWin 运行时立即加载；首次安装后若窗口玻璃没有生效，
+注销并重新登录一次即可。
 
 ## 卸载
 

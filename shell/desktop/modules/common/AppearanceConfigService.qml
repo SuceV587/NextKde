@@ -46,6 +46,15 @@ QtObject {
     property string barVisibilityMode: "always" // "always" | "smart" | "persistent"
     property string barLayoutMode: "transparent" // "full" | "floating" | "transparent"
     property string dockWindowAnimationStyle: "scale"
+    // Adaptive ink: glass labels choose black or white from the sampled
+    // wallpaper luminance instead of the theme's dark/light flag, so a dark
+    // theme over a bright wallpaper cannot leave white text unreadable. Theme
+    // authors toggle this to compare raw glass against adaptive labels.
+    property bool adaptiveTextColor: true
+    // Hover hints gate the shared StatusTooltip on the bar status items and
+    // the Control Center round controls. Theme authors disable them to inspect
+    // surfaces without overlay chrome.
+    property bool hoverHints: true
     property bool ready: false
 
     function isValidShellStyle(value) {
@@ -180,6 +189,24 @@ QtObject {
         return true
     }
 
+    function updateAdaptiveTextColor(rawValue) {
+        const value = _toBool(rawValue)
+        if (adaptiveTextColor === value)
+            return false
+        adaptiveTextColor = value
+        saveTimer.restart()
+        return true
+    }
+
+    function updateHoverHints(rawValue) {
+        const value = _toBool(rawValue)
+        if (hoverHints === value)
+            return false
+        hoverHints = value
+        saveTimer.restart()
+        return true
+    }
+
     function resetStrengths() {
         const globalBlurChanged = Math.abs(globalBlurStrength - 0.42) > 0.001
         const globalLiquidChanged = Math.abs(globalLiquidStrength - 1.0) > 0.001
@@ -239,7 +266,7 @@ QtObject {
 
     function _save() {
         const payload = JSON.stringify({
-            version: 10,
+            version: 11,
             globalBlurStrength: service.globalBlurStrength,
             globalLiquidStrength: service.globalLiquidStrength,
             blurStrength: service.globalBlurStrength,
@@ -250,6 +277,8 @@ QtObject {
             barVisibilityMode: service.barVisibilityMode,
             barLayoutMode: service.barLayoutMode,
             dockWindowAnimationStyle: service.dockWindowAnimationStyle,
+            adaptiveTextColor: service.adaptiveTextColor,
+            hoverHints: service.hoverHints,
         }, null, 2)
         const process = _makeProcess([
             "sh", "-c",
@@ -330,6 +359,8 @@ QtObject {
                     const barVisibility = String(object.barVisibilityMode ?? "")
                     const barLayout = String(object.barLayoutMode ?? "")
                     const animationStyle = String(object.dockWindowAnimationStyle ?? "")
+                    const hasAdaptiveText = typeof object.adaptiveTextColor === "boolean"
+                    const hasHoverHints = typeof object.hoverHints === "boolean"
 
                     if (Number.isFinite(globalBlur)) {
                         service.globalBlurStrength = globalBlur
@@ -351,14 +382,20 @@ QtObject {
                         service.barLayoutMode = barLayout
                     if (service.isValidDockWindowAnimationStyle(animationStyle))
                         service.dockWindowAnimationStyle = animationStyle
+                    if (hasAdaptiveText)
+                        service.adaptiveTextColor = object.adaptiveTextColor
+                    if (hasHoverHints)
+                        service.hoverHints = object.hoverHints
 
-                    if (Number(object.version) !== 10
+                    if (Number(object.version) !== 11
                             || !service.isValidShellStyle(style)
                             || !service.isValidThemeMode(themeMode)
                             || !hasBarIntegration
                             || !service.isValidBarVisibilityMode(barVisibility)
                             || !service.isValidBarLayoutMode(barLayout)
-                            || !service.isValidDockWindowAnimationStyle(animationStyle))
+                            || !service.isValidDockWindowAnimationStyle(animationStyle)
+                            || !hasAdaptiveText
+                            || !hasHoverHints)
                         service.saveTimer.restart()
                 } catch (error) {
                     console.warn("[AppearanceConfig] parse error: " + error)

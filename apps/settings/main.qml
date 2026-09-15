@@ -1827,6 +1827,8 @@ ApplicationWindow {
             ? settingsBridge : null
         property string shellStyle: "macos"
         property string dockWindowAnimationStyle: "scale"
+        property bool adaptiveTextColor: true
+        property bool hoverHints: true
         property string errorText: ""
         readonly property var styles: [
             {
@@ -1864,6 +1866,8 @@ ApplicationWindow {
             shellStyle = state.shellStyle
             if (isValidDockWindowAnimationStyle(state.dockWindowAnimationStyle))
                 dockWindowAnimationStyle = state.dockWindowAnimationStyle
+            adaptiveTextColor = state.adaptiveTextColor !== false
+            hoverHints = state.hoverHints !== false
             errorText = ""
         }
 
@@ -1893,6 +1897,26 @@ ApplicationWindow {
                 return
             }
             applyState(bridge.updateDockWindowAnimationStyle(style))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function setAdaptiveTextColor(enabled) {
+            if (!bridge) {
+                errorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            applyState(bridge.updateAdaptiveTextColor(enabled))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function setHoverHints(enabled) {
+            if (!bridge) {
+                errorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            applyState(bridge.updateHoverHints(enabled))
             if (bridge.lastError)
                 errorText = bridge.lastError
         }
@@ -2126,6 +2150,110 @@ ApplicationWindow {
             color: theme.secondaryText
             font.pixelSize: 12
             wrapMode: Text.Wrap
+        }
+
+        Text {
+            text: "可读性"
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 4
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: readabilityColumn.implicitHeight
+            radius: 18
+            color: theme.card
+
+            Column {
+                id: readabilityColumn
+                anchors.left: parent.left
+                anchors.right: parent.right
+
+                Item {
+                    width: parent.width
+                    height: 64
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "◐"; tint: "#ffcc00" }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "自适应文字颜色"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "玻璃文字按壁纸明暗自动切换黑白，避免浅色壁纸上的白字不可读"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+                        LiquidControls.LiquidGlassSwitch {
+                            checked: themePage.adaptiveTextColor
+                            accentColor: "#0a84ff"
+                            trackColor: theme.divider
+                            onToggled: function(checked) {
+                                themePage.setAdaptiveTextColor(checked)
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 53
+                    height: 1
+                    color: theme.separator
+                }
+
+                Item {
+                    width: parent.width
+                    height: 64
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "?"; tint: "#64d2ff" }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "悬停功能提示"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "鼠标悬停在状态栏与控制中心按钮上时显示该组件的功能名称"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+                        LiquidControls.LiquidGlassSwitch {
+                            checked: themePage.hoverHints
+                            accentColor: "#0a84ff"
+                            trackColor: theme.divider
+                            onToggled: function(checked) {
+                                themePage.setHoverHints(checked)
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         Text {

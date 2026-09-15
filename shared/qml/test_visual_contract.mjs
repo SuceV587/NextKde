@@ -372,10 +372,24 @@ assert.match(statusTooltip, /color:\s*"#000000"/,
 assert.ok((statusTooltip.match(/color:\s*"#ffffff"/g) || []).length >= 2,
     "built-in status tooltip text is always white");
 for (const statusSource of [networkStatus, read("../../shell/desktop/modules/bar/Battery.qml"),
-                            read("../../shell/desktop/modules/bar/ControlCenterToggle.qml")]) {
+                            read("../../shell/desktop/modules/bar/ControlCenterToggle.qml"),
+                            read("../../shell/desktop/modules/bar/SettingsButton.qml")]) {
     assert.match(statusSource, /StatusTooltip\s*\{/,
         "built-in status items share the edge-aware tooltip component");
 }
+for (const [statusSource, label] of [
+    [networkStatus, "网络"],
+    [read("../../shell/desktop/modules/bar/Battery.qml"), "电池"],
+    [read("../../shell/desktop/modules/bar/ControlCenterToggle.qml"), "控制中心"],
+    [read("../../shell/desktop/modules/bar/SettingsButton.qml"), "设置"]
+]) {
+    assert.match(statusSource,
+        /primaryText:[\s\S]{0,320}"[^"]*[\u4e00-\u9fff]/,
+        `built-in status tooltips expose a Chinese ${label} function name`);
+}
+assert.match(barStatusArea,
+    /SettingsButton\s*\{[\s\S]{0,200}dockEdge:\s*root\.dockEdge/,
+    "the settings button tooltip follows the Dock edge like its siblings");
 assert.match(controlCenterSlider, /LiquidControls\.LiquidSlider\s*\{/,
     "Control Center sliders share one styled LiquidSlider wrapper");
 assert.ok((controlCenterPanel.match(/ControlCenterSlider\s*\{/g) || []).length >= 4,
@@ -400,9 +414,127 @@ for (const marker of ["Card 4: Screenshot", "Card 5: Dark Mode", "Card 6: Power"
     assert.match(section, /width:\s*24[\s\S]{0,80}height:\s*24/,
         `${marker} uses a 24x24 icon container`);
 }
+for (const [pointer, label] of [
+    ["screenshotPointer", "截图"],
+    ["themePointer", "模式"],
+    ["powerPointer", "电源"],
+    ["dndPointer", "勿扰"],
+    ["nightLightPointer", "夜间"]
+]) {
+    const start = controlCenterPanel.indexOf(`anchorItem: ${pointer}`);
+    assert.notEqual(start, -1, `${pointer} exposes a hover function-name hint`);
+    const hint = controlCenterPanel.slice(start, start + 400);
+    assert.match(hint,
+        new RegExp(`shown:[\\s\\S]{0,80}!panel\\.hasActiveSubmenu`),
+        `${pointer} hint hides while a submenu is open`);
+    assert.match(hint,
+        new RegExp(`primaryText:[\\s\\S]{0,120}"[^"]*${label}`),
+        `${pointer} hint names its function in Chinese`);
+}
 const powerGlyph = read("../../shell/desktop/assets/logout.svg");
 assert.match(powerGlyph, /fill="none"[\s\S]*stroke-width="70"/,
     "the power glyph uses the same light outline weight as adjacent controls");
 assert.doesNotMatch(powerGlyph, /<path\s+fill=/,
     "the power glyph does not regress to an oversized solid silhouette");
+
+// Adaptive readability: one shell-wide policy flips glass ink to follow the
+// wallpaper so a dark theme over a bright wallpaper cannot leave white labels
+// unreadable. The mechanism is a persisted setting exposed to the standalone
+// Settings app, seeded by the NixOS module, and toggled from kosctl.
+const appearanceConfig = read("../../shell/desktop/modules/common/AppearanceConfigService.qml");
+assert.match(appearanceConfig, /property bool adaptiveTextColor:\s*true/,
+    "adaptive glass text colour is a persisted appearance default");
+assert.match(appearanceConfig, /property bool hoverHints:\s*true/,
+    "hover function hints are a persisted appearance default");
+assert.match(appearanceConfig,
+    /function updateAdaptiveTextColor[\s\S]{0,200}saveTimer\.restart\(\)/,
+    "adaptive text colour updates are persisted");
+assert.match(appearanceConfig,
+    /function updateHoverHints[\s\S]{0,160}saveTimer\.restart\(\)/,
+    "hover hint updates are persisted");
+assert.match(appearanceConfig, /version:\s*11/,
+    "the appearance config version tracked the two readability settings");
+assert.match(appearanceConfig,
+    /adaptiveTextColor:\s*service\.adaptiveTextColor[\s\S]{0,80}hoverHints:\s*service\.hoverHints/,
+    "the persisted payload carries both readability settings");
+assert.match(shellThemeSource, /import "\.\.\/\.\.\/\.\.\/Kos\/Ui"/,
+    "the shell palette samples the wallpaper for adaptive ink");
+assert.match(shellThemeSource,
+    /adaptiveInkEnabled:[\s\S]{0,90}AppearanceConfigService\.adaptiveTextColor/,
+    "adaptive ink honours the persisted setting");
+assert.match(shellThemeSource,
+    /darkInkThreshold[\s\S]{0,220}lightInkThreshold/,
+    "adaptive ink uses hysteresis thresholds to avoid black/white flicker");
+assert.match(shellThemeSource,
+    /foregroundColor:[\s\S]{0,120}adaptiveGlassFg/,
+    "glass chrome consumes the adaptive foreground hierarchy");
+assert.match(statusTooltip,
+    /visible:[\s\S]{0,90}AppearanceConfigService\.hoverHints/,
+    "hover hints are globally gated by the appearance setting");
+const desktopEnvironment = read("../../shell/desktop/DesktopEnvironment.qml");
+assert.match(desktopEnvironment,
+    /adaptiveTextColor:[\s\S]{0,60}AppearanceConfigService\.adaptiveTextColor/,
+    "the Settings snapshot reports adaptive text colour");
+assert.match(desktopEnvironment,
+    /function updateAdaptiveTextColor\(enabled: bool\)[\s\S]{0,170}AppearanceConfigService\.updateAdaptiveTextColor/,
+    "the Settings endpoint writes adaptive text colour");
+assert.match(desktopEnvironment,
+    /function updateHoverHints\(enabled: bool\)[\s\S]{0,160}AppearanceConfigService\.updateHoverHints/,
+    "the Settings endpoint writes hover hints");
+const settingsMain = read("../../apps/settings/main.qml");
+assert.match(settingsMain, /bridge\.updateAdaptiveTextColor\(/,
+    "the Settings app toggles adaptive text colour");
+assert.match(settingsMain, /bridge\.updateHoverHints\(/,
+    "the Settings app toggles hover hints");
+assert.doesNotMatch(settingsMain,
+    /accentColor: "#ffcc00"[\s\S]{0,200}setAdaptiveTextColor/,
+    "the adaptive switch reuses the standard settings control colour");
+// Control Center iconography must follow the same adaptive ink as its labels;
+// a hardcoded white glyph disappears over a bright wallpaper.
+assert.match(controlCenterPanel,
+    /colorizationColor: ThemeService\.isDark \? "#000000" : ThemeService\.foregroundColor/,
+    "the theme glyph adapts outside its inverted dark card");
+assert.match(controlCenterPanel,
+    /colorizationColor: ControlCenterService\.nightLightActive[\s\S]{0,80}ThemeService\.foregroundColor/,
+    "the night-light glyph adapts while inactive");
+assert.match(controlCenterPanel,
+    /glyphColor: NetworkService\.wifiEnabled[\s\S]{0,80}ThemeService\.foregroundColor/,
+    "the Wi-Fi glyph adapts while the radio is off");
+assert.match(controlCenterPanel,
+    /glyphColor: active[\s\S]{0,80}ThemeService\.foregroundColor/,
+    "the Bluetooth glyph adapts while the radio is off");
+const settingsMainCpp = read("../../apps/settings/src/main.cpp");
+assert.match(settingsMainCpp,
+    /Q_INVOKABLE QVariantMap updateAdaptiveTextColor\(bool enabled\)/,
+    "the Settings bridge forwards adaptive text colour");
+assert.match(settingsMainCpp,
+    /Q_INVOKABLE QVariantMap updateHoverHints\(bool enabled\)/,
+    "the Settings bridge forwards hover hints");
+const flake = read("../../flake.nix");
+assert.match(flake, /adaptiveTextColor = lib\.mkOption[\s\S]{0,160}default = true/,
+    "the NixOS module exposes the adaptive text default");
+assert.match(flake, /hoverHints = lib\.mkOption[\s\S]{0,160}default = true/,
+    "the NixOS module exposes the hover hint default");
+assert.match(flake,
+    /kos-appearance-init = \{[\s\S]{0,500}before = \[ "kos-shell\.service" \]/,
+    "a NixOS oneshot seeds readability defaults before the Shell starts");
+// NixOS installs applications in the per-user profile, which lives on the
+// systemd user manager's PATH. Replacing PATH in the units hides every
+// user-installed app from `application.launch`.
+assert.match(flake,
+    /ExecStart = pkgs\.writeShellScript "kos-shell-start"[\s\S]{0,700}\$HOME\/\.nix-profile\/bin[\s\S]{0,200}:\$PATH/,
+    "the Shell unit restores the NixOS user profile PATH for app launching");
+assert.match(flake,
+    /ExecStart = pkgs\.writeShellScript "kos-platform-start"[\s\S]{0,700}\/etc\/profiles\/per-user[\s\S]{0,200}:\$PATH/,
+    "the platform unit restores the NixOS user profile PATH for app launching");
+assert.doesNotMatch(flake, /"PATH=\/run\/current-system\/sw\/bin/,
+    "NixOS KOS units never replace the user profile PATH");
+const kosctl = read("../../tools/kosctl");
+assert.match(kosctl,
+    /appearance_ipc\(\)[\s\S]{0,420}ipc call appearance-settings/,
+    "kosctl drives the Shell appearance endpoint");
+assert.match(kosctl, /updateAdaptiveTextColor/,
+    "kosctl can set the adaptive text colour");
+assert.match(kosctl, /updateHoverHints/,
+    "kosctl can set hover hints");
 console.log("KOS UI visual contract: all checks passed");

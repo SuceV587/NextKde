@@ -210,6 +210,9 @@ sudo nixos-rebuild switch --flake .#hosts
         # 如需禁用直接改为 `enable = false;` 即可
         weather.enable = true;
         # kos 内置的天气服务
+
+        apps.enable = true;
+        # 独立应用：日历、待办、音乐（含按需启动的 PIM 服务）
     };
 
 ```

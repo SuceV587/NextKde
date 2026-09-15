@@ -5,6 +5,7 @@
   bash,
   makeWrapper,
   coreutils,
+  findutils,
   systemd,
   kdePackages,
 }:
@@ -29,6 +30,7 @@ stdenv.mkDerivation {
     wrapProgram $out/bin/kosctl \
       --prefix PATH : ${lib.makeBinPath [
         coreutils
+        findutils
         systemd
         kdePackages.kconfig
       ]}

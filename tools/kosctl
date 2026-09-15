@@ -78,7 +78,7 @@ record_kwin_plugin_api_version() {
 
 usage() {
     cat <<'EOF'
-Usage: ./tools/kosctl <doctor|build|install|start|sync|dev|run|uninstall|glass-settings|nix [build|install|start|shell]|nix-status|shortcuts install|shortcuts uninstall>
+Usage: ./tools/kosctl <doctor|build|install|start|sync|dev|run|uninstall|glass-settings|appearance <get|set>|nix [build|install|start|shell]|nix-status|shortcuts install|shortcuts uninstall>
 
 NixOS remote install:
   git clone <repo> && cd Nextkde
@@ -967,6 +967,64 @@ shortcuts() {
         "$prefix/libexec/kos-platform" shortcuts "$1"
 }
 
+# Read or update the shell-wide appearance settings through the running Shell's
+# IPC endpoint. The Shell owns and persists the config; writing the JSON here
+# would race its own autosave, so the running instance is the single writer.
+appearance_ipc() {
+    if [[ -z "$qs_bin" ]]; then
+        printf 'quickshell not found; install Quickshell 0.3.x first.\n' >&2
+        return 1
+    fi
+    local installed_config="$config_dir/quickshell/kos"
+    if [[ -d "$installed_config" ]]; then
+        "$qs_bin" -c kos ipc call appearance-settings "$@"
+    else
+        "$qs_bin" --path "$project_dir/shell" ipc call appearance-settings "$@"
+    fi
+}
+
+appearance() {
+    local action="${1:-}"
+    local key="${2:-}"
+    local value="${3:-}"
+    case "$action" in
+        get|snapshot)
+            appearance_ipc snapshot
+            ;;
+        set)
+            case "$key" in
+                adaptiveTextColor)
+                    case "$value" in
+                        true|false) ;;
+                        *) printf 'adaptiveTextColor expects true or false\n' >&2; return 2 ;;
+                    esac
+                    appearance_ipc updateAdaptiveTextColor "$value"
+                    ;;
+                hoverHints)
+                    case "$value" in
+                        true|false) ;;
+                        *) printf 'hoverHints expects true or false\n' >&2; return 2 ;;
+                    esac
+                    appearance_ipc updateHoverHints "$value"
+                    ;;
+                "")
+                    printf 'Usage: ./tools/kosctl appearance set <adaptiveTextColor|hoverHints> <true|false>\n' >&2
+                    return 2
+                    ;;
+                *)
+                    printf 'Unknown appearance key: %s\n' "$key" >&2
+                    printf 'Supported keys: adaptiveTextColor, hoverHints\n' >&2
+                    return 2
+                    ;;
+            esac
+            ;;
+        *)
+            printf 'Usage: ./tools/kosctl appearance <get|set> [key value]\n' >&2
+            return 2
+            ;;
+    esac
+}
+
 nix_deploy_artifacts() {
     local result_dir="$project_dir/result"
     if [[ ! -L "$result_dir" ]] || [[ ! -d "$result_dir" ]]; then
@@ -1072,5 +1130,7 @@ case "${1:-}" in
     shortcuts)
         [[ "${2:-}" == install || "${2:-}" == uninstall ]] || { usage >&2; exit 2; }
         shortcuts "$2" ;;
+    appearance)
+        appearance "${2:-}" "${3:-}" "${4:-}" ;;
     *) usage >&2; exit 2 ;;
 esac

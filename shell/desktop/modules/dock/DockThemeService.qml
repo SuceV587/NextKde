@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import qs.desktop.modules.common
+import "../../../Kos/Ui"
 
 // ────────────────────────────────────────────────────────────────
 // DockThemeService — Dark / light colour palette.
@@ -14,6 +15,51 @@ QtObject {
     // AppearanceTokens owns the global system/light/dark resolution so Dock
     // and every Material surface always select the same palette branch.
     property bool isDark: AppearanceTokens.isDarkTheme
+
+    // ────────────────────────────────────────────────────────────────
+    // Adaptive glass ink
+    // ────────────────────────────────────────────────────────────────
+    // The glass branch kept white ink in both themes because the compositor
+    // material is usually dark. A transparent control over a bright wallpaper
+    // can still composite near-white, leaving white labels unreadable. Select
+    // the ink polarity from the sampled wallpaper luminance instead — the same
+    // signal LiquidGlassSurface uses for its ambient pigment. Hysteresis keeps
+    // the 2.6s palette animation from flickering labels between black/white.
+    readonly property real wallpaperLuminance:
+        WallpaperColorSource.primary.r * 0.2126
+        + WallpaperColorSource.primary.g * 0.7152
+        + WallpaperColorSource.primary.b * 0.0722
+    readonly property real darkInkThreshold: 0.62
+    readonly property real lightInkThreshold: 0.46
+    readonly property bool adaptiveInkEnabled:
+        AppearanceConfigService.adaptiveTextColor
+    property bool _useDarkInk: false
+
+    function _refreshInk() {
+        if (!adaptiveInkEnabled) {
+            _useDarkInk = false
+            return
+        }
+        if (_useDarkInk && wallpaperLuminance < lightInkThreshold)
+            _useDarkInk = false
+        else if (!_useDarkInk && wallpaperLuminance > darkInkThreshold)
+            _useDarkInk = true
+    }
+    onWallpaperLuminanceChanged: _refreshInk()
+    onAdaptiveInkEnabledChanged: _refreshInk()
+    Component.onCompleted: _refreshInk()
+
+    // True only where the adaptive policy actually flips the historical white
+    // glass ink; Material surfaces keep their own onSurface roles.
+    readonly property bool glassUsesDarkInk: !AppearanceTokens.isMaterial
+        && adaptiveInkEnabled && _useDarkInk
+    readonly property color adaptiveGlassFg: glassUsesDarkInk
+        ? Qt.rgba(0.045, 0.055, 0.075, 1.0) : darkFg
+    readonly property color adaptiveGlassSecondaryFg: glassUsesDarkInk
+        ? Qt.rgba(0.045, 0.055, 0.075, 0.80) : darkSecondaryFg
+    readonly property color adaptiveGlassTertiaryFg: glassUsesDarkInk
+        ? Qt.rgba(0.045, 0.055, 0.075, 0.66) : darkTertiaryFg
+
 
     // ═══════════════════════════════════════════════════
     // Dark palette
@@ -51,17 +97,17 @@ QtObject {
     // ═══════════════════════════════════════════════════
     readonly property color backgroundColor: AppearanceTokens.isMaterial
         ? AppearanceTokens.colors.layer0 : (isDark ? darkBg : lightBg)
-    // Liquid-glass chrome keeps one white-ink hierarchy in both system
-    // themes. The compositor material, rather than a black light-theme icon,
-    // establishes contrast against the live backdrop.
+    // Liquid-glass chrome follows the adaptive ink policy above: one hierarchy
+    // that flips polarity with the wallpaper instead of pinning white. Material
+    // keeps its semantic onSurface roles.
     readonly property color foregroundColor: AppearanceTokens.isMaterial
-        ? AppearanceTokens.colors.surfaceForeground : darkFg
+        ? AppearanceTokens.colors.surfaceForeground : adaptiveGlassFg
     readonly property color secondaryForegroundColor: AppearanceTokens.isMaterial
-        ? AppearanceTokens.colors.surfaceVariantForeground : darkSecondaryFg
+        ? AppearanceTokens.colors.surfaceVariantForeground : adaptiveGlassSecondaryFg
     readonly property color tertiaryForegroundColor: AppearanceTokens.isMaterial
         ? Qt.rgba(AppearanceTokens.colors.surfaceVariantForeground.r,
             AppearanceTokens.colors.surfaceVariantForeground.g,
-            AppearanceTokens.colors.surfaceVariantForeground.b, 0.70) : darkTertiaryFg
+            AppearanceTokens.colors.surfaceVariantForeground.b, 0.70) : adaptiveGlassTertiaryFg
     readonly property color accentColor: AppearanceTokens.isMaterial
         ? AppearanceTokens.colors.primary : (isDark ? darkAccent : lightAccent)
     readonly property color dividerColor: AppearanceTokens.isMaterial

@@ -16,7 +16,8 @@ PopupWindow {
     property string secondaryText: ""
     property int minimumWidth: 0
 
-    visible: root.shown && ScreenLifecycle.outputAvailable && root.anchorItem !== null
+    visible: root.shown && AppearanceConfigService.hoverHints
+        && ScreenLifecycle.outputAvailable && root.anchorItem !== null
     implicitWidth: Math.max(root.minimumWidth, tooltipColumn.implicitWidth + 18)
     implicitHeight: tooltipColumn.implicitHeight + 12
     color: "transparent"

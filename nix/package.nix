@@ -17,6 +17,7 @@ let
   kosctl = pkgs.callPackage ./kosctl.nix { inherit src; };
   kwin-decoration-liquid-glass = pkgs.callPackage ./kwin-decoration-liquid-glass.nix { inherit src; };
   kos-weather = if buildWeather then pkgs.callPackage ./kos-weather.nix { inherit src; } else null;
+  kos-apps = pkgs.callPackage ./kos-apps.nix { inherit src; };
 
   qs_bin = if quickshell != null then "${quickshell}/bin/quickshell" else "/run/current-system/sw/bin/quickshell";
 
@@ -67,9 +68,9 @@ stdenv.mkDerivation {
     ln -s ${kos-settings}/bin/kos-settings $out/bin/kos-settings
 
     # --- Weather app (optional) ---
-    if [ -n "${if buildWeather then "1" else ""}" ]; then
+    ${lib.optionalString buildWeather ''
       ln -s ${kos-weather}/bin/kos-weather $out/bin/kos-weather
-    fi
+    ''}
 
     # --- Shared QML / Shell ---
     mkdir -p $out/share/kos-desktop
@@ -87,9 +88,9 @@ stdenv.mkDerivation {
     ln -s ${kos-platform}/share/kos/platform/kwin/window-bridge.js \
       $out/share/kos/platform/kwin/window-bridge.js
 
-    # --- Shared QML controls ---
+    # --- Shared QML (controls, foundation, colorize for the material pipeline) ---
     mkdir -p $out/share/shared/qml
-    cp -r shared/qml/controls $out/share/shared/qml/controls
+    cp -r shared/qml/. $out/share/shared/qml/
 
     # --- Desktop entries ---
     mkdir -p $out/share/applications
@@ -118,6 +119,7 @@ stdenv.mkDerivation {
             kwin-decoration-liquid-glass;
     inherit patched-platform-service patched-shell-service;
     weather = if buildWeather then kos-weather else null;
+    apps = kos-apps;
   };
 
   meta = with lib; {
