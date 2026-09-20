@@ -88,7 +88,7 @@ QtObject {
     property Timer refreshTimer: Timer {
         interval: 10000
         repeat: true
-        running: true
+        running: DataClient.connected
         triggeredOnStart: true
         onTriggered: service.reload()
     }
