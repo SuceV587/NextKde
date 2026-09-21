@@ -79,8 +79,10 @@ QtObject {
         const process = processFactory.createObject(service, { command: ["sh", "-c",
             "mkdir -p \"$1\" && printf %s \"$2\" > \"$1/icon-appearance.json.tmp\" && mv \"$1/icon-appearance.json.tmp\" \"$1/icon-appearance.json\"",
             "icon-appearance-save", configDir, payload] })
-        process.running = true
+        // Connect before arming the process: a fast-exiting helper could
+        // emit exited before the handler was attached and leak the object.
         process.exited.connect(function(code) { if (code !== 0) console.warn("[IconAppearance] save failed: " + code); process.destroy() })
+        process.running = true
     }
     function load() {
         const process = processFactory.createObject(service, { command: ["sh", "-c",
