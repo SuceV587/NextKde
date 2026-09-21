@@ -56,10 +56,11 @@ Current operation groups are:
   rename. `state.read` returns `{data, exists}` and reports `exists:false`
   with an empty `data` for a missing file)
 - `notify` (freedesktop notification; payload `{summary, body?, icon?,
-  urgency?}` with `urgency` one of `low`/`normal`/`critical`. The daemon
-  calls `org.freedesktop.Notifications.Notify` when the service is
-  registered and otherwise spawns `notify-send` with a fixed argv; fields
-  are length-capped and never reach a shell)
+  appName?, urgency?}` with `urgency` one of `low`/`normal`/`critical` and
+  `appName` (<=128 chars) the notification's grouping/app label, defaulting
+  to `"KOS Shell"`. The daemon calls `org.freedesktop.Notifications.Notify`
+  when the service is registered and otherwise spawns `notify-send` with a
+  fixed argv; fields are length-capped and never reach a shell)
 - `shortcuts.apply`, `shortcuts.uninstall` (kglobalaccel-owned global
   shortcuts; the Shell composes each Exec line, the daemon validates,
   persists, and registers)

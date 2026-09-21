@@ -171,6 +171,7 @@ PanelWindow {
             summary: summary,
             body: body,
             icon: "",
+            appName: "DeskCenter",
             urgency: "normal"
         }, function(response) {
             if (!response?.ok)

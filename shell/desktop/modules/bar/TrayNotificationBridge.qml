@@ -65,6 +65,7 @@ QtObject {
             summary: summary,
             body: body,
             icon: icon,
+            appName: appName,
             urgency: "normal"
         }, function(response) {
             if (!response?.ok)

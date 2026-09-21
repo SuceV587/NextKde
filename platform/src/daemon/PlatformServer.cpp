@@ -3412,6 +3412,14 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
         const QString summary = payload.value(QStringLiteral("summary")).toString();
         const QString body = payload.value(QStringLiteral("body")).toString();
         const QString icon = payload.value(QStringLiteral("icon")).toString();
+        // appName is cosmetic (notification grouping / banner header); an
+        // empty or oversized value silently falls back to the daemon's name
+        // instead of rejecting the whole notification.
+        const QString appName = [] (const QString &raw) {
+            return (!raw.isEmpty() && raw.size() <= 128
+                    && !raw.contains(QChar('\0')))
+                ? raw : QStringLiteral("KOS Shell");
+        }(payload.value(QStringLiteral("appName")).toString());
         const QString urgencyName = payload.value(QStringLiteral("urgency"))
             .toString(QStringLiteral("normal"));
         uchar urgency = 1;
@@ -3441,7 +3449,7 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
                 QStringLiteral("Notify"));
             const QVariantMap hints{
                 {QStringLiteral("urgency"), QVariant::fromValue<uchar>(urgency)}};
-            call.setArguments({QStringLiteral("KOS Shell"), 0U, icon, summary, body,
+            call.setArguments({appName, 0U, icon, summary, body,
                                QStringList{}, hints, 5000});
             // Fire-and-forget: the notification UI owns delivery, and a slow
             // or absent implementation must not hold the socket reply.
@@ -3456,11 +3464,12 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
                     QStringLiteral("没有可用的通知服务"), true);
             return true;
         }
-        const QStringList args{QStringLiteral("-a"), QStringLiteral("KOS Shell"),
-                               QStringLiteral("-i"), icon,
-                               QStringLiteral("-u"), urgencyName,
-                               QStringLiteral("-t"), QStringLiteral("5000"),
-                               summary, body};
+        QStringList args{QStringLiteral("-a"), appName};
+        if (!icon.isEmpty())
+            args << QStringLiteral("-i") << icon;
+        args << QStringLiteral("-u") << urgencyName
+             << QStringLiteral("-t") << QStringLiteral("5000")
+             << summary << body;
         const bool started = QProcess::startDetached(notifySend, args);
         respond(socket, request, started,
                 QJsonObject{{QStringLiteral("delivered"), started}});
