@@ -96,8 +96,12 @@ KGlobalAccel client library (the plasma powerdevil mechanism): every KOS
 shortcut is a QAction under the single `org.kos.Platform` component, so the
 Shortcuts KCM shows ONE "KOS" entry and no service desktop files exist at
 all. `shortcuts.apply` carries `{shortcuts:[{id,description,combo,exec}]}`;
-on activation the daemon runs the Exec line the Shell supplied, so it always
-addresses the live Shell instance (dev `-p` or installed `-c kos`).
+the daemon allow-lists each exec — it must parse (shell quoting rules, no
+metacharacters) into `qs|quickshell [-c name] [-p|--path dir] ipc call
+<target> <action>...` and is spawned as an argv array, never through a
+shell; anything else is rejected and logged. On activation the daemon runs
+the validated command the Shell supplied, so it always addresses the live
+Shell instance (dev `-p` or installed `-c kos`).
 `shortcuts.uninstall` unregisters the actions and removes leftover files
 from superseded layouts.
 
