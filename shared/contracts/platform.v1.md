@@ -50,9 +50,9 @@ Current operation groups are:
 - `state.read`, `state.write` (bounded read/write of UTF-8 state files under
   `$XDG_STATE_HOME/quickshell`; payload `{dir, file[, data]}` where `dir` is a
   relative sub-path -- or an absolute path that must stay under the state root
-  -- and `file` is a bare file name. Paths are canonicalized and must remain
-  under the root (`..` and symlink escapes are rejected); payloads are capped
-  at 1 MiB. `state.write` commits atomically via a sibling temp file +
+  -- and `file` is a bare file name (`dir` <=512 chars, `file` <=255 chars).
+  Paths are canonicalized and must remain under the root (`..` and symlink
+  escapes are rejected); payloads are capped at 1 MiB. `state.write` commits
   rename. `state.read` returns `{data, exists}` and reports `exists:false`
   with an empty `data` for a missing file)
 - `notify` (freedesktop notification; payload `{summary, body?, icon?,

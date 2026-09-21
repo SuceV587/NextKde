@@ -3798,7 +3798,9 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
             args << QStringLiteral("-i") << icon;
         args << QStringLiteral("-u") << urgencyName
              << QStringLiteral("-t") << QStringLiteral("5000")
-             << summary << body;
+             // A summary starting with '-' would otherwise be parsed as a
+             // GOption flag; "--" terminates option parsing.
+             << QStringLiteral("--") << summary << body;
         const bool started = QProcess::startDetached(notifySend, args);
         respond(socket, request, started,
                 QJsonObject{{QStringLiteral("delivered"), started}});
@@ -4630,8 +4632,16 @@ bool PlatformServer::handleStateOperation(QLocalSocket *socket, const QJsonObjec
                     QStringLiteral("无法读取状态文件"), true);
             return true;
         }
+        // Read at most cap+1 so a file grown between stat() and open() can't
+        // exceed the documented bound.
+        const QByteArray content = input.read(kMaxStateFileBytes + 1);
+        if (content.size() > kMaxStateFileBytes) {
+            respond(socket, request, false, {}, QStringLiteral("invalid-state-file"),
+                    QStringLiteral("状态文件超过大小上限"), false);
+            return true;
+        }
         respond(socket, request, true,
-                QJsonObject{{QStringLiteral("data"), QString::fromUtf8(input.readAll())},
+                QJsonObject{{QStringLiteral("data"), QString::fromUtf8(content)},
                             {QStringLiteral("exists"), true}});
         return true;
     }

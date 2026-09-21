@@ -138,6 +138,9 @@ QtObject {
     property FileView _packageProbe: FileView {
         path: service.packageDir + "/LockScreen.qml"
         preload: true
+        // A missing package is the expected state on desktops that never
+        // installed the lockscreen theme; don't warn every write.
+        printErrors: false
         onLoaded: service._publishPending()
         onLoadFailed: function(error) {
             service._pendingBody = ""

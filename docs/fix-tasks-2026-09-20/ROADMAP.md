@@ -20,12 +20,12 @@
 | R7 [x] | 一 | daemon file.copy 挪出事件循环 | `platform/src/daemon/PlatformServer.cpp` | R6(同文件) | C |
 | R8 [x] | 一 | daemon network.refresh 异步化 | `platform/src/daemon/PlatformServer.cpp` | R6,R7 | C |
 | R9 [x] | 一 | daemon socket 读缓冲上限 + 游标 | `platform/src/daemon/PlatformServer.cpp` | R6–R8 | C |
-| R10 | 二 | daemon 提供 `state.read/write`/`settings.launch`/`notify` 等 op | `PlatformServer.cpp`,`platform.v1.md` | R6–R9 | D |
-| R11 | 二 | 收敛 18 处 `sh -c` 配置写 → state op | 8 个 `*ConfigService.qml` | R10 | E |
-| R12 | 二 | 收敛 qdbus6/notify-send/sh-c 启动器 | `ControlCenterService`,`DesktopAppLauncher`,`TrayNotificationBridge`,`DeskCenterWindow` | R10 | E |
-| R13 | 二 | daemon Shortcuts exec 白名单 + argv | `platform/src/daemon/Shortcuts.cpp` | — | F |
-| R14 | 二 | daemon Wi-Fi 密码不走 argv | `PlatformServer.cpp` | R10 | D |
-| R15 | 二 | daemon clipboard.history.list 缓存 | `PlatformServer.cpp` | R10 | D |
+| R10 [x] | 二 | daemon 提供 `state.read/write`/`settings.launch`/`notify` 等 op | `PlatformServer.cpp`,`platform.v1.md` | R6–R9 | D |
+| R11 [x] | 二 | 收敛 18 处 `sh -c` 配置写 → state op | 8 个 `*ConfigService.qml` | R10 | E |
+| R12 [x] | 二 | 收敛 qdbus6/notify-send/sh-c 启动器 | `ControlCenterService`,`DesktopAppLauncher`,`TrayNotificationBridge`,`DeskCenterWindow` | R10 | E |
+| R13 [x] | 二 | daemon Shortcuts exec 白名单 + argv | `platform/src/daemon/Shortcuts.cpp` | — | F |
+| R14 [x] | 二 | daemon Wi-Fi 密码不走 argv | `PlatformServer.cpp` | R10 | D |
+| R15 [x] | 二 | daemon clipboard.history.list 缓存 | `PlatformServer.cpp` | R10 | D |
 | R16 | 三 | PimClient 去双 snapshot + PimStore 写放大 | `shared/pim/*`,`services/pim-service/*` | — | G |
 | R17 | 三 | settings callShell 异步化 + 页面 LazyLoad | `apps/settings/src/main.cpp`,`main.qml` | — | H |
 | R18 | 三 | settings 死代码/死方法清理 | `apps/settings/main.qml` | R17 | H |
