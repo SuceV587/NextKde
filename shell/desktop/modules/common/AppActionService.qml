@@ -66,14 +66,28 @@ QtObject {
         // TTY and terminal apps die immediately. Route them through the
         // platform daemon here; KIO::ApplicationLauncherJob wraps them in the
         // user's configured terminal.
-        if (!PlatformClient.connected)
+        if (!PlatformClient.connected) {
+            if (entry.runInTerminal) {
+                console.warn("[AppAction] terminal app needs the daemon, "
+                             + "no TTY fallback exists app=" + appId)
+                return false
+            }
             return _executeDirect(entry, appId, "platform-unavailable")
+        }
         PlatformClient.request("application.launch", {
             desktopId: appId,
             urls: []
         }, function(response) {
-            if (!response.ok)
+            if (!response.ok) {
+                if (entry.runInTerminal) {
+                    // Spawning a terminal app without a TTY always dies; a
+                    // silent dead process is worse than a logged refusal.
+                    console.warn("[AppAction] terminal app launch failed, "
+                                 + "no TTY fallback app=" + appId)
+                    return
+                }
                 service._executeDirect(entry, appId, "platform-launch")
+            }
         })
         console.log("[AppAction] platform launch app=" + appId)
         return true
