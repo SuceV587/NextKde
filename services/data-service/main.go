@@ -2,9 +2,9 @@
 // GUI dependencies: Quickshell consumes it over the kos-data.sock JSONL API;
 // snapshot.json is only the service's own persisted state, not a QML input.
 package main
-
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -789,7 +789,7 @@ func readRaw(path string) []byte {
 	if err != nil {
 		return nil
 	}
-	return []byte(strings.TrimSpace(string(raw)))
+	return bytes.TrimSpace(raw)
 }
 
 // journalTimestampFirst returns the first entry's epoch timestamp of a boot
