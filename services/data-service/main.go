@@ -1127,6 +1127,16 @@ func serve(s *Service, path string) error {
 	for {
 		c, e := l.Accept()
 		if e != nil {
+			// A temporary failure (typically EMFILE under a connection
+			// burst) must not kill the listener forever: log, back off
+			// briefly, and keep accepting. A permanent error (closed
+			// listener) still ends serve.
+			var netErr net.Error
+			if errors.As(e, &netErr) && netErr.Temporary() {
+				fmt.Fprintln(os.Stderr, "accept:", e)
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
 			return e
 		}
 		go func() {
@@ -1135,6 +1145,10 @@ func serve(s *Service, path string) error {
 			s.subscribeDesktop(conn)
 			defer s.unsubscribeDesktop(conn)
 			scanner := bufio.NewScanner(conn)
+			// Requests are single-line JSON; the default 64KB token limit
+			// would silently truncate a legitimate large payload (e.g. a
+			// weather location list), so allow up to 1MiB per line.
+			scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 			for scanner.Scan() {
 				var request DataRequest
 				if json.Unmarshal(scanner.Bytes(), &request) != nil {
@@ -1150,6 +1164,12 @@ func serve(s *Service, path string) error {
 				// neither interleave bytes nor leave a stale absolute
 				// deadline behind on this shared connection.
 				_ = conn.writeLine(append(raw, '\n'), 2*time.Second)
+			}
+			// The connection ends on EOF (normal) or on a scanner error such
+			// as an over-long line; log the latter so a stuck client is
+			// diagnosable instead of silently disconnecting.
+			if err := scanner.Err(); err != nil {
+				fmt.Fprintln(os.Stderr, "connection read:", err)
 			}
 		}()
 	}
