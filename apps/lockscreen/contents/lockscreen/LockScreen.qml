@@ -321,7 +321,10 @@ Item {
     // inside our own window, so it cannot fight the greeter.
     Timer {
         interval: 1500
-        running: true
+        // viewVisible is the greeter's own "the screen is on and showing us"
+        // flag; while it is false the view is blanked and re-grabbing focus
+        // -- and running a repeating timer -- buys nothing.
+        running: root.viewVisible
         repeat: true
         onTriggered: if (!inputField.activeFocus)
             inputField.forceActiveFocus()
@@ -427,11 +430,13 @@ Item {
     // it, and a slideshow swaps the file underneath us.
     Timer {
         interval: 5000
-        running: true
+        // The walk reads the injected item's scene tree; while the greeter
+        // has the view blanked (viewVisible=false) it cannot change, so the
+        // re-check is paused along with the focus timer above.
+        running: root.viewVisible
         repeat: true
         onTriggered: root.syncWallpaperSource()
     }
-
     // Full-bleed holder for the background. The greeter's wallpaper item is
     // adopted into it at runtime -- `wallpaper` is injected, not declared here,
     // so it has to be moved into the scene rather than anchored in place -- and
