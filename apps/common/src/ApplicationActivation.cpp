@@ -60,6 +60,10 @@ ApplicationActivation::AcquireResult ApplicationActivation::acquireOrForward(
         return AcquireResult::Error;
     }
 
+    // Deliberately a synchronous call: the forwarder has nothing else to do
+    // -- it exits as soon as the primary answers -- and the 25s QtDBus default
+    // timeout bounds the wait. An asyncCall plus a nested event loop would
+    // only add machinery, not behaviour.
     const QString activationToken = QString::fromLocal8Bit(
         qgetenv("XDG_ACTIVATION_TOKEN"));
     const QDBusReply<void> reply = primary.call(

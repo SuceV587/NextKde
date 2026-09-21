@@ -6,6 +6,11 @@ import "../../shared/qml/controls" as LiquidControls
 import "../../shared/qml/colorize/MaterialColorScheme.mjs" as Mcu
 
 ApplicationWindow {
+    // NOTE: this file is intentionally a single monolith for now -- every
+    // page shares `theme`, `materialPalette`, and the window-level state
+    // below, so a split into pages/*.qml needs a state-passing contract
+    // designed first. Tracked as follow-up work (docs/fix-tasks-2026-09-20
+    // R29); do not grow the file further without starting that split.
     id: window
 
     width: 1100
