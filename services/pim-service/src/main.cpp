@@ -4,7 +4,7 @@
 #include <QDBusConnection>
 #include <QDBusError>
 #include <QDebug>
-#include <QTimer>
+#include <QMetaObject>
 
 int main(int argc, char *argv[])
 {
@@ -27,17 +27,19 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // D-Bus-activated services must not outlive the session bus. This can
-    // otherwise leave a detached PIM process behind when a user logs out or a
-    // private test session ends.
-    QTimer connectionWatchdog;
-    connectionWatchdog.setInterval(1000);
-    QObject::connect(&connectionWatchdog, &QTimer::timeout, &application,
-                     [&application, &bus] {
-                         if (!bus.isConnected())
-                             application.quit();
-                     });
-    connectionWatchdog.start();
+    // D-Bus-activated services must not outlive the session bus: a detached
+    // PIM process is left behind when a user logs out or a private test
+    // session ends. org.freedesktop.DBus.Local.Disconnected is synthesised
+    // by QtDBus locally when the bus connection drops -- no polling needed.
+    // isConnected() is checked once up front in case the connection was
+    // already dead before the watch was armed.
+    bus.connect(QStringLiteral("org.freedesktop.DBus.Local"),
+                QStringLiteral("/org/freedesktop/DBus/Local"),
+                QStringLiteral("org.freedesktop.DBus.Local"),
+                QStringLiteral("Disconnected"),
+                &application, SLOT(quit()));
+    if (!bus.isConnected())
+        QMetaObject::invokeMethod(&application, "quit", Qt::QueuedConnection);
 
     return application.exec();
 }
