@@ -3356,6 +3356,36 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
         // Fixed argv on purpose: the op exists so the Shell never has to spawn
         // a shell just to resolve kos-settings on PATH, and no caller-supplied
         // argument can turn it into arbitrary command execution.
+        //
+        // The only tunable is the environment: Settings talks back to its
+        // Shell over Quickshell IPC, so a development Shell passes its
+        // Quickshell.shellDir through `shellDir` and the child reconnects to
+        // that same session instead of the installed `kos` configuration.
+        // The value must canonicalise to an existing directory; it is data in
+        // KOS_SHELL_DIR, never part of the argv.
+        QString shellDir;
+        const QJsonValue shellDirValue = payload.value(QStringLiteral("shellDir"));
+        if (!shellDirValue.isUndefined()) {
+            const QString raw = shellDirValue.toString();
+            if (raw.isEmpty() || raw.size() > 1024 || raw.contains(QChar('\0'))) {
+                respond(socket, request, false, {}, QStringLiteral("invalid-shell-dir"),
+                        QStringLiteral("Shell 目录无效"), false);
+                return true;
+            }
+            const QFileInfo info(raw);
+            if (!info.isAbsolute()) {
+                respond(socket, request, false, {}, QStringLiteral("invalid-shell-dir"),
+                        QStringLiteral("Shell 目录无效"), false);
+                return true;
+            }
+            const QString canonical = info.canonicalFilePath();
+            if (canonical.isEmpty() || !QFileInfo(canonical).isDir()) {
+                respond(socket, request, false, {}, QStringLiteral("invalid-shell-dir"),
+                        QStringLiteral("Shell 目录无效"), false);
+                return true;
+            }
+            shellDir = canonical;
+        }
         const QString executable = QStandardPaths::findExecutable(
             QStringLiteral("kos-settings"));
         if (executable.isEmpty()) {
@@ -3363,7 +3393,14 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
                     QStringLiteral("KOS 设置应用不可用"), true);
             return true;
         }
-        const bool started = QProcess::startDetached(executable, {});
+        QProcess process;
+        process.setProgram(executable);
+        if (!shellDir.isEmpty()) {
+            QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+            environment.insert(QStringLiteral("KOS_SHELL_DIR"), shellDir);
+            process.setProcessEnvironment(environment);
+        }
+        const bool started = process.startDetached();
         respond(socket, request, started, {{QStringLiteral("started"), started}});
         return true;
     }
@@ -3375,6 +3412,14 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
         const QString summary = payload.value(QStringLiteral("summary")).toString();
         const QString body = payload.value(QStringLiteral("body")).toString();
         const QString icon = payload.value(QStringLiteral("icon")).toString();
+        // appName is cosmetic (notification grouping / banner header); an
+        // empty or oversized value silently falls back to the daemon's name
+        // instead of rejecting the whole notification.
+        const QString appName = [] (const QString &raw) {
+            return (!raw.isEmpty() && raw.size() <= 128
+                    && !raw.contains(QChar('\0')))
+                ? raw : QStringLiteral("KOS Shell");
+        }(payload.value(QStringLiteral("appName")).toString());
         const QString urgencyName = payload.value(QStringLiteral("urgency"))
             .toString(QStringLiteral("normal"));
         uchar urgency = 1;
@@ -3404,7 +3449,7 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
                 QStringLiteral("Notify"));
             const QVariantMap hints{
                 {QStringLiteral("urgency"), QVariant::fromValue<uchar>(urgency)}};
-            call.setArguments({QStringLiteral("KOS Shell"), 0U, icon, summary, body,
+            call.setArguments({appName, 0U, icon, summary, body,
                                QStringList{}, hints, 5000});
             // Fire-and-forget: the notification UI owns delivery, and a slow
             // or absent implementation must not hold the socket reply.
@@ -3419,11 +3464,12 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
                     QStringLiteral("没有可用的通知服务"), true);
             return true;
         }
-        const QStringList args{QStringLiteral("-a"), QStringLiteral("KOS Shell"),
-                               QStringLiteral("-i"), icon,
-                               QStringLiteral("-u"), urgencyName,
-                               QStringLiteral("-t"), QStringLiteral("5000"),
-                               summary, body};
+        QStringList args{QStringLiteral("-a"), appName};
+        if (!icon.isEmpty())
+            args << QStringLiteral("-i") << icon;
+        args << QStringLiteral("-u") << urgencyName
+             << QStringLiteral("-t") << QStringLiteral("5000")
+             << summary << body;
         const bool started = QProcess::startDetached(notifySend, args);
         respond(socket, request, started,
                 QJsonObject{{QStringLiteral("delivered"), started}});
@@ -3514,23 +3560,31 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
             return true;
         }
 
+        // The config write already committed, so any failure past this point
+        // is partial application, not a failed toggle: the requested state is
+        // persisted and KWin will converge on it at the next reconfigure.
+        // Report ok with applied:false (and a warning string) so the Shell
+        // aligns its UI to the persisted state instead of rolling back to a
+        // value that no longer matches kwinrc.
+        bool applied = true;
+        QString warning;
         if (requestedEnabled && m_nightLightInhibitionCookie.has_value()) {
             const QDBusMessage reply = nightLight.call(
                 QStringLiteral("uninhibit"), *m_nightLightInhibitionCookie);
             if (reply.type() == QDBusMessage::ErrorMessage) {
-                respond(socket, request, false, {}, QStringLiteral("nightlight-uninhibit-failed"),
-                        QStringLiteral("夜灯已启用，但未能立即恢复"), true);
-                return true;
+                applied = false;
+                warning = QStringLiteral("夜灯已启用，但未能立即恢复");
+            } else {
+                m_nightLightInhibitionCookie.reset();
             }
-            m_nightLightInhibitionCookie.reset();
         } else if (!requestedEnabled && !m_nightLightInhibitionCookie.has_value()) {
             const QDBusMessage reply = nightLight.call(QStringLiteral("inhibit"));
             if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().isEmpty()) {
-                respond(socket, request, false, {}, QStringLiteral("nightlight-inhibit-failed"),
-                        QStringLiteral("夜灯已关闭，但未能立即暂停当前效果"), true);
-                return true;
+                applied = false;
+                warning = QStringLiteral("夜灯已关闭，但未能立即暂停当前效果");
+            } else {
+                m_nightLightInhibitionCookie = reply.arguments().constFirst().toUInt();
             }
-            m_nightLightInhibitionCookie = reply.arguments().constFirst().toUInt();
         }
 
         QDBusInterface kwin(QStringLiteral("org.kde.KWin"), QStringLiteral("/KWin"),
@@ -3538,9 +3592,8 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
         kwin.setTimeout(kDbusCallTimeoutMs);
         const QDBusMessage reconfigureReply = kwin.call(QStringLiteral("reconfigure"));
         if (reconfigureReply.type() == QDBusMessage::ErrorMessage) {
-            respond(socket, request, false, {}, QStringLiteral("nightlight-reconfigure-failed"),
-                    QStringLiteral("夜灯状态已保存，但 KWin 未能立即应用"), true);
-            return true;
+            applied = false;
+            warning = QStringLiteral("夜灯状态已保存，但 KWin 未能立即应用");
         }
 
         const bool available = nightLight.property("available").toBool();
@@ -3552,8 +3605,11 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
             {QStringLiteral("available"), available},
             {QStringLiteral("enabled"), requestedEnabled},
             {QStringLiteral("running"), requestedEnabled && running && !inhibited},
-            {QStringLiteral("inhibited"), inhibited}
+            {QStringLiteral("inhibited"), inhibited},
+            {QStringLiteral("applied"), applied}
         };
+        if (!warning.isEmpty())
+            result.insert(QStringLiteral("warning"), warning);
         respond(socket, request, true, result);
         return true;
     }
