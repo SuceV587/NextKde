@@ -105,10 +105,14 @@ PanelWindow {
 
     // Only a permanently visible Dock reserves workspace. Hide modes keep the
     // zone at 0 so windows do not reflow whenever the Dock reveals or hides.
+    // A permanently visible Dock reserves exactly the band its glass occupies:
+    // the height plus the inset that keeps the glass off the physical edge.
+    // No extra workspace gap — a maximised window must sit flush against the
+    // top edge of the dock instead of floating above a dead strip.
     exclusiveZone: ConfigService.visibilityMode === "always"
         ? (root.vertical
-            ? dockContainer.width + root.edgeMargin + root.workspaceGap
-            : dockContainer.height + root.edgeMargin + root.workspaceGap)
+            ? dockContainer.width + root.edgeMargin
+            : dockContainer.height + root.edgeMargin)
         : 0
 
     // The custom KWin glass effect consumes this region for both backdrop
@@ -127,15 +131,46 @@ PanelWindow {
         regions: [pill.blurRegion, revealHandle.blurRegion]
     }
 
+    // A stretched dock spans the edge, so its own inset is the only thing
+    // left to place: floating keeps the usual edge gap on the three free
+    // sides, otherwise it reaches the corners. An auto-width dock keeps its
+    // content-driven length and alignment decides where along the edge it
+    // rests: start/end hug that edge, centre keeps the historical midpoint.
+    readonly property bool stretched: ConfigService.widthMode === "stretch"
+    readonly property real stretchInset: root.stretched
+        ? (ConfigService.stretchFloating ? root.edgeMargin : 0)
+        : 0
+    // Side docks start below the standalone top bar; a fused bar reserves
+    // nothing. Mirrors DockContainer.reservedBarHeight so the glass never
+    // slides underneath the bar it is meant to sit beside.
+    readonly property real reservedTop: AppearanceConfigService.barIntegratedWithDock
+        ? 0 : ConfigService.barHeight
+
+    function alignedOffset(available, length) {
+        if (root.stretched)
+            return root.stretchInset
+        if (ConfigService.alignment === "start")
+            return root.edgeMargin
+        if (ConfigService.alignment === "end")
+            return available - root.edgeMargin - length
+        return (available - length) / 2
+    }
+
     // Stable, full-reveal position of the glass inside the surface. Always
     // derived from surface/container size — never the animated transform.
     readonly property real restX: root.vertical
         ? (root.position === "right"
             ? root.width - root.edgeMargin - dockContainer.width
             : root.edgeMargin)
-        : (root.width - dockContainer.width) / 2
+        : root.alignedOffset(root.width, dockContainer.width)
     readonly property real restY: root.vertical
-        ? (root.height - dockContainer.height) / 2
+        ? (root.stretched
+            ? root.reservedTop + root.stretchInset
+            : (ConfigService.alignment === "start"
+                ? root.reservedTop + root.edgeMargin
+                : (ConfigService.alignment === "end"
+                    ? root.height - root.edgeMargin - dockContainer.height
+                    : (root.height - dockContainer.height) / 2)))
         : root.height - root.edgeMargin - dockContainer.height
 
     function publishWorkspaceLayout() {
@@ -146,10 +181,9 @@ PanelWindow {
             y: root.surfaceGlobalY + root.restY,
             width: dockContainer.width,
             height: dockContainer.height
-        // A permanently visible Dock reserves the same visual gap above/beside
-        // its glass. Hide modes deliberately publish no gap: otherwise a new
-        // window would avoid an invisible Dock after it has slid away.
-        }, ConfigService.visibilityMode === "always" ? root.workspaceGap : 0)
+        // Hide modes deliberately publish no gap: otherwise a new window
+        // would avoid an invisible Dock after it has slid away.
+        }, 0)
     }
 
     Timer {

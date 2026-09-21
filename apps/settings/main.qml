@@ -166,6 +166,10 @@ ApplicationWindow {
         {
             subtitle: "玻璃调试",
             groups: []
+        },
+        {
+            subtitle: "桌面组件",
+            groups: []
         }
     ]
 
@@ -249,6 +253,35 @@ ApplicationWindow {
             ? Qt.rgba(1, 1, 1, 0.10) : "#d1d1d6"
         labelFontPixelSize: 10
         labelFontWeight: Font.DemiBold
+    }
+
+    // One indented switch inside the Dock 组件 card. The callback is passed in
+    // so every option keeps the page's single save path.
+    component InfoSwitchRow: Item {
+        id: infoSwitchRow
+        required property string title
+        required property bool checked
+        required property var onToggle
+        width: parent ? parent.width : 0
+        height: 44
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 32
+            anchors.rightMargin: 16
+            spacing: 12
+            Text {
+                Layout.fillWidth: true
+                text: infoSwitchRow.title
+                color: theme.primaryText
+                font.pixelSize: 14
+            }
+            LiquidControls.LiquidGlassSwitch {
+                checked: infoSwitchRow.checked
+                accentColor: theme.role("primary", "#0a84ff")
+                trackColor: theme.divider
+                onToggled: function(value) { infoSwitchRow.onToggle(value) }
+            }
+        }
     }
 
     component SettingRow: Item {
@@ -512,6 +545,59 @@ ApplicationWindow {
         property real dockHeight: 60
         property int dockPositionIndex: 0
         readonly property var dockPositions: ["bottom", "left", "right"]
+        // Where the dock rests along its edge. One enum, two label sets: a
+        // bottom dock reads start/end as left/right, a side dock as top/bottom.
+        property int dockAlignmentIndex: 1
+        readonly property var dockAlignments: ["start", "center", "end"]
+        readonly property var alignmentLabels: dockPositionIndex === 0
+            ? ["靠左", "居中", "靠右"]
+            : ["靠上", "居中", "靠下"]
+        // "auto" keeps the content-driven width; "stretch" pins the dock to
+        // the whole edge. Floating only applies to a stretched dock.
+        property int dockWidthModeIndex: 0
+        readonly property var dockWidthModes: ["auto", "stretch"]
+        property bool stretchFloating: false
+        // Floating is a property of a stretched dock only; an auto-width dock
+        // has nothing to inset, so the row is hidden instead of disabled.
+        readonly property bool stretchFloatingVisible: dockWidthModeIndex === 1
+
+        // ── Information cards (Dock 组件) ──
+        // "carousel" is the historical rotating slot; "expanded" gives every
+        // enabled card its own place in the row.
+        property int infoCardModeIndex: 0
+        readonly property var infoCardModes: ["carousel", "expanded"]
+        property bool infoCardMusic: true
+        property bool infoCardWeather: true
+        property bool infoCardClock: true
+        property bool infoCardMetrics: true
+        property bool infoClockSeconds: true
+        property bool infoClockDate: true
+        property bool infoClockSolar: true
+        property bool infoMetricAverage: true
+        property bool infoMetricPeak: true
+        property bool infoMetricCpu: true
+        property bool infoMetricMemory: true
+        property bool infoMetricStorage: true
+        // Weather location. The search runs in the data service, so the page
+        // asks for it and then polls for the result.
+        property string weatherCity: ""
+        property string weatherQuery: ""
+        property var weatherResults: []
+        property string weatherStatus: "idle"
+        property string weatherError: ""
+        property int weatherPollsLeft: 0
+        property Timer weatherPollTimer: Timer {
+            interval: 500
+            repeat: false
+            onTriggered: dockPage.readWeatherSearch()
+        }
+        // Live typing must not fire a request per keystroke, and the data
+        // service rejects one-character queries outright.
+        property Timer weatherSearchDebounce: Timer {
+            interval: 500
+            repeat: false
+            onTriggered: dockPage.searchWeather(dockPage.weatherQuery)
+        }
         property int iconModeIndex: 0
         readonly property var iconModes: ["color", "grayscale", "tint"]
         property int visibilityModeIndex: 0
@@ -741,6 +827,35 @@ ApplicationWindow {
                 return
             dockHeight = Number(state.baseHeight)
             dockPositionIndex = positionIndexFromString(state.position)
+            dockAlignmentIndex = alignmentIndexFromString(state.alignment)
+            dockWidthModeIndex = widthModeIndexFromString(state.widthMode)
+            stretchFloating = Boolean(state.stretchFloating)
+            infoCardModeIndex = infoCardModeIndexFromString(state.infoCardMode)
+            infoCardMusic = state.infoCardMusic !== undefined
+                ? Boolean(state.infoCardMusic) : infoCardMusic
+            infoCardWeather = state.infoCardWeather !== undefined
+                ? Boolean(state.infoCardWeather) : infoCardWeather
+            infoCardClock = state.infoCardClock !== undefined
+                ? Boolean(state.infoCardClock) : infoCardClock
+            infoCardMetrics = state.infoCardMetrics !== undefined
+                ? Boolean(state.infoCardMetrics) : infoCardMetrics
+            infoClockSeconds = state.infoClockSeconds !== undefined
+                ? Boolean(state.infoClockSeconds) : infoClockSeconds
+            infoClockDate = state.infoClockDate !== undefined
+                ? Boolean(state.infoClockDate) : infoClockDate
+            infoClockSolar = state.infoClockSolar !== undefined
+                ? Boolean(state.infoClockSolar) : infoClockSolar
+            infoMetricAverage = state.infoMetricAverage !== undefined
+                ? Boolean(state.infoMetricAverage) : infoMetricAverage
+            infoMetricPeak = state.infoMetricPeak !== undefined
+                ? Boolean(state.infoMetricPeak) : infoMetricPeak
+            infoMetricCpu = state.infoMetricCpu !== undefined
+                ? Boolean(state.infoMetricCpu) : infoMetricCpu
+            infoMetricMemory = state.infoMetricMemory !== undefined
+                ? Boolean(state.infoMetricMemory) : infoMetricMemory
+            infoMetricStorage = state.infoMetricStorage !== undefined
+                ? Boolean(state.infoMetricStorage) : infoMetricStorage
+            weatherCity = String(state.weatherCity ?? weatherCity)
             iconModeIndex = iconModeIndexFromString(state.iconMode)
             iconOpacity = Number(state.iconOpacity)
             iconTintColor = String(state.iconTintColor || "#a855f7").toLowerCase()
@@ -757,6 +872,124 @@ ApplicationWindow {
                 return
             const position = dockPositions[index]
             applyState(bridge.updateDockPosition(position))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function alignmentIndexFromString(alignment) {
+            const index = dockAlignments.indexOf(alignment)
+            return index >= 0 ? index : 1
+        }
+
+        function widthModeIndexFromString(mode) {
+            const index = dockWidthModes.indexOf(mode)
+            return index >= 0 ? index : 0
+        }
+
+        function saveAlignment(index) {
+            if (!bridge)
+                return
+            const alignment = dockAlignments[index]
+            applyState(bridge.updateDockAlignment(alignment))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function saveWidthMode(index) {
+            if (!bridge)
+                return
+            const mode = dockWidthModes[index]
+            applyState(bridge.updateDockWidthMode(mode))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function saveStretchFloating(floating) {
+            if (!bridge)
+                return
+            applyState(bridge.updateDockStretchFloating(Boolean(floating)))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function infoCardModeIndexFromString(mode) {
+            const index = infoCardModes.indexOf(mode)
+            return index >= 0 ? index : 0
+        }
+
+        function saveInfoCardMode(index) {
+            if (!bridge)
+                return
+            applyState(bridge.updateDockInfoCardMode(infoCardModes[index]))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        // Every boolean card setting goes through the Shell's whitelisted
+        // updateInfoFlag, so the page never has to know the key list twice.
+        function saveInfoFlag(name, value) {
+            if (!bridge)
+                return
+            applyState(bridge.updateDockInfoFlag(name, Boolean(value)))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function readWeatherSearch() {
+            if (!bridge)
+                return
+            const raw = bridge.weatherSearchStatus()
+            if (!raw)
+                return
+            let parsed = null
+            try {
+                parsed = JSON.parse(raw)
+            } catch (_) {
+                return
+            }
+            weatherStatus = String(parsed.status ?? "idle")
+            weatherError = String(parsed.error ?? "")
+            weatherResults = Array.isArray(parsed.locations) ? parsed.locations : []
+            weatherCity = String(parsed.city ?? weatherCity)
+            if (weatherStatus === "searching" && weatherPollsLeft > 0) {
+                weatherPollsLeft--
+                weatherPollTimer.restart()
+            }
+        }
+
+        function searchWeather(query) {
+            if (!bridge)
+                return
+            weatherQuery = String(query ?? "")
+            weatherStatus = weatherQuery.length > 0 ? "searching" : "idle"
+            weatherResults = []
+            weatherError = ""
+            if (weatherQuery.length === 0)
+                return
+            bridge.searchWeatherLocations(weatherQuery)
+            // The data service answers asynchronously; keep polling briefly.
+            weatherPollsLeft = 6
+            weatherPollTimer.restart()
+        }
+
+        function pickWeatherLocation(index) {
+            if (!bridge)
+                return
+            const candidate = weatherResults[index]
+            if (!candidate)
+                return
+            applyState(bridge.setWeatherLocation(
+                String(candidate.id ?? ""),
+                String(candidate.name ?? ""),
+                String(candidate.admin1 ?? ""),
+                String(candidate.country ?? ""),
+                String(candidate.countryCode ?? ""),
+                Number(candidate.latitude ?? 0),
+                Number(candidate.longitude ?? 0),
+                String(candidate.timezone ?? "")))
+            weatherResults = []
+            weatherStatus = "idle"
+            weatherQuery = ""
             if (bridge.lastError)
                 errorText = bridge.lastError
         }
@@ -967,9 +1200,10 @@ ApplicationWindow {
             Layout.fillWidth: true
             color: theme.card
             radius: 18
-            implicitHeight: 111
+            implicitHeight: dockProgramCol.implicitHeight
 
             Column {
+                id: dockProgramCol
                 anchors.fill: parent
 
                 Item {
@@ -1018,6 +1252,44 @@ ApplicationWindow {
                         anchors.leftMargin: 16
                         anchors.rightMargin: 16
                         spacing: 12
+                        SettingIcon { symbol: "↔"; tint: "#5ac8fa" }
+                        Text {
+                            text: "对齐方式"
+                            color: theme.primaryText
+                            font.pixelSize: 14
+                        }
+                        Item { Layout.fillWidth: true }
+                        SettingsNavBar {
+                            model: [
+                                { id: "start",  label: dockPage.alignmentLabels[0] },
+                                { id: "center", label: dockPage.alignmentLabels[1] },
+                                { id: "end",    label: dockPage.alignmentLabels[2] }
+                            ]
+                            itemWidthOverride: 60
+                            currentIndex: dockPage.dockAlignmentIndex
+                            onSelectionChanged: function(index) {
+                                dockPage.saveAlignment(index)
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 53
+                    height: 1
+                    color: theme.separator
+                }
+
+                Item {
+                    width: parent.width
+                    height: 54
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
                         SettingIcon { symbol: "◉"; tint: "#0a84ff" }
                         Text {
                             text: "Dock 显示方式"
@@ -1039,6 +1311,419 @@ ApplicationWindow {
                                 dockPage.saveVisibilityMode(index)
                             }
                         }
+                    }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 53
+                    height: 1
+                    color: theme.separator
+                }
+
+                Item {
+                    width: parent.width
+                    height: 54
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "▭"; tint: "#af52de" }
+                        Column {
+                            Layout.fillWidth: true
+                            spacing: 1
+                            Text {
+                                text: "Dock 宽度"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "自适应随图标数量变化，延伸则占满整条边"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                            }
+                        }
+                        SettingsNavBar {
+                            model: [
+                                { id: "auto",    label: "自适应" },
+                                { id: "stretch", label: "延伸" }
+                            ]
+                            itemWidthOverride: 64
+                            currentIndex: dockPage.dockWidthModeIndex
+                            onSelectionChanged: function(index) {
+                                dockPage.saveWidthMode(index)
+                            }
+                        }
+                    }
+                }
+
+                // Sub-item of 延伸 only: a stretched dock either keeps the
+                // usual floating gap on its three free edges or reaches the
+                // corners. Hidden (not disabled) for an auto-width dock.
+                Item {
+                    width: parent.width
+                    height: dockPage.stretchFloatingVisible ? 54 : 0
+                    visible: dockPage.stretchFloatingVisible
+                    clip: true
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 32
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "◻"; tint: "#30d158" }
+                        Column {
+                            Layout.fillWidth: true
+                            spacing: 1
+                            Text {
+                                text: "悬浮显示"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "开启后三个边缘保留间隙，关闭则直接延伸到屏幕两端"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                            }
+                        }
+                        LiquidControls.LiquidGlassSwitch {
+                            checked: dockPage.stretchFloating
+                            accentColor: theme.role("primary", "#30d158")
+                            trackColor: theme.divider
+                            onToggled: function(checked) {
+                                dockPage.saveStretchFloating(checked)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: "DOCK 组件".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 14
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            color: theme.card
+            radius: 18
+            implicitHeight: infoCardsCol.implicitHeight
+
+            Column {
+                id: infoCardsCol
+                anchors.fill: parent
+
+                Item {
+                    width: parent.width
+                    height: 54
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "◫"; tint: "#af52de" }
+                        Column {
+                            Layout.fillWidth: true
+                            spacing: 1
+                            Text {
+                                text: "卡片显示方式"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: "折叠时轮播播放，分开时各自独立显示"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                            }
+                        }
+                        SettingsNavBar {
+                            model: [
+                                { id: "carousel", label: "折叠轮播" },
+                                { id: "expanded", label: "分开显示" }
+                            ]
+                            itemWidthOverride: 72
+                            currentIndex: dockPage.infoCardModeIndex
+                            onSelectionChanged: function(index) {
+                                dockPage.saveInfoCardMode(index)
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 53
+                    height: 1
+                    color: theme.separator
+                }
+
+                Text {
+                    text: "时间卡片"
+                    color: theme.secondaryText
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    leftPadding: 16
+                    topPadding: 8
+                    bottomPadding: 4
+                }
+
+                InfoSwitchRow {
+                    title: "显示秒数"
+                    checked: dockPage.infoClockSeconds
+                    onToggle: function(value) {
+                        dockPage.saveInfoFlag("infoClockSeconds", value)
+                    }
+                }
+                InfoSwitchRow {
+                    title: "显示日期"
+                    checked: dockPage.infoClockDate
+                    onToggle: function(value) {
+                        dockPage.saveInfoFlag("infoClockDate", value)
+                    }
+                }
+                InfoSwitchRow {
+                    title: "日出日落时间"
+                    checked: dockPage.infoClockSolar
+                    onToggle: function(value) {
+                        dockPage.saveInfoFlag("infoClockSolar", value)
+                    }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 53
+                    height: 1
+                    color: theme.separator
+                }
+
+                Text {
+                    text: "天气卡片"
+                    color: theme.secondaryText
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    leftPadding: 16
+                    topPadding: 8
+                    bottomPadding: 4
+                }
+
+                Item {
+                    width: parent.width
+                    height: 48
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 32
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        Text {
+                            text: "位置"
+                            color: theme.primaryText
+                            font.pixelSize: 14
+                        }
+                        Text {
+                            text: dockPage.weatherCity || "--"
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                        }
+                        Item { Layout.fillWidth: true }
+                        LiquidControls.LiquidTextField {
+                            Layout.preferredWidth: 150
+                            Layout.preferredHeight: 34
+                            placeholderText: "搜索城市"
+                            glassColor: theme.searchField
+                            textColor: theme.primaryText
+                            mutedTextColor: theme.secondaryText
+                            font.pixelSize: 13
+                            text: dockPage.weatherQuery
+                            onTextChanged: {
+                                dockPage.weatherQuery = text
+                                dockPage.weatherSearchDebounce.restart()
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    visible: dockPage.weatherStatus === "searching"
+                    leftPadding: 32
+                    topPadding: 2
+                    bottomPadding: 4
+                    text: "搜索中…"
+                    color: theme.secondaryText
+                    font.pixelSize: 12
+                }
+
+                Text {
+                    visible: dockPage.weatherQuery.trim().length === 1
+                    leftPadding: 32
+                    topPadding: 2
+                    bottomPadding: 4
+                    text: "至少输入 2 个字"
+                    color: theme.secondaryText
+                    font.pixelSize: 12
+                }
+
+                Text {
+                    visible: dockPage.weatherStatus === "error"
+                    leftPadding: 32
+                    topPadding: 2
+                    bottomPadding: 4
+                    text: "搜索失败：" + (dockPage.weatherError || "未知错误")
+                    color: "#ff453a"
+                    font.pixelSize: 12
+                }
+
+                Repeater {
+                    model: dockPage.weatherResults
+
+                    delegate: Item {
+                        id: weatherCandidate
+                        required property var modelData
+                        required property int index
+                        width: parent.width
+                        height: 40
+
+                        Rectangle {
+                            anchors.fill: parent
+                            color: weatherHover.containsMouse
+                                ? theme.sidebarHover : "transparent"
+                            radius: 10
+                        }
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 32
+                            anchors.rightMargin: 16
+                            spacing: 8
+                            Text {
+                                Layout.fillWidth: true
+                                text: String(modelData.name ?? "")
+                                    + ((modelData.admin1 || modelData.country)
+                                        ? " · " + String(modelData.admin1
+                                            ?? modelData.country ?? "") : "")
+                                color: theme.primaryText
+                                font.pixelSize: 13
+                                elide: Text.ElideRight
+                            }
+                        }
+                        MouseArea {
+                            id: weatherHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: dockPage.pickWeatherLocation(
+                                weatherCandidate.index)
+                        }
+                    }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 53
+                    height: 1
+                    color: theme.separator
+                }
+
+                Text {
+                    text: "资源占用"
+                    color: theme.secondaryText
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    leftPadding: 16
+                    topPadding: 8
+                    bottomPadding: 4
+                }
+
+                InfoSwitchRow {
+                    title: "平均温度"
+                    checked: dockPage.infoMetricAverage
+                    onToggle: function(value) {
+                        dockPage.saveInfoFlag("infoMetricAverage", value)
+                    }
+                }
+                InfoSwitchRow {
+                    title: "最高温度"
+                    checked: dockPage.infoMetricPeak
+                    onToggle: function(value) {
+                        dockPage.saveInfoFlag("infoMetricPeak", value)
+                    }
+                }
+                InfoSwitchRow {
+                    title: "CPU"
+                    checked: dockPage.infoMetricCpu
+                    onToggle: function(value) {
+                        dockPage.saveInfoFlag("infoMetricCpu", value)
+                    }
+                }
+                InfoSwitchRow {
+                    title: "内存"
+                    checked: dockPage.infoMetricMemory
+                    onToggle: function(value) {
+                        dockPage.saveInfoFlag("infoMetricMemory", value)
+                    }
+                }
+                InfoSwitchRow {
+                    title: "存储"
+                    checked: dockPage.infoMetricStorage
+                    onToggle: function(value) {
+                        dockPage.saveInfoFlag("infoMetricStorage", value)
+                    }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 53
+                    height: 1
+                    color: theme.separator
+                }
+
+                Text {
+                    text: "参与显示的卡片"
+                    color: theme.secondaryText
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    leftPadding: 16
+                    topPadding: 8
+                    bottomPadding: 4
+                }
+
+                InfoSwitchRow {
+                    title: "音乐"
+                    checked: dockPage.infoCardMusic
+                    onToggle: function(value) {
+                        dockPage.saveInfoFlag("infoCardMusic", value)
+                    }
+                }
+                InfoSwitchRow {
+                    title: "天气"
+                    checked: dockPage.infoCardWeather
+                    onToggle: function(value) {
+                        dockPage.saveInfoFlag("infoCardWeather", value)
+                    }
+                }
+                InfoSwitchRow {
+                    title: "时钟"
+                    checked: dockPage.infoCardClock
+                    onToggle: function(value) {
+                        dockPage.saveInfoFlag("infoCardClock", value)
+                    }
+                }
+                InfoSwitchRow {
+                    title: "资源占用"
+                    checked: dockPage.infoCardMetrics
+                    onToggle: function(value) {
+                        dockPage.saveInfoFlag("infoCardMetrics", value)
                     }
                 }
             }
@@ -3068,21 +3753,12 @@ ApplicationWindow {
         property bool barLiquidDirty: false
         property string errorText: ""
 
-        // Per-surface visibility. The two id lists come from the Shell's own
+        // StatusArea visibility. The id list comes from the Shell's own
         // snapshot so this page never keeps a second copy of the surface names
         // that could drift from the QML the shell actually builds. Each entry
-        // is { id, label, visible } and is rebuilt on every snapshot.
-        property var deskCenterWidgets: []
+        // is { id, label, visible } and is rebuilt on every snapshot. The
+        // DeskCenter cards are owned by their own page, not by the bar.
         property var statusCells: []
-        readonly property var deskCenterWidgetLabels: ({
-            clock: "时钟",
-            weather: "天气",
-            calendar: "日历",
-            todo: "待办事项",
-            system: "系统监控",
-            activity: "活动统计",
-            music: "音乐",
-        })
         readonly property var statusCellLabels: ({
             network: "网络",
             battery: "电池",
@@ -3099,9 +3775,9 @@ ApplicationWindow {
             }
         }
 
-        // Builds one row per surface the Shell reported. The ids come from the
-        // Shell's snapshot rather than a list kept here, so a widget or cell
-        // added to the Shell shows up in this page without editing it.
+        // Builds one row per cell the Shell reported. The ids come from the
+        // Shell's snapshot rather than a list kept here, so a cell added to
+        // the Shell shows up in this page without editing it.
         //
         // The row shape mirrors VisibilityPolicy.mjs in the Shell, but this
         // process cannot import it: kos-settings is a separate binary that
@@ -3111,16 +3787,7 @@ ApplicationWindow {
         // persisted config.
         function rebuildVisibilityRows(state) {
             if (!state) return
-            const hiddenWidgets = parseIdList(state.hiddenDeskCenterWidgets)
             const hiddenCells = parseIdList(state.hiddenStatusCells)
-            deskCenterWidgets = parseIdList(state.deskCenterWidgetIds).map(
-                function(id) {
-                    return {
-                        id: id,
-                        label: deskCenterWidgetLabels[id] ?? id,
-                        visible: hiddenWidgets.indexOf(id) < 0,
-                    }
-                })
             statusCells = parseIdList(state.statusCellIds).map(
                 function(id) {
                     return {
@@ -3129,13 +3796,6 @@ ApplicationWindow {
                         visible: hiddenCells.indexOf(id) < 0,
                     }
                 })
-        }
-
-        function setDeskCenterWidgetVisible(id, visible) {
-            if (!bridge) return
-            applyState(bridge.updateDeskCenterWidgetVisibility(id, visible))
-            if (bridge.lastError)
-                errorText = bridge.lastError
         }
 
         function setStatusCellVisible(id, visible) {
@@ -3513,91 +4173,6 @@ ApplicationWindow {
         }
 
         Text {
-            text: "桌面小组件".toUpperCase()
-            color: theme.secondaryText
-            font.pixelSize: 12
-            font.weight: Font.DemiBold
-            Layout.leftMargin: 13
-            Layout.topMargin: 4
-            visible: barPage.deskCenterWidgets.length > 0
-        }
-
-        // The DeskCenter cards. The Shell filters its pack pass with the same
-        // hidden set, so an unchecked row stops the card being laid out at all
-        // rather than merely hiding an already-positioned surface.
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: deskCenterCol.implicitHeight
-            visible: barPage.deskCenterWidgets.length > 0
-            radius: 18
-            color: theme.card
-
-            Column {
-                id: deskCenterCol
-                anchors.left: parent.left
-                anchors.right: parent.right
-
-                Repeater {
-                    model: barPage.deskCenterWidgets
-
-                    delegate: Column {
-                        id: deskCenterRow
-                        required property var modelData
-                        required property int index
-
-                        width: parent.width
-
-                        Item {
-                            width: parent.width
-                            height: 54
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 16
-                                anchors.rightMargin: 16
-                                spacing: 12
-                                SettingIcon { symbol: "▢"; tint: "#30d158" }
-                                Column {
-                                    Layout.fillWidth: true
-                                    spacing: 1
-                                    Text {
-                                        text: deskCenterRow.modelData.label
-                                        color: theme.primaryText
-                                        font.pixelSize: 15
-                                        font.weight: Font.DemiBold
-                                    }
-                                    Text {
-                                        text: "在桌面层显示此小组件卡片"
-                                        color: theme.secondaryText
-                                        font.pixelSize: 11
-                                    }
-                                }
-                                Item { Layout.fillWidth: true }
-                                LiquidControls.LiquidGlassSwitch {
-                                    checked: deskCenterRow.modelData.visible
-                                    accentColor: theme.role("primary", "#0a84ff")
-                                    trackColor: theme.divider
-                                    onToggled: function(checked) {
-                                        barPage.setDeskCenterWidgetVisible(
-                                            deskCenterRow.modelData.id, checked)
-                                    }
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.leftMargin: 53
-                            height: 1
-                            color: theme.separator
-                            visible: deskCenterRow.index < barPage.deskCenterWidgets.length - 1
-                        }
-                    }
-                }
-            }
-        }
-
-        Text {
             text: "外观与模糊效果".toUpperCase()
             color: theme.secondaryText
             font.pixelSize: 12
@@ -3769,6 +4344,175 @@ ApplicationWindow {
             Layout.rightMargin: 13
             visible: barPage.errorText.length > 0
             text: barPage.errorText
+            color: "#ff453a"
+            font.pixelSize: 12
+            wrapMode: Text.Wrap
+        }
+    }
+
+    component DeskCenterSettingsPage: ColumnLayout {
+        id: deskCenterPage
+
+        Layout.fillWidth: true
+        spacing: 10
+
+        property var bridge: (typeof settingsBridge !== "undefined")
+            ? settingsBridge : null
+        property string errorText: ""
+
+        // The DeskCenter cards, built from the ids the Shell reports in its
+        // snapshot. The Shell owns the ordering and the validation, so a card
+        // added there shows up here without editing this page.
+        property var deskCenterWidgets: []
+        readonly property var deskCenterWidgetLabels: ({
+            clock: "时钟",
+            weather: "天气",
+            calendar: "日历",
+            todo: "待办事项",
+            system: "系统监控",
+            activity: "活动统计",
+            music: "音乐",
+        })
+
+        function parseIdList(raw) {
+            try {
+                const parsed = JSON.parse(raw)
+                return Array.isArray(parsed) ? parsed : []
+            } catch (_) {
+                return []
+            }
+        }
+
+        function rebuildDeskCenterRows(state) {
+            if (!state) return
+            const hiddenWidgets = parseIdList(state.hiddenDeskCenterWidgets)
+            deskCenterWidgets = parseIdList(state.deskCenterWidgetIds).map(
+                function(id) {
+                    return {
+                        id: id,
+                        label: deskCenterWidgetLabels[id] ?? id,
+                        visible: hiddenWidgets.indexOf(id) < 0,
+                    }
+                })
+        }
+
+        // The Shell filters its pack pass with the same hidden set, so an
+        // unchecked row stops the card being laid out at all rather than
+        // merely hiding an already-positioned surface.
+        function setDeskCenterWidgetVisible(id, visible) {
+            if (!bridge) return
+            applyState(bridge.updateDeskCenterWidgetVisibility(id, visible))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function applyState(state) {
+            if (!state) return
+            errorText = ""
+            rebuildDeskCenterRows(state)
+        }
+
+        function refresh() {
+            if (!bridge) {
+                errorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            applyState(bridge.appearanceSnapshot())
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        Component.onCompleted: refresh()
+        onVisibleChanged: if (visible) refresh()
+
+        Text {
+            text: "桌面组件".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 4
+            visible: deskCenterPage.deskCenterWidgets.length > 0
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: deskCenterCol.implicitHeight
+            visible: deskCenterPage.deskCenterWidgets.length > 0
+            radius: 18
+            color: theme.card
+
+            Column {
+                id: deskCenterCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+
+                Repeater {
+                    model: deskCenterPage.deskCenterWidgets
+
+                    delegate: Column {
+                        id: deskCenterRow
+                        required property var modelData
+                        required property int index
+
+                        width: parent.width
+
+                        Item {
+                            width: parent.width
+                            height: 54
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 16
+                                anchors.rightMargin: 16
+                                spacing: 12
+                                SettingIcon { symbol: "▢"; tint: "#30d158" }
+                                Column {
+                                    Layout.fillWidth: true
+                                    spacing: 1
+                                    Text {
+                                        text: deskCenterRow.modelData.label
+                                        color: theme.primaryText
+                                        font.pixelSize: 15
+                                        font.weight: Font.DemiBold
+                                    }
+                                    Text {
+                                        text: "在桌面层显示此组件卡片"
+                                        color: theme.secondaryText
+                                        font.pixelSize: 11
+                                    }
+                                }
+                                Item { Layout.fillWidth: true }
+                                LiquidControls.LiquidGlassSwitch {
+                                    checked: deskCenterRow.modelData.visible
+                                    accentColor: theme.role("primary", "#0a84ff")
+                                    trackColor: theme.divider
+                                    onToggled: function(checked) {
+                                        deskCenterPage.setDeskCenterWidgetVisible(
+                                            deskCenterRow.modelData.id, checked)
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: 53
+                            height: 1
+                            color: theme.separator
+                            visible: deskCenterRow.index < deskCenterPage.deskCenterWidgets.length - 1
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            Layout.leftMargin: 13
+            Layout.rightMargin: 13
+            visible: deskCenterPage.errorText.length > 0
+            text: deskCenterPage.errorText
             color: "#ff453a"
             font.pixelSize: 12
             wrapMode: Text.Wrap
@@ -4492,6 +5236,15 @@ ApplicationWindow {
                 SidebarEntry {
                     Layout.fillWidth: true
                     Layout.topMargin: 1
+                    pageIndex: 8
+                    label: "桌面组件"
+                    navSymbol: "▦"
+                    navTint: "#30d158"
+                }
+
+                SidebarEntry {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 1
                     pageIndex: 5
                     label: "快捷键"
                     navSymbol: "⌘"
@@ -4611,6 +5364,10 @@ ApplicationWindow {
 
                     BarSettingsPage {
                         visible: window.currentPage === 2
+                    }
+
+                    DeskCenterSettingsPage {
+                        visible: window.currentPage === 8
                     }
 
                     ThemeSettingsPage {

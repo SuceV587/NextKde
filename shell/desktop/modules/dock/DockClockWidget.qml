@@ -17,6 +17,11 @@ Item {
     // DockInfoCarousel sets this false while another page is shown so the
     // glyph-mask ShaderEffectSource stops re-sampling every frame.
     property bool pageActive: true
+    // Content switches from the Dock 组件 settings. All three default on, so
+    // the card keeps the face it always had until the user asks otherwise.
+    property bool showSeconds: true
+    property bool showDate: true
+    property bool showSolar: true
     readonly property real backgroundGap: iconSize * 0.1
     readonly property real contentWidth: iconSize * widthUnits
     readonly property bool compact: iconSize < 32
@@ -130,14 +135,20 @@ Item {
         spacing: 0
 
         Column {
-            width: contentRow.width * 0.60
+            // Without the solar column the time and date own the whole card
+            // instead of leaving a reserved 40% empty.
+            width: contentRow.width * (widget.showSolar ? 0.60 : 1.0)
             height: parent.height
             spacing: Math.max(1, Math.round(widget.iconSize * 0.03))
 
             Item {
                 id: clockLine
                 width: parent.width
-                height: Math.round(widget.iconSize * 0.58)
+                // With the date row hidden the time owns the column, so it
+                // grows to fill it and stays vertically centred instead of
+                // hugging the top edge.
+                height: Math.round(widget.iconSize
+                    * (widget.showDate ? 0.58 : 0.88))
 
                 // The glyph itself is the mask: a shifted, blurred sample of
                 // the ambient card is visible only inside the numbers.
@@ -207,7 +218,8 @@ Item {
                     id: timeText
                     anchors.centerIn: parent
                     width: parent.width
-                    text: Qt.formatDateTime(clock.date, "HH:mm:ss")
+                    text: Qt.formatDateTime(clock.date,
+                        widget.showSeconds ? "HH:mm:ss" : "HH:mm")
                     color: AppearanceTokens.motion.drawsFormDecorations
                         ? Qt.rgba(1, 1, 1,
                             0.18 + 0.18 * AppearanceTokens.glass.liquidStrength)
@@ -232,6 +244,7 @@ Item {
             Text {
                 width: parent.width
                 height: Math.round(widget.iconSize * 0.27)
+                visible: widget.showDate
                 text: Qt.formatDateTime(calendarClock.dayDate, "yyyy年M月d日")
                     + " " + widget.shortWeekday(calendarClock.dayDate)
                 color: ThemeService.foregroundColor
@@ -253,6 +266,7 @@ Item {
             width: contentRow.width * 0.40
             height: parent.height
             spacing: 0
+            visible: widget.showSolar
 
             SolarEventRow {
                 width: parent.width
@@ -294,6 +308,7 @@ Item {
         }
         Text {
             text: "· 日落 " + WeatherService.sunsetTime
+            visible: widget.showSolar
             color: "white"
             opacity: 0.68
             anchors.verticalCenter: parent.verticalCenter

@@ -79,6 +79,48 @@ public:
         return snapshotFromReply(callDock({QStringLiteral("updatePosition"), position}));
     }
 
+    Q_INVOKABLE QVariantMap updateDockAlignment(const QString &alignment) {
+        return snapshotFromReply(callDock({QStringLiteral("updateAlignment"), alignment}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockWidthMode(const QString &mode) {
+        return snapshotFromReply(callDock({QStringLiteral("updateWidthMode"), mode}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockStretchFloating(bool floating) {
+        return snapshotFromReply(callDock({QStringLiteral("updateStretchFloating"),
+                                           floating ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockInfoCardMode(const QString &mode) {
+        return snapshotFromReply(callDock({QStringLiteral("updateInfoCardMode"), mode}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockInfoFlag(const QString &name, bool value) {
+        return snapshotFromReply(callDock({QStringLiteral("updateInfoFlag"), name,
+                                           value ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
+    Q_INVOKABLE QString searchWeatherLocations(const QString &query) {
+        callDock({QStringLiteral("searchWeather"), query});
+        // The search resolves asynchronously in the data service; the caller
+        // polls weatherSearchStatus() for the result.
+        return callDock({QStringLiteral("weatherSearchStatus")});
+    }
+
+    Q_INVOKABLE QString weatherSearchStatus() {
+        return callDock({QStringLiteral("weatherSearchStatus")});
+    }
+
+    Q_INVOKABLE QVariantMap setWeatherLocation(const QString &id, const QString &name,
+                                               const QString &admin1, const QString &country,
+                                               const QString &countryCode, double latitude,
+                                               double longitude, const QString &timezone) {
+        callDock({QStringLiteral("setWeatherLocation"), id, name, admin1, country, countryCode,
+                  QString::number(latitude, 'f', 5), QString::number(longitude, 'f', 5), timezone});
+        return dockSnapshot();
+    }
+
     Q_INVOKABLE QVariantMap updateDockIconMode(const QString &mode) {
         return snapshotFromReply(callDock({QStringLiteral("updateIconMode"), mode}));
     }
@@ -493,6 +535,23 @@ private:
         return {
             {QStringLiteral("baseHeight"), object.value(QStringLiteral("baseHeight")).toDouble()},
             {QStringLiteral("position"), object.value(QStringLiteral("position")).toString()},
+            {QStringLiteral("alignment"), object.value(QStringLiteral("alignment")).toString()},
+            {QStringLiteral("widthMode"), object.value(QStringLiteral("widthMode")).toString()},
+            {QStringLiteral("stretchFloating"), object.value(QStringLiteral("stretchFloating")).toBool()},
+            {QStringLiteral("infoCardMode"), object.value(QStringLiteral("infoCardMode")).toString()},
+            {QStringLiteral("infoCardMusic"), object.value(QStringLiteral("infoCardMusic")).toBool()},
+            {QStringLiteral("infoCardWeather"), object.value(QStringLiteral("infoCardWeather")).toBool()},
+            {QStringLiteral("infoCardClock"), object.value(QStringLiteral("infoCardClock")).toBool()},
+            {QStringLiteral("infoCardMetrics"), object.value(QStringLiteral("infoCardMetrics")).toBool()},
+            {QStringLiteral("infoClockSeconds"), object.value(QStringLiteral("infoClockSeconds")).toBool()},
+            {QStringLiteral("infoClockDate"), object.value(QStringLiteral("infoClockDate")).toBool()},
+            {QStringLiteral("infoClockSolar"), object.value(QStringLiteral("infoClockSolar")).toBool()},
+            {QStringLiteral("infoMetricAverage"), object.value(QStringLiteral("infoMetricAverage")).toBool()},
+            {QStringLiteral("infoMetricPeak"), object.value(QStringLiteral("infoMetricPeak")).toBool()},
+            {QStringLiteral("infoMetricCpu"), object.value(QStringLiteral("infoMetricCpu")).toBool()},
+            {QStringLiteral("infoMetricMemory"), object.value(QStringLiteral("infoMetricMemory")).toBool()},
+            {QStringLiteral("infoMetricStorage"), object.value(QStringLiteral("infoMetricStorage")).toBool()},
+            {QStringLiteral("weatherCity"), object.value(QStringLiteral("weatherCity")).toString()},
             {QStringLiteral("iconMode"), object.value(QStringLiteral("iconMode")).toString()},
             {QStringLiteral("iconOpacity"), object.value(QStringLiteral("iconOpacity")).toDouble()},
             {QStringLiteral("iconTintColor"), object.value(QStringLiteral("iconTintColor")).toString()},

@@ -138,6 +138,71 @@ QtObject {
         })
     }
 
+    // ── Location search / selection (Dock 组件 settings) ──
+    // kos-data-service owns the persisted location; the Shell only forwards
+    // the query and the chosen candidate. Both operations are writes, so
+    // DataClient fails them fast while the data service is unreachable
+    // instead of replaying a stale choice after a reconnect.
+    property var searchResults: []
+    property string searchStatus: "idle"      // idle | searching | ready | error
+    property string searchError: ""
+
+    function searchLocations(query) {
+        const text = String(query ?? "").trim()
+        // The data service rejects queries under 2 characters. Guard here so
+        // typing a single character never surfaces that raw error.
+        if (text.length < 2) {
+            searchResults = []
+            searchStatus = "idle"
+            searchError = ""
+            return
+        }
+        searchStatus = "searching"
+        searchError = ""
+        DataClient.request("weather.search",
+            { query: text, language: "zh", limit: 8 }, function(response) {
+                if (!response.ok) {
+                    searchResults = []
+                    searchStatus = "error"
+                    searchError = String(response.error?.message ?? "城市搜索失败")
+                    return
+                }
+                const list = response.result?.locations
+                searchResults = Array.isArray(list) ? list : []
+                searchStatus = "ready"
+            })
+    }
+
+    function setLocation(candidate) {
+        if (!candidate)
+            return
+        // Send only the fields WeatherLocation declares: normalizeWeatherLocation
+        // rejects a location without a name or plausible coordinates, and an
+        // unknown key is simply ignored by the service.
+        const next = {
+            id: String(candidate.id ?? ""),
+            name: String(candidate.name ?? ""),
+            admin1: String(candidate.admin1 ?? ""),
+            country: String(candidate.country ?? ""),
+            countryCode: String(candidate.countryCode ?? ""),
+            latitude: Number(candidate.latitude ?? 0),
+            longitude: Number(candidate.longitude ?? 0),
+            timezone: String(candidate.timezone ?? ""),
+        }
+        searchStatus = "idle"
+        DataClient.request("weather.set-location", { location: next },
+            function(response) {
+                if (!response.ok) {
+                    searchStatus = "error"
+                    searchError = String(response.error?.message ?? "城市设置失败")
+                    return
+                }
+                // The service clears Current and refetches; pull the new
+                // snapshot so the card and the settings row agree at once.
+                reload()
+            })
+    }
+
     property Connections dataEvents: Connections {
         target: DataClient
         function onEventReceived(eventName, payload) {

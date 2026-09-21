@@ -13,6 +13,14 @@ Item {
     property int widthUnits: 4
     // Set by DockInfoCarousel; the activity Canvas only repaints while shown.
     property bool pageActive: true
+    // Content switches from the Dock 组件 settings: the two thermal rows and
+    // the three activity rings. All on by default so the card keeps the
+    // composition it always had.
+    property bool showAverage: true
+    property bool showPeak: true
+    property bool showCpu: true
+    property bool showMemory: true
+    property bool showStorage: true
     readonly property real backgroundGap: iconSize * 0.1
     readonly property real contentWidth: iconSize * widthUnits
     readonly property bool compact: iconSize < 32
@@ -27,6 +35,18 @@ Item {
     readonly property real memoryValue: MetricsService.memoryTotalBytes > 0
         ? Math.max(0, Math.min(1, MetricsService.memoryUsedBytes
             / MetricsService.memoryTotalBytes)) : 0
+    // The two thermal rows, filtered by the settings. Built here (rather than
+    // filtered in the delegate) so the row height can divide by the real count.
+    readonly property var thermalRows: {
+        const rows = []
+        if (widget.showAverage)
+            rows.push({ label: "平均温度", value: widget.currentC,
+                accent: "#64d2ff" })
+        if (widget.showPeak)
+            rows.push({ label: "最高温度", value: widget.maximum5MinuteC,
+                accent: "#ff6b62" })
+        return rows
+    }
     readonly property real storageValue: MetricsService.diskTotalBytes > 0
         ? Math.max(0, Math.min(1, MetricsService.diskUsedBytes
             / MetricsService.diskTotalBytes)) : 0
@@ -109,16 +129,12 @@ Item {
                 spacing: 0
 
                 Repeater {
-                    model: [
-                        { label: "平均温度", value: widget.currentC,
-                            accent: "#64d2ff" },
-                        { label: "最高温度", value: widget.maximum5MinuteC,
-                            accent: "#ff6b62" }
-                    ]
+                    model: widget.thermalRows
                     delegate: Item {
                         required property var modelData
                         width: parent.width
-                        height: parent.height / 2
+                        height: parent.height
+                            / Math.max(1, widget.thermalRows.length)
 
                         Rectangle {
                             anchors {
@@ -215,9 +231,21 @@ Item {
                     onPaint: {
                         const ctx = getContext("2d")
                         ctx.reset()
-                        drawRing(ctx, width * 0.39, widget.cpuValue, "#ff375f")
-                        drawRing(ctx, width * 0.285, widget.memoryValue, "#30d158")
-                        drawRing(ctx, width * 0.18, widget.storageValue, "#64d2ff")
+                        // Only the enabled rings are drawn, and the visible
+                        // ones keep the outer-to-inner order: with two of
+                        // three on, the card must not look like it lost its
+                        // middle rather than its inner ring.
+                        const rings = []
+                        if (widget.showCpu)
+                            rings.push({ value: widget.cpuValue, color: "#ff375f" })
+                        if (widget.showMemory)
+                            rings.push({ value: widget.memoryValue, color: "#30d158" })
+                        if (widget.showStorage)
+                            rings.push({ value: widget.storageValue, color: "#64d2ff" })
+                        const radii = [0.39, 0.285, 0.18]
+                        for (let index = 0; index < rings.length; index++)
+                            drawRing(ctx, width * radii[index],
+                                rings[index].value, rings[index].color)
                     }
                     Component.onCompleted: requestPaint()
                     onWidthChanged: requestPaint()
@@ -260,6 +288,7 @@ Item {
         Text {
             text: "· 峰值 " + (widget.available
                 ? widget.maximum5MinuteC + "°" : "--°")
+            visible: widget.showPeak
             color: "white"
             opacity: 0.68
             anchors.verticalCenter: parent.verticalCenter

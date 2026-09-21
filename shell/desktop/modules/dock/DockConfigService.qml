@@ -36,6 +36,18 @@ QtObject {
     property real   baseHeight:   60
     property string theme:        "system"
     property string position:     "bottom"
+    // Where the glass rests along its edge. "start" | "center" | "end" — on a
+    // bottom dock that reads as left/centre/right, on a side dock as
+    // top/centre/bottom. One enum covers both because the two axes are the
+    // same problem: the dock keeps its content-driven length and only its
+    // offset along the edge changes.
+    property string alignment:    "center"
+    // Length strategy: "auto" lets the dock keep the width its content needs,
+    // "stretch" pins it to the full available length of the edge. Only
+    // stretchFloating below decides whether a stretched dock still keeps the
+    // usual three-edge gap.
+    property string widthMode:    "auto"
+    property bool   stretchFloating: false
     // Reserved strip of the top status bar. Side docks subtract it from the
     // screen height so their column cap never overlaps the bar. The bar reads
     // this value too, keeping one source of truth; a future bar-visibility
@@ -170,6 +182,113 @@ QtObject {
         if (position === nextPosition)
             return false
         position = nextPosition
+        scheduleSave()
+        return true
+    }
+
+    function isValidAlignment(value) {
+        return value === "start" || value === "center" || value === "end"
+    }
+
+    function updateAlignment(rawAlignment) {
+        const nextAlignment = String(rawAlignment)
+        if (!isValidAlignment(nextAlignment))
+            return false
+        if (alignment === nextAlignment)
+            return false
+        alignment = nextAlignment
+        scheduleSave()
+        return true
+    }
+
+    function isValidWidthMode(value) {
+        return value === "auto" || value === "stretch"
+    }
+
+    function updateWidthMode(rawMode) {
+        const nextMode = String(rawMode)
+        if (!isValidWidthMode(nextMode))
+            return false
+        if (widthMode === nextMode)
+            return false
+        widthMode = nextMode
+        scheduleSave()
+        return true
+    }
+
+    // ── Information cards (music / weather / clock / metrics) ──
+    // "carousel" keeps the historical single shared slot that rotates through
+    // the enabled cards; "expanded" gives every enabled card its own place in
+    // the row so nothing rotates any more.
+    property string infoCardMode: "carousel"
+    // Per-card participation. A card switched off leaves the row entirely, so
+    // the dock never reserves a slot for something the user muted.
+    property bool infoCardMusic:    true
+    property bool infoCardWeather:  true
+    property bool infoCardClock:    true
+    property bool infoCardMetrics:  true
+    // Clock card content. Seconds are part of the default face, so they stay
+    // on unless the user asks for a quiet one.
+    property bool infoClockSeconds: true
+    property bool infoClockDate:    true
+    property bool infoClockSolar:   true
+    // Metrics card content: the two thermal rows and the three activity rings.
+    property bool infoMetricAverage: true
+    property bool infoMetricPeak:    true
+    property bool infoMetricCpu:     true
+    property bool infoMetricMemory:  true
+    property bool infoMetricStorage: true
+
+    // Only meaningful while widthMode is "stretch": a stretched dock either
+    // reaches the screen corners or keeps the usual floating inset on the
+    // three free edges. Stored unconditionally so toggling width mode never
+    // has to invent a value.
+    function updateStretchFloating(rawFloating) {
+        const nextFloating = Boolean(rawFloating)
+        if (stretchFloating === nextFloating)
+            return false
+        stretchFloating = nextFloating
+        scheduleSave()
+        return true
+    }
+
+    function isValidInfoCardMode(value) {
+        return value === "carousel" || value === "expanded"
+    }
+
+    function updateInfoCardMode(rawMode) {
+        const nextMode = String(rawMode)
+        if (!isValidInfoCardMode(nextMode))
+            return false
+        if (infoCardMode === nextMode)
+            return false
+        infoCardMode = nextMode
+        scheduleSave()
+        return true
+    }
+
+    // Every boolean card setting shares one path: the whitelist keeps an IPC
+    // caller from inventing or overwriting an unrelated property, and the
+    // change check keeps a no-op toggle off disk.
+    readonly property var infoFlagNames: [
+        "infoCardMusic", "infoCardWeather", "infoCardClock", "infoCardMetrics",
+        "infoClockSeconds", "infoClockDate", "infoClockSolar",
+        "infoMetricAverage", "infoMetricPeak", "infoMetricCpu",
+        "infoMetricMemory", "infoMetricStorage"
+    ]
+
+    function isValidInfoFlag(name) {
+        return infoFlagNames.indexOf(String(name)) >= 0
+    }
+
+    function updateInfoFlag(name, rawValue) {
+        const key = String(name)
+        if (!isValidInfoFlag(key))
+            return false
+        const next = Boolean(rawValue)
+        if (svc[key] === next)
+            return false
+        svc[key] = next
         scheduleSave()
         return true
     }
@@ -367,10 +486,14 @@ QtObject {
     // ═══════════════════════════════════════════════════════════
     function _doSave() {
         const obj = {
-            version: 3,
+            version: 5,
             baseHeight:    svc.baseHeight,
             theme:         svc.theme,
             position:      svc.position,
+            // Edge alignment + length strategy (v4)
+            alignment:     svc.alignment,
+            widthMode:     svc.widthMode,
+            stretchFloating: svc.stretchFloating,
             barHeight:     svc.barHeight,
             iconOverrides: svc.iconOverrides,
             dockItems:     svc.dockItems,
@@ -385,6 +508,20 @@ QtObject {
             visibilityMode: svc.visibilityMode,
             // Grouping mode (macOS style vs separate)
             windowGrouping: svc.windowGrouping,
+            // Information cards (v5)
+            infoCardMode: svc.infoCardMode,
+            infoCardMusic: svc.infoCardMusic,
+            infoCardWeather: svc.infoCardWeather,
+            infoCardClock: svc.infoCardClock,
+            infoCardMetrics: svc.infoCardMetrics,
+            infoClockSeconds: svc.infoClockSeconds,
+            infoClockDate: svc.infoClockDate,
+            infoClockSolar: svc.infoClockSolar,
+            infoMetricAverage: svc.infoMetricAverage,
+            infoMetricPeak: svc.infoMetricPeak,
+            infoMetricCpu: svc.infoMetricCpu,
+            infoMetricMemory: svc.infoMetricMemory,
+            infoMetricStorage: svc.infoMetricStorage,
         }
         const json = JSON.stringify(obj, null, 2)
         console.log("[DockConfig] save requested path=" + svc.configPath
@@ -480,6 +617,46 @@ QtObject {
                 scheduleSave()
             }
         }
+        // v4: edge alignment and the length strategy. Files written before it
+        // carry neither key, and the defaults they fall back to are the
+        // behaviour those installations already had: a centred dock of
+        // content-driven width.
+        if (obj.alignment !== undefined) {
+            if (isValidAlignment(obj.alignment)) {
+                svc.alignment = obj.alignment
+            } else {
+                console.warn("[DockConfig] invalid alignment ignored")
+                scheduleSave()
+            }
+        }
+        if (obj.widthMode !== undefined) {
+            if (isValidWidthMode(obj.widthMode)) {
+                svc.widthMode = obj.widthMode
+            } else {
+                console.warn("[DockConfig] invalid widthMode ignored")
+                scheduleSave()
+            }
+        }
+        if (obj.stretchFloating !== undefined)
+            svc.stretchFloating = Boolean(obj.stretchFloating)
+
+        // v5: information cards. A file written before it carries none of
+        // these keys, and every default is "on", which is exactly the card
+        // set those installations already showed.
+        if (obj.infoCardMode !== undefined) {
+            if (isValidInfoCardMode(obj.infoCardMode)) {
+                svc.infoCardMode = obj.infoCardMode
+            } else {
+                console.warn("[DockConfig] invalid infoCardMode ignored")
+                scheduleSave()
+            }
+        }
+        for (const flagName of svc.infoFlagNames) {
+            if (obj[flagName] === undefined)
+                continue
+            svc[flagName] = Boolean(obj[flagName])
+        }
+
         if (obj.barHeight !== undefined) {
             const barHeight = Math.max(0, Math.min(100, Number(obj.barHeight)))
             if (Number.isFinite(barHeight))

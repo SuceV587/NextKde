@@ -60,9 +60,17 @@ Item {
         ? 0 : ConfigService.barHeight
     // A fused side Dock gets the full output height because the standalone
     // top Bar and its exclusive strip are disabled too.
-    readonly property int availableLength: vertical
+    // Length strategy. "stretch" pins the dock to the whole edge; floating
+    // keeps the usual inset on the three free sides, otherwise it reaches the
+    // corners. The inset is removed from the available length here so the
+    // icon solver below keeps working on the length the glass really gets.
+    readonly property bool stretched: ConfigService.widthMode === "stretch"
+    readonly property real stretchInset: stretched
+        ? (ConfigService.stretchFloating ? AppearanceTokens.dock.edgeMargin : 0)
+        : 0
+    readonly property int availableLength: (vertical
         ? screenHeight - reservedBarHeight
-        : screenWidth
+        : screenWidth) - (stretched ? Math.round(stretchInset * 2) : 0)
     readonly property real baseHeight: ConfigService.baseHeight
     // Shape proportions come from the selected shell style. The macOS token
     // values equal the previous Dock defaults, preserving the upgrade baseline.
@@ -120,6 +128,13 @@ Item {
     // A side Dock rotates its content row. Its dedicated compact carousel
     // needs only two icon lengths, while the bottom carousel keeps four.
     readonly property int infoSlotUnits: vertical ? 2 : 4
+    // Expanded cards stop sharing one slot: every enabled card reserves its
+    // own units (clock 3, the rest 4) so the layout solver can grow the dock.
+    readonly property int expandedInfoUnits: (ConfigService.infoCardMusic ? 4 : 0)
+        + (ConfigService.infoCardWeather ? 4 : 0)
+        + (ConfigService.infoCardClock ? 3 : 0)
+        + (ConfigService.infoCardMetrics ? 4 : 0)
+    readonly property bool infoExpanded: ConfigService.infoCardMode === "expanded"
 
     // ═══════════════════════════════════════════════════════════
     // Computed layout (re-evaluates on any input change)
@@ -133,14 +148,24 @@ Item {
         Math.max(baseHeight, availableLength - estimatedAccessoryWidth),
         proportions,
         vertical ? AdaptiveMath.MAX_HEIGHT_RATIO : AdaptiveMath.MAX_WIDTH_RATIO,
-        infoSlotUnits
+        infoExpanded ? expandedInfoUnits : infoSlotUnits
     )
 
     readonly property int computedDockHeight: _layout.dockHeight
     readonly property int iconSize: _layout.iconSize
-    readonly property int computedDockWidth: Math.round(_layout.dockWidth
+    // naturalDockWidth is the width the content asks for — the only width an
+    // "auto" dock ever takes. A stretched dock grows to the full available
+    // length, and stretchSlack is exactly the gap that growth leaves over,
+    // which the content row spends on the spacer that pushes the information
+    // carousel to the far end (§ Windows-style taskbar layout).
+    readonly property int naturalDockWidth: Math.round(_layout.dockWidth
         + accessoryContentWidth
         + accessoryCount * (2 + dividerMargin * 2 + itemSpacing * 2))
+    readonly property int computedDockWidth: stretched
+        ? Math.max(naturalDockWidth, availableLength)
+        : naturalDockWidth
+    readonly property real stretchSlack: Math.max(0, computedDockWidth
+        - naturalDockWidth)
     readonly property int itemSpacing: _layout.itemSpacing
     readonly property int hPadding: _layout.hPadding
     readonly property int vPadding: _layout.vPadding
@@ -824,6 +849,19 @@ Item {
             }
         }
 
+        // ── Stretch slack: push the information slot to the far end ──
+        // Only a stretched dock has slack. Spending it between the window
+        // tasks and the information slot keeps launchers and running windows
+        // against the starting edge while the clock, weather and the trailing
+        // status area sit at the opposite one — a taskbar-style split. The
+        // spacer carries no content, so an auto-width dock collapses it to 0
+        // and the row keeps its historical compact layout.
+        Item {
+            width: container.stretchSlack
+            height: 1
+            visible: container.stretched
+        }
+
         // ── Divider 2: windows | information slot (conditional) ──
         DockDivider {
             dockHeight: container.computedDockHeight
@@ -839,6 +877,19 @@ Item {
             widthUnits: container.infoUnits
             showClock: container.hasClock
             showTemperature: container.hasTemperature
+            expanded: container.infoExpanded
+            cardMusic: ConfigService.infoCardMusic
+            cardWeather: ConfigService.infoCardWeather
+            cardClock: ConfigService.infoCardClock
+            cardMetrics: ConfigService.infoCardMetrics
+            clockSeconds: ConfigService.infoClockSeconds
+            clockDate: ConfigService.infoClockDate
+            clockSolar: ConfigService.infoClockSolar
+            metricAverage: ConfigService.infoMetricAverage
+            metricPeak: ConfigService.infoMetricPeak
+            metricCpu: ConfigService.infoMetricCpu
+            metricMemory: ConfigService.infoMetricMemory
+            metricStorage: ConfigService.infoMetricStorage
             visible: container.hasInfo && !container.vertical
         }
 

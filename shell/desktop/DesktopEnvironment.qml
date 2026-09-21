@@ -67,10 +67,34 @@ Item {
                 ? ConfigService.visibilityMode : "always"
             const windowGrouping = ConfigService.isValidWindowGrouping(ConfigService.windowGrouping)
                 ? ConfigService.windowGrouping : "grouped"
+            const alignment = ConfigService.isValidAlignment(ConfigService.alignment)
+                ? ConfigService.alignment : "center"
+            const widthMode = ConfigService.isValidWidthMode(ConfigService.widthMode)
+                ? ConfigService.widthMode : "auto"
+            const infoCardMode = ConfigService.isValidInfoCardMode(ConfigService.infoCardMode)
+                ? ConfigService.infoCardMode : "carousel"
             return JSON.stringify({
                 baseHeight: ConfigService.baseHeight,
                 theme: theme,
                 position: position,
+                alignment: alignment,
+                widthMode: widthMode,
+                stretchFloating: ConfigService.stretchFloating,
+                infoCardMode: infoCardMode,
+                infoCardMusic: ConfigService.infoCardMusic,
+                infoCardWeather: ConfigService.infoCardWeather,
+                infoCardClock: ConfigService.infoCardClock,
+                infoCardMetrics: ConfigService.infoCardMetrics,
+                infoClockSeconds: ConfigService.infoClockSeconds,
+                infoClockDate: ConfigService.infoClockDate,
+                infoClockSolar: ConfigService.infoClockSolar,
+                infoMetricAverage: ConfigService.infoMetricAverage,
+                infoMetricPeak: ConfigService.infoMetricPeak,
+                infoMetricCpu: ConfigService.infoMetricCpu,
+                infoMetricMemory: ConfigService.infoMetricMemory,
+                infoMetricStorage: ConfigService.infoMetricStorage,
+                // Read-only weather context for the location row.
+                weatherCity: WeatherService.cityName,
                 iconMode: iconMode,
                 iconOpacity: ConfigService.iconOpacity,
                 iconTintColor: ConfigService.iconTintColor,
@@ -86,6 +110,62 @@ Item {
 
         function updatePosition(newPosition: string): string {
             ConfigService.updatePosition(newPosition)
+            return snapshot()
+        }
+
+        function updateAlignment(newAlignment: string): string {
+            ConfigService.updateAlignment(newAlignment)
+            return snapshot()
+        }
+
+        function updateWidthMode(newMode: string): string {
+            ConfigService.updateWidthMode(newMode)
+            return snapshot()
+        }
+
+        function updateStretchFloating(floating: bool): string {
+            ConfigService.updateStretchFloating(floating)
+            return snapshot()
+        }
+
+        function updateInfoCardMode(mode: string): string {
+            ConfigService.updateInfoCardMode(mode)
+            return snapshot()
+        }
+
+        // One entry point for every boolean card setting. The name is checked
+        // against ConfigService's own whitelist, so a malformed call cannot
+        // touch an unrelated property.
+        function updateInfoFlag(name: string, value: bool): string {
+            ConfigService.updateInfoFlag(name, value)
+            return snapshot()
+        }
+
+        // City search and selection are owned by kos-data-service; the Shell
+        // only forwards them and reports what it currently knows.
+        function searchWeather(query: string): string {
+            WeatherService.searchLocations(query)
+            return snapshot()
+        }
+
+        function weatherSearchStatus(): string {
+            return JSON.stringify({
+                status: WeatherService.searchStatus,
+                error: WeatherService.searchError,
+                locations: WeatherService.searchResults,
+                city: WeatherService.cityName
+            })
+        }
+
+        function setWeatherLocation(id: string, name: string, admin1: string,
+                                    country: string, countryCode: string,
+                                    latitude: real, longitude: real,
+                                    timezone: string): string {
+            WeatherService.setLocation({
+                id: id, name: name, admin1: admin1, country: country,
+                countryCode: countryCode, latitude: latitude,
+                longitude: longitude, timezone: timezone
+            })
             return snapshot()
         }
 
