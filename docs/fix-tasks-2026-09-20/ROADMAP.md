@@ -33,12 +33,12 @@
 | R20 | 三 | music 搜索 debounce + 异步加载 + Menu 单例 | `apps/music/*` | — | J |
 | R21 | 三 | PlaybackEngine bus 改 watch 驱动 | `apps/music/src/PlaybackEngine.cpp` | R20(同模块) | J |
 | R22 | 三 | weather fallback 轮询门控 + buffer 上限 | `apps/weather/src/WeatherClient.cpp` | — | K |
-| R23 | 四 | AppIcon 直通（mode==color 跳过 shader） | `shell/.../AppIcon.qml` 等 | — | L |
-| R24 | 四 | card_shadow.frag 特判 + softness 降 | `shell/desktop/shaders/card_shadow.frag`,`KosCardShadow.qml` | — | L |
-| R25 | 四 | OpacityMask 按激活态门控 | `LiquidNavBar.qml`,`LiquidGlassSwitch.qml` | — | L |
-| R26 | 四 | WallpaperColorSource 轮询降频/mtime | `shared/qml/colorize/WallpaperColorSource.qml` | — | L |
-| R27 | 四 | ColorScheme 结果 memoize + 异步 | `shared/qml/colorize/*.mjs`,`AppearanceTokens.qml` | R26(同目录) | L |
-| R28 | 四 | 抽 JsonlClient 合并 PlatformClient/DataClient + 测试 | `shell/.../platform/*.qml` | — | M |
+| R23 [x] | 四 | AppIcon 直通（mode==color 跳过 shader） | `shell/.../AppIcon.qml` 等 | — | L |
+| R24 [x] | 四 | card_shadow.frag 特判 + softness 降 | `shell/desktop/shaders/card_shadow.frag`,`KosCardShadow.qml` | — | L |
+| R25 [x] | 四 | OpacityMask 按激活态门控 | `LiquidNavBar.qml`,`LiquidGlassSwitch.qml` | — | L |
+| R26 [x] | 四 | WallpaperColorSource 轮询降频/mtime | `shared/qml/colorize/WallpaperColorSource.qml` | — | L |
+| R27 [x] | 四 | ColorScheme 结果 memoize + 异步 | `shared/qml/colorize/*.mjs`,`AppearanceTokens.qml` | R26(同目录) | L |
+| R28 [x] | 四 | 抽 JsonlClient 合并 PlatformClient/DataClient + 测试 | `shell/.../platform/*.qml` | — | M |
 | R29 [x] | 五 | 零散小项（lockscreen timer、ApplicationRunner、Scanner、死命令等） | 多文件 | 视子项 | N |
 
 ---
