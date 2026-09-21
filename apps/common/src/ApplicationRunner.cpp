@@ -17,6 +17,8 @@
 #include <QVariant>
 
 #include <cstdlib>
+#include <memory>
+#include <utility>
 
 #if defined(KOS_HAVE_KWINDOWSYSTEM)
 #include <KWindowEffects>
@@ -105,8 +107,23 @@ int run(int argc, char *argv[], const Metadata &metadata)
     auto *effectsMonitor = new QTimer(&application);
     effectsMonitor->setInterval(2500);
     effectsMonitor->setTimerType(Qt::VeryCoarseTimer);
+    const auto lastPoll = std::make_shared<std::pair<bool, bool>>(
+        preferences.nativeBlurAvailable(), preferences.nativeContrastAvailable());
+    const auto stableStreak = std::make_shared<int>(0);
     QObject::connect(effectsMonitor, &QTimer::timeout, &application,
-                     refreshNativeCapabilities);
+                     [refreshNativeCapabilities, &preferences, effectsMonitor,
+                      lastPoll, stableStreak] {
+        refreshNativeCapabilities();
+        const auto now = std::make_pair(preferences.nativeBlurAvailable(),
+                                        preferences.nativeContrastAvailable());
+        *stableStreak = (now == *lastPoll) ? *stableStreak + 1 : 0;
+        *lastPoll = now;
+        // ~30s of a stable answer (12 x 2.5s) is long enough to cover compositor
+        // startup flapping; a later change is rare enough to leave to the next
+        // app launch rather than a perpetual timer per process.
+        if (*stableStreak >= 12)
+            effectsMonitor->stop();
+    });
     effectsMonitor->start();
 #endif
 
