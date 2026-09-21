@@ -64,8 +64,19 @@ private:
 
     ~ShapeProtocol() override
     {
-        if (m_manager) kos_surface_shape_manager_v1_destroy(m_manager);
-        if (m_registry) wl_registry_destroy(m_registry);
+        // 应用程序退出时底层 Wayland 连接往往已先行销毁，必须验证连接有效性，防止调用已失效指针导致崩溃弹窗
+        auto *native = qGuiApp ? qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>() : nullptr;
+        if (!native || !native->display()) {
+            return;
+        }
+        if (m_manager) {
+            kos_surface_shape_manager_v1_destroy(m_manager);
+            m_manager = nullptr;
+        }
+        if (m_registry) {
+            wl_registry_destroy(m_registry);
+            m_registry = nullptr;
+        }
     }
 
     static void global(void *data, wl_registry *registry, uint32_t name,
