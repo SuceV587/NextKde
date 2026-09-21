@@ -32,12 +32,16 @@ be used here — no Quickshell, no Kos.Ui.
 ## Development loop
 
 ```sh
-# Make the package visible to the greeter (user level, no root). Note the
-# plasma/shells/ root: the greeter resolves its skin from a Shell package, and
-# look-and-feel/ is not searched for the lock screen at all -- both conditions
-# are verified by tests/theme-resolution.
+# Install the package at user level (no root): copies the theme into both
+# $KOS_PREFIX/share/plasma/shells/ (the only root the greeter searches) and
+# look-and-feel/, and points plasmashellrc [Shell] ShellPackage at it.
+# To install into a checkout-local prefix: KOS_PREFIX=~/.local
+./tools/kosctl install lockscreen
+
+# Manual equivalent for a development loop -- a symlink keeps edits live
+# without reinstalling. The ShellPackage write is the one kosctl performs:
 mkdir -p ~/.local/share/plasma/shells
-ln -s "$PWD" ~/.local/share/plasma/shells/org.kos.desktop
+ln -s \"$PWD\" ~/.local/share/plasma/shells/org.kos.desktop
 kwriteconfig6 --file plasmashellrc --group Shell --key ShellPackage org.kos.desktop
 
 # Offscreen assertions + a rendered preview, no real lock needed:

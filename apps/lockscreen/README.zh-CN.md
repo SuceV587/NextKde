@@ -29,9 +29,16 @@ kscreenlocker_greet 注入 `authenticator`（PAM 会话：`startAuthenticating()
 ## 开发循环
 
 ```sh
-# 让 greeter 看得见这个包（用户级，无需 root）。注意是 plasma/shells/：
-# greeter 从 Shell 包结构里取锁屏，look-and-feel/ 对它无效——
-# 这两个条件是 tests/theme-resolution 逐一验证过的。
+# 安装到用户级前缀（无需 root）：把主题复制进
+# $KOS_PREFIX/share/plasma/shells/（greeter 唯一搜索的根）和
+# look-and-feel/，并把 plasmashellrc [Shell] ShellPackage 指过来。
+# 安装到仓库本地前缀：KOS_PREFIX=~/.local
+./tools/kosctl install lockscreen
+
+# 开发循环的手动等价做法——符号链接让改动免重装即生效；
+# 下面这行 kwriteconfig6 就是 kosctl 执行的那一步。注意是
+# plasma/shells/：greeter 从 Shell 包结构里取锁屏，
+# look-and-feel/ 对它无效——这两个条件 tests/theme-resolution 逐一验证过。
 mkdir -p ~/.local/share/plasma/shells
 ln -s "$PWD" ~/.local/share/plasma/shells/org.kos.desktop
 kwriteconfig6 --file plasmashellrc --group Shell --key ShellPackage org.kos.desktop
