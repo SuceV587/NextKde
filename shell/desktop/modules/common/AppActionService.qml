@@ -18,6 +18,11 @@ QtObject {
     signal hideRequested(string appId)
     signal editRequested(var application)
 
+    // execDetached exemption (R12): the desktop-entry Exec line runs through
+    // DesktopEntry.execute(), not through a shell or system-control command.
+    // This path is only a last resort -- application.launch (daemon) is the
+    // primary route; reaching here means the daemon is gone or the KIO launch
+    // failed, so there is no op left that could carry the entry.
     function _executeDirect(entry, appId, reason) {
         try {
             entry.execute()
@@ -30,6 +35,13 @@ QtObject {
         }
     }
 
+    // execDetached exemption (R12): deep-link argv is `entry.command` -- the
+    // argv the desktop entry already declares -- plus app-owned arguments.
+    // The daemon's application.launch op accepts only {desktopId, urls}; it
+    // cannot append arbitrary argv, so a whitelist would mean either a new
+    // contract op or hardcoding each app's deep-link flags in the daemon.
+    // This is a direct argv exec (no shell), kept until the deep-link surface
+    // is redesigned around URLs.
     function _executeCommandDirect(command, appId) {
         try {
             Quickshell.execDetached(command)
