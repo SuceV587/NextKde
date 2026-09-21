@@ -16,6 +16,16 @@
 
 namespace KosPlatform {
 
+// One connect request: the settings dict already carries every secret, so the
+// runner treats this as opaque data. The map never lands in a log or an argv
+// -- it goes straight into AddConnection.
+struct NmConnectRequest {
+    QString device;
+    QString savedProfileUuid;
+    QVariantMap settings;
+    QString replaceProfileId;
+};
+
 class PlatformServer final : public QObject {
     Q_OBJECT
 
@@ -62,6 +72,8 @@ private:
     void runNetworkRefresh(QLocalSocket *socket, const QJsonObject &request);
     void runNetworkDetails(QLocalSocket *socket, const QJsonObject &request,
                            const QString &device);
+    void runNetworkConnect(QLocalSocket *socket, const QJsonObject &request,
+                           const NmConnectRequest &connect);
     void runBluetoothList(QLocalSocket *socket, const QJsonObject &request);
     void sendEvent(QLocalSocket *socket, const QJsonObject &event);
     QString requestId(const QJsonObject &request) const;
