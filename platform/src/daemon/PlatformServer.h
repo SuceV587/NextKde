@@ -164,6 +164,11 @@ private:
     // current compositor session (KWin does not hot-reload NightColor Active).
     std::optional<quint32> m_nightLightInhibitionCookie;
     bool m_watchImages = true;
+    // clipboard.history.list rides the reply cache; these track the last
+    // cliphist output hash + prune time so the thumbs sweep runs only on real
+    // changes, not on every panel refresh.
+    QByteArray m_lastClipboardListHash;
+    qint64 m_lastClipboardPruneMs = 0;
     QHash<QString, CachedReply> m_replyCache;
     QHash<QString, QList<PendingReply>> m_inFlightReplies;
     QSet<QString> m_nmWatchedPaths;

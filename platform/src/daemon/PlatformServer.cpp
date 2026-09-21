@@ -488,6 +488,10 @@ constexpr int kBluetoothCacheTtlMs = 20000;
 constexpr int kAudioCacheTtlMs = 30000;
 constexpr int kBrightnessCacheTtlMs = 10000;
 constexpr int kNightLightCacheTtlMs = 10000;
+// clipboard.history.list answers from this cache for a moment at most; the
+// wl-paste watcher's dataChanged callback invalidates on the next copy, so a
+// real entry never waits out the TTL.
+constexpr int kClipboardHistoryCacheTtlMs = 1500;
 // Bounded D-Bus round-trips: a wedged NetworkManager/BlueZ used to be able
 // to stall the whole daemon through the default 25 s call timeout.
 constexpr int kDbusCallTimeoutMs = 2000;
@@ -1660,6 +1664,15 @@ PlatformServer::PlatformServer(QObject *parent)
             {wlPaste, QStringLiteral("--type"), QStringLiteral("image"),
              QStringLiteral("--watch"), cliphist, QStringLiteral("store")});
     }
+    // The wl-paste watcher already forks `cliphist store` on every new entry;
+    // hooking QClipboard::dataChanged catches the same moment without parsing
+    // wl-paste output, so the list cache can stay cheap and still drop stale
+    // answers as soon as the clipboard moves.
+    if (QClipboard *clipboard = QGuiApplication::clipboard()) {
+        connect(clipboard, &QClipboard::dataChanged, this, [this] {
+            invalidateReplies(QStringLiteral("clipboard.history.list"));
+        });
+    }
     const QString pactl = QStandardPaths::findExecutable(QStringLiteral("pactl"));
     if (!pactl.isEmpty())
         startAudioEventWatcher(pactl);
@@ -2480,6 +2493,7 @@ void PlatformServer::runClipboardDelete(QLocalSocket *socket,
             // Dropping it here is what keeps the state directory from growing
             // a file per deleted entry.
             clipboardRemoveThumb(record);
+            invalidateReplies(QStringLiteral("clipboard.history.list"));
             respond(guardedSocket.data(), request, true,
                     QJsonObject{{QStringLiteral("deleted"), true}});
         } else {
@@ -2850,14 +2864,25 @@ bool PlatformServer::handleClipboard(QLocalSocket *socket, const QJsonObject &re
     if (op == QStringLiteral("clipboard.history.list")) {
         runCommand(socket, request, QStringLiteral("cliphist"),
                    {QStringLiteral("list")},
-                   [](const QByteArray &output, int exitCode) {
-            // Every refresh is the authoritative "what still exists" moment, so
-            // it is also when previews evicted by cliphist itself get dropped.
-            // Without this the cache would only ever shrink on explicit
-            // deletes and would grow forever under normal history rotation.
-            clipboardPruneThumbs(output);
+                   [this](const QByteArray &output, int exitCode) {
+            // Prune only when the authoritative list actually changed, and no
+            // more than once per throttle window: the panel polls this on
+            // every refresh, so a naive prune would re-walk the thumbs dir
+            // each time for nothing.
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            const QByteArray hash = QCryptographicHash::hash(
+                output, QCryptographicHash::Sha1).toHex();
+            if (hash != m_lastClipboardListHash
+                || now - m_lastClipboardPruneMs >= 5000) {
+                m_lastClipboardListHash = hash;
+                m_lastClipboardPruneMs = now;
+                clipboardPruneThumbs(output);
+            }
             return parseOutput(output, exitCode);
-        });
+        },
+        kDefaultCommandTimeoutMs,
+        QStringLiteral("clipboard.history.list"),
+        kClipboardHistoryCacheTtlMs);
         return true;
     }
     if (op == QStringLiteral("clipboard.history.copy")) {
@@ -2899,6 +2924,7 @@ bool PlatformServer::handleClipboard(QLocalSocket *socket, const QJsonObject &re
                 // Pinned entries survive a wipe by design; only the history
                 // preview cache is owned by the history that just disappeared.
                 QDir(clipboardThumbsDir()).removeRecursively();
+                invalidateReplies(QStringLiteral("clipboard.history.list"));
                 respond(guardedSocket.data(), request, true,
                         QJsonObject{{QStringLiteral("cleared"), true}});
             } else {
