@@ -150,4 +150,10 @@
 | R7 | 2026-09-21 | 通过 | code-reviewer PASS（low 残余：硬链接同 inode 拷贝不防，预存在） | 分支 fix/2026-09-20-daemon-filecopy-async，commit 6ec1a98 |
 | R8 | 2026-09-21 | 通过 | code-reviewer PASS | 分支 fix/2026-09-20-daemon-netrefresh-async，commit 337b655 |
 | R9 | 2026-09-21 | 通过 | code-reviewer PASS | 分支 fix/2026-09-20-daemon-readbuf-cap，commit 88aa71e |
+| R10 | 2026-09-21 | 通过 | code-reviewer PASS（5 minor：notify-send `--`、read cap+1、错误码、dispatch 顺序、契约上限——已合并为 polish commit） | 分支 fix/2026-09-20-daemon-state-ops，commit a4de0f1 |
+| R11 | 2026-09-21 | 通过 | code-reviewer FAIL→PASS（首轮：LockScreenFeedService 语法残缺+_packageInstalled 单向——已修；复审 PASS，3 minor 记录） | 分支 fix/2026-09-20-qml-state-store，commit 7520313（amend 后）；新增 JsonConfigStore.qml |
+| R12 | 2026-09-21 | 通过 | code-reviewer FAIL→PASS（首轮：nightlight 部分失败三方不一致——daemon 改 ok+applied:false；复审 PASS，1 minor：launchById terminal 路径） | 分支 fix/2026-09-20-qml-redline，10 commits（efa0e70..2b044b0）；daemon settings.launch 加 shellDir |
+| R13 | 2026-09-21 | 通过 | code-reviewer PASS（4 minor：无 contract 测试、TOCTOU、白名单比任务卡宽、QML 空格路径不加引号——均记录不阻塞） | 分支 fix/2026-09-20-daemon-shortcuts-exec，commit 6c7e676 |
+| R14 | 2026-09-21 | 通过 | code-reviewer PASS（3 minor 记录；WPA3-only AP 与旧 nmcli 同等覆盖；D-Bus 路径未实测真机） | 分支 fix/2026-09-20-daemon-wifi-secret，commit 4ccf49e |
+| R15 | 2026-09-21 | 通过 | code-reviewer PASS（cache 1.5s TTL + dataChanged 失效 + hash 门控 prune） | 同分支，commit 52382a7 |
 | R29 | 2026-09-22 | 通过 | code-reviewer PASS（3 minor：SIGTERM persist 与主循环竞态窗口极小；listBootsSpan 对旧 systemd 无 tz 后缀静默降级；deliveredReminders >512 时窗口内告警可重发一次——均记录不阻塞） | 分支 fix/2026-09-20-cleanup，18 commits（88e75bb..a681dcd）；ApplicationRunner 稳定后停轮询、sddm showClock、data-service scanner/accept/reconcile/SIGTERM/list-boots、pim 信号驱动、kwin 重试上限、kosctl 死命令、tmp GC、platform.v1.md 同步等 |
