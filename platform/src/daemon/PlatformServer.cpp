@@ -3560,23 +3560,31 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
             return true;
         }
 
+        // The config write already committed, so any failure past this point
+        // is partial application, not a failed toggle: the requested state is
+        // persisted and KWin will converge on it at the next reconfigure.
+        // Report ok with applied:false (and a warning string) so the Shell
+        // aligns its UI to the persisted state instead of rolling back to a
+        // value that no longer matches kwinrc.
+        bool applied = true;
+        QString warning;
         if (requestedEnabled && m_nightLightInhibitionCookie.has_value()) {
             const QDBusMessage reply = nightLight.call(
                 QStringLiteral("uninhibit"), *m_nightLightInhibitionCookie);
             if (reply.type() == QDBusMessage::ErrorMessage) {
-                respond(socket, request, false, {}, QStringLiteral("nightlight-uninhibit-failed"),
-                        QStringLiteral("夜灯已启用，但未能立即恢复"), true);
-                return true;
+                applied = false;
+                warning = QStringLiteral("夜灯已启用，但未能立即恢复");
+            } else {
+                m_nightLightInhibitionCookie.reset();
             }
-            m_nightLightInhibitionCookie.reset();
         } else if (!requestedEnabled && !m_nightLightInhibitionCookie.has_value()) {
             const QDBusMessage reply = nightLight.call(QStringLiteral("inhibit"));
             if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().isEmpty()) {
-                respond(socket, request, false, {}, QStringLiteral("nightlight-inhibit-failed"),
-                        QStringLiteral("夜灯已关闭，但未能立即暂停当前效果"), true);
-                return true;
+                applied = false;
+                warning = QStringLiteral("夜灯已关闭，但未能立即暂停当前效果");
+            } else {
+                m_nightLightInhibitionCookie = reply.arguments().constFirst().toUInt();
             }
-            m_nightLightInhibitionCookie = reply.arguments().constFirst().toUInt();
         }
 
         QDBusInterface kwin(QStringLiteral("org.kde.KWin"), QStringLiteral("/KWin"),
@@ -3584,9 +3592,8 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
         kwin.setTimeout(kDbusCallTimeoutMs);
         const QDBusMessage reconfigureReply = kwin.call(QStringLiteral("reconfigure"));
         if (reconfigureReply.type() == QDBusMessage::ErrorMessage) {
-            respond(socket, request, false, {}, QStringLiteral("nightlight-reconfigure-failed"),
-                    QStringLiteral("夜灯状态已保存，但 KWin 未能立即应用"), true);
-            return true;
+            applied = false;
+            warning = QStringLiteral("夜灯状态已保存，但 KWin 未能立即应用");
         }
 
         const bool available = nightLight.property("available").toBool();
@@ -3598,8 +3605,11 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
             {QStringLiteral("available"), available},
             {QStringLiteral("enabled"), requestedEnabled},
             {QStringLiteral("running"), requestedEnabled && running && !inhibited},
-            {QStringLiteral("inhibited"), inhibited}
+            {QStringLiteral("inhibited"), inhibited},
+            {QStringLiteral("applied"), applied}
         };
+        if (!warning.isEmpty())
+            result.insert(QStringLiteral("warning"), warning);
         respond(socket, request, true, result);
         return true;
     }

@@ -61,6 +61,13 @@ Current operation groups are:
   to `"KOS Shell"`. The daemon calls `org.freedesktop.Notifications.Notify`
   when the service is registered and otherwise spawns `notify-send` with a
   fixed argv; fields are length-capped and never reach a shell)
+- `nightlight.get`, `nightlight.toggle` (KWin Night Color; `toggle` writes
+  `NightColor/Active` to kwinrc and applies through the NightLight D-Bus
+  interface. Once the config write has committed, a failure to uninhibit /
+  inhibit / reconfigure is partial application, not a failed toggle: the
+  response stays `ok:true` with `result.applied:false` and a `warning`
+  string, so callers align their UI to the persisted `enabled` state rather
+  than rolling back to a value that no longer matches kwinrc)
 - `shortcuts.apply`, `shortcuts.uninstall` (kglobalaccel-owned global
   shortcuts; the Shell composes each Exec line, the daemon validates,
   persists, and registers)
