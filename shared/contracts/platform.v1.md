@@ -45,11 +45,25 @@ Current operation groups are:
 - `shortcuts.apply`, `shortcuts.uninstall` (kglobalaccel-owned global
   shortcuts; the Shell composes each Exec line, the daemon validates,
   persists, and registers)
-- `network.*` (including `network.traffic` for read-only interface counters),
-  `audio.*` (including `audio.applications`,
+- `network.*` -- `network.scan`, `network.refresh`, `network.details`,
+  `network.connect` (open/PSK Wi-Fi; optional `savedProfileUuid`),
+  `network.connect-enterprise` (802.1X; `{ssid, device, identity, password,
+  eapMethod, anonymousIdentity?}` where `eapMethod` is `peap` or `ttls`;
+  implemented as an nmcli connection profile, never through process argv
+  with a shell), `network.disconnect`, `network.forget`,
+  `network.wifi-power`, and `network.traffic` for read-only interface
+  counters
+- `audio.*` (including `audio.applications`,
   `audio.application.set-volume`, and `audio.application.set-mute` for
-  per-application PipeWire/PulseAudio sink-input control), `bluetooth.*`, `display.*`, `session.*`,
-  `theme.*`, and `screenshot.*`
+  per-application PipeWire/PulseAudio sink-input control), `bluetooth.*`,
+  `display.*`, `session.*` -- `session.lock`, `session.suspend`,
+  `session.hibernate`, `session.reboot`, `session.poweroff`,
+  `session.logout`, `session.switch-user` -- `theme.*`, and `screenshot.*`
+
+`session.switch-user` shells out to `dm-tool switch-to-greeter`, which only
+exists under LightDM; on other display managers the call fails and the
+error is reported to the client as a normal failure response. A portable
+implementation (loginctl seat activation) is future work.
 
 KWin events are sent to subscribers as `window.snapshot`, `desktops`,
 `thumbnail`, `animation.started`, and related event names. KWin's internal script-to-daemon channel
