@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -1280,6 +1281,19 @@ func main() {
 	defer desktopReconcile.Stop()
 	go s.seedJournalHistory()
 	go watchDesktop(s)
+	// SIGTERM (systemd stop) used to fall through to the default handler and
+	// skip the trailing persist: up to 10s of settled uptime plus the last
+	// metrics/desktop snapshot was lost on every restart. A dedicated
+	// goroutine performs the final write before exiting; SIGINT gets the
+	// same treatment so Ctrl-C in `kosctl dev` is not a data-loss path.
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, unix.SIGTERM, unix.SIGINT)
+	go func() {
+		received := <-sig
+		fmt.Fprintln(os.Stderr, "received", received, "- persisting state")
+		s.persist()
+		os.Exit(0)
+	}()
 	for {
 		select {
 		case <-tick.C:
