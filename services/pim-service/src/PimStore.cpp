@@ -579,6 +579,9 @@ void PimStore::deliverDueReminders()
 {
     const QDateTime now = QDateTime::currentDateTime();
     const auto alarms = d->calendar->alarms(now.addSecs(-300), now.addSecs(30));
+    // Keys inserted during this pass; used to bound deliveredReminders
+    // below without losing dedupe for alarms still inside the window.
+    QSet<QString> justDelivered;
     for (const KCalendarCore::Alarm::Ptr &alarm : alarms) {
         QDateTime trigger = alarm->time();
         if (!trigger.isValid())
@@ -598,8 +601,16 @@ void PimStore::deliverDueReminders()
             continue;
 
         d->deliveredReminders.insert(key);
-        if (d->deliveredReminders.size() > 512)
-            d->deliveredReminders.clear();
+        justDelivered.insert(key);
+        if (d->deliveredReminders.size() > 512) {
+            // Bound the set without clearing it outright: keep the keys
+            // inserted during this pass, which are exactly the alarms still
+            // inside the delivery window. Wiping the whole set would let an
+            // alarm scheduled within the same window re-fire on the next
+            // delivery tick.
+            const QSet<QString> stillDue = d->deliveredReminders & justDelivered;
+            d->deliveredReminders = stillDue;
+        }
 
         const bool isTodo = incidence->type() == KCalendarCore::IncidenceBase::TypeTodo;
         const QString title = incidence->summary().isEmpty()
