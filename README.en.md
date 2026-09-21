@@ -310,7 +310,6 @@ Useful commands:
 ./tools/kosctl doctor
 ./tools/kosctl run
 ./tools/kosctl dev
-./tools/kosctl shortcuts install
 ./tools/kosctl glass-settings
 ```
 

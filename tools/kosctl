@@ -117,7 +117,7 @@ record_kwin_plugin_api_version() {
 
 usage() {
     cat <<'EOF'
-Usage: ./tools/kosctl <doctor|build|install [lockscreen|apps]|start|dev|run|uninstall [lockscreen]|glass-settings|nix [build|install|start|shell]|nix-status|shortcuts install|shortcuts uninstall>
+Usage: ./tools/kosctl <doctor|build|install [lockscreen|apps]|start|dev|run|uninstall [lockscreen]|glass-settings|nix [build|install|start|shell]|nix-status>
 
 NixOS remote install:
   git clone <repo> && cd Nextkde
@@ -1191,15 +1191,6 @@ uninstall() {
     fi
 }
 
-shortcuts() {
-    if [[ ! -x "$prefix/libexec/kos-platform" ]]; then
-        echo "kos-platform is not installed; run ./tools/kosctl install first" >&2
-        return 1
-    fi
-    KOS_SHORTCUTS_FILE="$project_dir/shared/contracts/shortcuts.v1.json" \
-        "$prefix/libexec/kos-platform" shortcuts "$1"
-}
-
 nix_deploy_artifacts() {
     local result_dir="$project_dir/result"
     if [[ ! -L "$result_dir" ]] || [[ ! -d "$result_dir" ]]; then
@@ -1312,8 +1303,5 @@ case "${1:-}" in
         [[ "${2:-}" == build || "${2:-}" == install || "${2:-}" == start || "${2:-}" == shell ]] || { usage >&2; exit 2; }
         nix_install "$2" ;;
     nix-status) nix_status ;;
-    shortcuts)
-        [[ "${2:-}" == install || "${2:-}" == uninstall ]] || { usage >&2; exit 2; }
-        shortcuts "$2" ;;
     *) usage >&2; exit 2 ;;
 esac

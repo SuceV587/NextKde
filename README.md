@@ -372,7 +372,6 @@ QML 改动在 `kosctl dev` 下即时生效（见上文）。要发布到已安�
 ./tools/kosctl doctor       # 检查依赖
 ./tools/kosctl run          # 从当前源码预览
 ./tools/kosctl dev          # 全栈源码调试
-./tools/kosctl shortcuts install
 ./tools/kosctl glass-settings
 ```
 
