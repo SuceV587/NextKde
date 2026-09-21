@@ -3356,6 +3356,36 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
         // Fixed argv on purpose: the op exists so the Shell never has to spawn
         // a shell just to resolve kos-settings on PATH, and no caller-supplied
         // argument can turn it into arbitrary command execution.
+        //
+        // The only tunable is the environment: Settings talks back to its
+        // Shell over Quickshell IPC, so a development Shell passes its
+        // Quickshell.shellDir through `shellDir` and the child reconnects to
+        // that same session instead of the installed `kos` configuration.
+        // The value must canonicalise to an existing directory; it is data in
+        // KOS_SHELL_DIR, never part of the argv.
+        QString shellDir;
+        const QJsonValue shellDirValue = payload.value(QStringLiteral("shellDir"));
+        if (!shellDirValue.isUndefined()) {
+            const QString raw = shellDirValue.toString();
+            if (raw.isEmpty() || raw.size() > 1024 || raw.contains(QChar('\0'))) {
+                respond(socket, request, false, {}, QStringLiteral("invalid-shell-dir"),
+                        QStringLiteral("Shell 目录无效"), false);
+                return true;
+            }
+            const QFileInfo info(raw);
+            if (!info.isAbsolute()) {
+                respond(socket, request, false, {}, QStringLiteral("invalid-shell-dir"),
+                        QStringLiteral("Shell 目录无效"), false);
+                return true;
+            }
+            const QString canonical = info.canonicalFilePath();
+            if (canonical.isEmpty() || !QFileInfo(canonical).isDir()) {
+                respond(socket, request, false, {}, QStringLiteral("invalid-shell-dir"),
+                        QStringLiteral("Shell 目录无效"), false);
+                return true;
+            }
+            shellDir = canonical;
+        }
         const QString executable = QStandardPaths::findExecutable(
             QStringLiteral("kos-settings"));
         if (executable.isEmpty()) {
@@ -3363,7 +3393,14 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
                     QStringLiteral("KOS 设置应用不可用"), true);
             return true;
         }
-        const bool started = QProcess::startDetached(executable, {});
+        QProcess process;
+        process.setProgram(executable);
+        if (!shellDir.isEmpty()) {
+            QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+            environment.insert(QStringLiteral("KOS_SHELL_DIR"), shellDir);
+            process.setProcessEnvironment(environment);
+        }
+        const bool started = process.startDetached();
         respond(socket, request, started, {{QStringLiteral("started"), started}});
         return true;
     }

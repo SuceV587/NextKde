@@ -42,8 +42,11 @@ Current operation groups are:
 - `kwin.subscribe`, `kwin.command`, `kwin.layout.update`
 - `kwin.animation.update-targets`, `kwin.animation.prepare-launch`
 - `settings.open` (allow-listed KDE System Settings modules) and
-  `settings.launch` (launch the `kos-settings` app with a fixed argv; no
-  caller-supplied arguments)
+  `settings.launch` (launch the `kos-settings` app with a fixed argv; the
+  only accepted payload field is `shellDir`, an optional absolute path that
+  must canonicalise to an existing directory and is exported to the child as
+  `KOS_SHELL_DIR` so a development Settings session reconnects to the Shell
+  that launched it; no caller-supplied arguments)
 - `state.read`, `state.write` (bounded read/write of UTF-8 state files under
   `$XDG_STATE_HOME/quickshell`; payload `{dir, file[, data]}` where `dir` is a
   relative sub-path -- or an absolute path that must stay under the state root
