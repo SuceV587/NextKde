@@ -3,6 +3,7 @@ pragma Singleton
 import QtQuick
 import QtCore
 import Quickshell
+import qs.desktop.modules.common
 import qs.desktop.modules.platform
 import "DesktopOutputs.mjs" as DesktopOutputs
 
@@ -20,8 +21,8 @@ QtObject {
     property var openWith: ({ loading: false, mime: "", defaultId: "", handlers: [] })
     property string clipboardMode: ""
     property var clipboardPaths: []
-    property var availableOutputs: DesktopOutputs.outputNames(Quickshell.screens)
-    readonly property string defaultOutput: availableOutputs.length > 0 ? availableOutputs[0] : ""
+    property var availableOutputs: DesktopOutputs.outputNames(ScreenLifecycle.usableScreens)
+    readonly property string defaultOutput: ScreenLifecycle.activeScreen?.name ?? ""
 
     // One writer for the existing module settings. Multiple desktop windows
     // must not hold independent caches of the same Settings file.
@@ -40,7 +41,9 @@ QtObject {
 
     function configureOutputs() {
         const outputs = availableOutputs
-        DataClient.request("desktop.outputs", { outputs: outputs, defaultOutput: outputs.length ? outputs[0] : "" }, function(response) {
+        const selectedDefault = outputs.indexOf(defaultOutput) >= 0
+            ? defaultOutput : (outputs[0] ?? "")
+        DataClient.request("desktop.outputs", { outputs: outputs, defaultOutput: selectedDefault }, function(response) {
             if (response?.ok)
                 service.applySnapshot(response.result?.desktop)
         })
@@ -86,6 +89,7 @@ QtObject {
         if (iconLeaseTimer)
             iconLeaseTimer.restart()
     }
+    onDefaultOutputChanged: configureOutputs()
 
     function _result(response, success, failure) {
         if (response?.ok) {
