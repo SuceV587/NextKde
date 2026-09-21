@@ -2,6 +2,7 @@
 // GUI dependencies: Quickshell consumes it over the kos-data.sock JSONL API;
 // snapshot.json is only the service's own persisted state, not a QML input.
 package main
+
 import (
 	"bufio"
 	"bytes"
@@ -184,6 +185,21 @@ type Service struct {
 	// are re-read on every sample.
 	sensorsOnce sync.Once
 	sensors     []sensorProbe
+	// launcherMeta caches a .desktop file's parsed Name/Icon keyed by its
+	// ModTime so the desktop reconcile sweep re-reads only files that
+	// actually changed instead of re-parsing every launcher each tick.
+	// refreshDesktop can run from the main loop, the watcher goroutine,
+	// and per-connection desktop.refresh handlers concurrently, so the
+	// map is guarded by its own mutex; the file parse itself happens
+	// outside the lock (no IO under any Service mutex).
+	launcherMetaMu sync.Mutex
+	launcherMeta   map[string]launcherMetaEntry
+}
+
+type launcherMetaEntry struct {
+	modTime int64
+	title   string
+	icon    string
 }
 
 func day(t time.Time) string { return t.Format("2006-01-02") }
@@ -408,12 +424,34 @@ func desktopLauncherPresentation(path string) (string, string) {
 	return name, icon
 }
 
-func readDesktop(directory string) Desktop {
+// launcherPresentationCached returns a .desktop file's Name/Icon, re-parsing
+// the file only when its ModTime differs from the cached entry. The map is
+// keyed by absolute path; a changed file gets a fresh parse, an unchanged
+// one skips the open/read entirely.
+func (s *Service) launcherPresentationCached(path string, modTime int64) (string, string) {
+	s.launcherMetaMu.Lock()
+	entry, ok := s.launcherMeta[path]
+	s.launcherMetaMu.Unlock()
+	if ok && entry.modTime == modTime {
+		return entry.title, entry.icon
+	}
+	title, icon := desktopLauncherPresentation(path)
+	s.launcherMetaMu.Lock()
+	if s.launcherMeta == nil {
+		s.launcherMeta = map[string]launcherMetaEntry{}
+	}
+	s.launcherMeta[path] = launcherMetaEntry{modTime: modTime, title: title, icon: icon}
+	s.launcherMetaMu.Unlock()
+	return title, icon
+}
+
+func (s *Service) readDesktop(directory string) Desktop {
 	desktop := Desktop{Directory: directory, Entries: []DesktopEntry{}}
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return desktop
 	}
+	seen := map[string]struct{}{}
 	for _, entry := range entries {
 		// Match standard desktop behaviour: dot-files are managed by their
 		// owning applications and do not appear as desktop icons by default.
@@ -424,16 +462,27 @@ func readDesktop(directory string) Desktop {
 		if err != nil {
 			continue
 		}
+		path := filepath.Join(directory, entry.Name())
 		kind := desktopKind(entry)
 		title, icon := "", ""
 		if kind == "launcher" {
-			title, icon = desktopLauncherPresentation(filepath.Join(directory, entry.Name()))
+			title, icon = s.launcherPresentationCached(path, info.ModTime().UnixMilli())
+			seen[path] = struct{}{}
 		}
 		desktop.Entries = append(desktop.Entries, DesktopEntry{
-			Name: entry.Name(), Path: filepath.Join(directory, entry.Name()),
+			Name: entry.Name(), Path: path,
 			Title: title, Kind: kind, Icon: icon, ModifiedAt: info.ModTime().UnixMilli(),
 		})
 	}
+	// Drop cache entries for launchers that no longer exist so the map
+	// cannot grow across file churn.
+	s.launcherMetaMu.Lock()
+	for path := range s.launcherMeta {
+		if _, ok := seen[path]; !ok {
+			delete(s.launcherMeta, path)
+		}
+	}
+	s.launcherMetaMu.Unlock()
 	sort.SliceStable(desktop.Entries, func(left, right int) bool {
 		leftFolder := desktop.Entries[left].Kind == "folder"
 		rightFolder := desktop.Entries[right].Kind == "folder"
@@ -450,7 +499,7 @@ func readDesktop(directory string) Desktop {
 }
 
 func (s *Service) refreshDesktop() bool {
-	desktop := readDesktop(s.desktopDirectory)
+	desktop := s.readDesktop(s.desktopDirectory)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	previous := s.state.Desktop
@@ -1220,7 +1269,11 @@ func main() {
 	// tick; a 1s snapshot write every ten seconds is an atomic json write.
 	settleTick := time.NewTicker(1 * time.Second)
 	save := time.NewTicker(10 * time.Second)
-	desktopReconcile := time.NewTicker(5 * time.Second)
+	// inotify is the primary source of desktop changes; this ticker is only
+	// the repair pass for a missed or overflowed event, so it runs at 30s,
+	// not 5s. Each pass re-stats the directory but re-parses only launchers
+	// whose ModTime changed (the launcherMeta cache).
+	desktopReconcile := time.NewTicker(30 * time.Second)
 	defer tick.Stop()
 	defer settleTick.Stop()
 	defer save.Stop()
