@@ -113,6 +113,7 @@ private:
     bool handleAppMenu(QLocalSocket *socket, const QJsonObject &request);
     bool handleInput(QLocalSocket *socket, const QJsonObject &request);
     bool handleSystemOperation(QLocalSocket *socket, const QJsonObject &request);
+    bool handleStateOperation(QLocalSocket *socket, const QJsonObject &request);
     void startClipboardHistoryWatcher(QProcess *&watcher,
                                       const QStringList &arguments);
     void runClipboardDecode(QLocalSocket *socket, const QJsonObject &request,

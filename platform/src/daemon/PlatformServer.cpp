@@ -273,6 +273,86 @@ QString cleanCreatePath(const QString &path)
     return result;
 }
 
+// ---------------------------------------------------------------------------
+// Shell state files (state.read / state.write).
+//
+// The Shell persists small JSON blobs under Quickshell.stateDir, i.e.
+// $XDG_STATE_HOME/quickshell/<shell id>. Both ops are rooted at the shared
+// quickshell state root so every component reads the same files while nothing
+// outside $XDG_STATE_HOME/quickshell can be addressed.
+// ---------------------------------------------------------------------------
+
+// A single state payload is a small JSON document; 1 MiB is orders of
+// magnitude above the largest legitimate config while still bounding the
+// memory a request can make the daemon read or write.
+constexpr qint64 kMaxStateFileBytes = 1024 * 1024;
+constexpr qsizetype kMaxStateDirLength = 512;
+constexpr qsizetype kMaxStateFileNameLength = 255;
+
+QString stateRootPath()
+{
+    // Mirrors Quickshell.stateDir's root: $XDG_STATE_HOME/quickshell.
+    return QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation)
+        + QStringLiteral("/quickshell");
+}
+
+// Returns the resolved absolute path for <root>/<dir>/<file>, or {} when the
+// pair escapes the root. `dir` may be empty (the root itself), a relative
+// sub-path, or an absolute path that must sit under the root; `file` is a
+// bare file name. Everything existing is canonicalized first, so `..`
+// segments and symlinks that resolve outside the root are rejected by the
+// final prefix check rather than by string comparison on the raw input.
+QString resolveStatePath(const QString &dir, const QString &file)
+{
+    if (file.isEmpty() || file.size() > kMaxStateFileNameLength
+        || file == QStringLiteral(".") || file == QStringLiteral("..")
+        || file.contains(QLatin1Char('/')) || file.contains(QLatin1Char('\\'))
+        || file.contains(QChar('\0')))
+        return {};
+    if (dir.size() > kMaxStateDirLength || dir.contains(QChar('\0')))
+        return {};
+
+    const QString root = QDir::cleanPath(stateRootPath());
+    QString joined;
+    if (QFileInfo(dir).isAbsolute())
+        joined = QDir::cleanPath(dir);
+    else
+        joined = QDir::cleanPath(dir.isEmpty() ? root
+                                               : root + QLatin1Char('/') + dir);
+    if (joined != root && !joined.startsWith(root + QLatin1Char('/')))
+        return {};
+
+    // cleanCreatePath canonicalizes the deepest existing ancestor and appends
+    // the still-missing components literally, so it resolves both an existing
+    // directory and one about to be mkpath'ed.
+    const QString resolvedRoot = cleanCreatePath(root);
+    if (resolvedRoot.isEmpty())
+        return {};
+    const QString resolvedDir = cleanCreatePath(joined);
+    if (resolvedDir.isEmpty()
+        || (resolvedDir != resolvedRoot
+            && !resolvedDir.startsWith(resolvedRoot + QLatin1Char('/'))))
+        return {};
+    // An existing dir must be a real directory; a file here would make the
+    // append below meaningless (and mkpath would fail later anyway).
+    const QFileInfo dirInfo(resolvedDir);
+    if (dirInfo.exists() && !dirInfo.isDir())
+        return {};
+
+    const QString target = resolvedDir + QLatin1Char('/') + file;
+    const QFileInfo targetInfo(target);
+    if (!targetInfo.exists())
+        return target;
+    // The file exists: resolve it once more so a symlink planted inside the
+    // state tree cannot point a read outside the root. (QSaveFile replaces a
+    // symlink atomically instead of following it, but reads do follow.)
+    const QString canonicalTarget = targetInfo.canonicalFilePath();
+    if (canonicalTarget.isEmpty()
+        || !canonicalTarget.startsWith(resolvedRoot + QLatin1Char('/')))
+        return {};
+    return canonicalTarget;
+}
+
 QString resolveDesktopFile(const QString &id)
 {
     if (id.isEmpty() || id.contains(QChar('\0')))
@@ -3272,6 +3352,83 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
         respond(socket, request, started, {{QStringLiteral("started"), started}});
         return true;
     }
+    if (op == QStringLiteral("settings.launch")) {
+        // Fixed argv on purpose: the op exists so the Shell never has to spawn
+        // a shell just to resolve kos-settings on PATH, and no caller-supplied
+        // argument can turn it into arbitrary command execution.
+        const QString executable = QStandardPaths::findExecutable(
+            QStringLiteral("kos-settings"));
+        if (executable.isEmpty()) {
+            respond(socket, request, false, {}, QStringLiteral("settings-unavailable"),
+                    QStringLiteral("KOS 设置应用不可用"), true);
+            return true;
+        }
+        const bool started = QProcess::startDetached(executable, {});
+        respond(socket, request, started, {{QStringLiteral("started"), started}});
+        return true;
+    }
+    if (op == QStringLiteral("notify")) {
+        // Bounded freedesktop notification. The daemon prefers the session
+        // D-Bus interface (owned by the Shell's own NotificationServer or
+        // Plasma) and falls back to a fixed-argv notify-send spawn; either way
+        // the payload is validated data, never a command line.
+        const QString summary = payload.value(QStringLiteral("summary")).toString();
+        const QString body = payload.value(QStringLiteral("body")).toString();
+        const QString icon = payload.value(QStringLiteral("icon")).toString();
+        const QString urgencyName = payload.value(QStringLiteral("urgency"))
+            .toString(QStringLiteral("normal"));
+        uchar urgency = 1;
+        if (urgencyName == QStringLiteral("low"))
+            urgency = 0;
+        else if (urgencyName == QStringLiteral("critical"))
+            urgency = 2;
+        else if (urgencyName != QStringLiteral("normal")) {
+            respond(socket, request, false, {}, QStringLiteral("invalid-notification"),
+                    QStringLiteral("通知 urgency 无效"), false);
+            return true;
+        }
+        if (summary.isEmpty() || summary.size() > 256 || body.size() > 1024
+            || icon.size() > 255
+            || summary.contains(QChar('\0')) || body.contains(QChar('\0'))
+            || icon.contains(QChar('\0'))) {
+            respond(socket, request, false, {}, QStringLiteral("invalid-notification"),
+                    QStringLiteral("通知内容无效或超过长度上限"), false);
+            return true;
+        }
+        if (dbusServiceRegistered(QDBusConnection::sessionBus(),
+                                  QStringLiteral("org.freedesktop.Notifications"))) {
+            QDBusMessage call = QDBusMessage::createMethodCall(
+                QStringLiteral("org.freedesktop.Notifications"),
+                QStringLiteral("/org/freedesktop/Notifications"),
+                QStringLiteral("org.freedesktop.Notifications"),
+                QStringLiteral("Notify"));
+            const QVariantMap hints{
+                {QStringLiteral("urgency"), QVariant::fromValue<uchar>(urgency)}};
+            call.setArguments({QStringLiteral("KOS Shell"), 0U, icon, summary, body,
+                               QStringList{}, hints, 5000});
+            // Fire-and-forget: the notification UI owns delivery, and a slow
+            // or absent implementation must not hold the socket reply.
+            QDBusConnection::sessionBus().asyncCall(call, kDbusCallTimeoutMs);
+            respond(socket, request, true, QJsonObject{{QStringLiteral("delivered"), true}});
+            return true;
+        }
+        const QString notifySend = QStandardPaths::findExecutable(
+            QStringLiteral("notify-send"));
+        if (notifySend.isEmpty()) {
+            respond(socket, request, false, {}, QStringLiteral("notify-unavailable"),
+                    QStringLiteral("没有可用的通知服务"), true);
+            return true;
+        }
+        const QStringList args{QStringLiteral("-a"), QStringLiteral("KOS Shell"),
+                               QStringLiteral("-i"), icon,
+                               QStringLiteral("-u"), urgencyName,
+                               QStringLiteral("-t"), QStringLiteral("5000"),
+                               summary, body};
+        const bool started = QProcess::startDetached(notifySend, args);
+        respond(socket, request, started,
+                QJsonObject{{QStringLiteral("delivered"), started}});
+        return true;
+    }
     if (op == QStringLiteral("nightlight.get")) {
         const QString key = QStringLiteral("nightlight.get");
         if (serveCachedReply(socket, request, key))
@@ -4112,6 +4269,82 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
     return false;
 }
 
+bool PlatformServer::handleStateOperation(QLocalSocket *socket, const QJsonObject &request)
+{
+    const QString op = operation(request);
+    if (!op.startsWith(QStringLiteral("state.")))
+        return false;
+    const QJsonObject payload = request.value(QStringLiteral("payload")).toObject();
+    const QString path = resolveStatePath(
+        payload.value(QStringLiteral("dir")).toString(),
+        payload.value(QStringLiteral("file")).toString());
+    if (path.isEmpty()) {
+        respond(socket, request, false, {}, QStringLiteral("invalid-state-path"),
+                QStringLiteral("状态文件路径无效或越出状态目录"), false);
+        return true;
+    }
+    if (op == QStringLiteral("state.read")) {
+        const QFileInfo info(path);
+        if (!info.exists()) {
+            // A missing file is not an error: consumers treat it as "no
+            // persisted state yet", same as a first-run config directory.
+            respond(socket, request, true,
+                    QJsonObject{{QStringLiteral("data"), QString()},
+                                {QStringLiteral("exists"), false}});
+            return true;
+        }
+        if (!info.isFile() || info.size() > kMaxStateFileBytes) {
+            respond(socket, request, false, {}, QStringLiteral("invalid-state-file"),
+                    QStringLiteral("状态文件不可读或超过大小上限"), false);
+            return true;
+        }
+        QFile input(path);
+        if (!input.open(QIODevice::ReadOnly)) {
+            respond(socket, request, false, {}, QStringLiteral("state-read-failed"),
+                    QStringLiteral("无法读取状态文件"), true);
+            return true;
+        }
+        respond(socket, request, true,
+                QJsonObject{{QStringLiteral("data"), QString::fromUtf8(input.readAll())},
+                            {QStringLiteral("exists"), true}});
+        return true;
+    }
+    if (op == QStringLiteral("state.write")) {
+        const QJsonValue data = payload.value(QStringLiteral("data"));
+        if (!data.isString()) {
+            respond(socket, request, false, {}, QStringLiteral("invalid-state-data"),
+                    QStringLiteral("state.write 需要字符串 data 字段"), false);
+            return true;
+        }
+        const QByteArray bytes = data.toString().toUtf8();
+        if (bytes.size() > kMaxStateFileBytes) {
+            respond(socket, request, false, {}, QStringLiteral("state-data-too-large"),
+                    QStringLiteral("状态内容超过大小上限"), false);
+            return true;
+        }
+        const QString parent = QFileInfo(path).path();
+        if (!QDir().mkpath(parent)) {
+            respond(socket, request, false, {}, QStringLiteral("state-write-failed"),
+                    QStringLiteral("无法创建状态目录"), true);
+            return true;
+        }
+        // QSaveFile writes to a sibling temp file and renames on commit, so a
+        // crash mid-write never leaves a half-written state file behind.
+        QSaveFile output(path);
+        if (!output.open(QIODevice::WriteOnly)
+            || output.write(bytes) != bytes.size()
+            || !output.commit()) {
+            respond(socket, request, false, {}, QStringLiteral("state-write-failed"),
+                    QStringLiteral("无法写入状态文件"), true);
+            return true;
+        }
+        respond(socket, request, true,
+                QJsonObject{{QStringLiteral("written"), bytes.size()}});
+        return true;
+    }
+    return false;
+}
+
 void PlatformServer::handleRequest(QLocalSocket *socket, const QJsonObject &request)
 {
     if (request.value(QStringLiteral("version")).toInt(kProtocolVersion) != kProtocolVersion) {
@@ -4133,7 +4366,8 @@ void PlatformServer::handleRequest(QLocalSocket *socket, const QJsonObject &requ
         || handleFileOperation(socket, request)
         || handleKWin(socket, request) || handleAppMenu(socket, request)
         || handleInput(socket, request)
-        || handleSystemOperation(socket, request))
+        || handleSystemOperation(socket, request)
+        || handleStateOperation(socket, request))
         return;
     respond(socket, request, false, {}, QStringLiteral("unknown-operation"),
             QStringLiteral("未知的平台操作"), false);
