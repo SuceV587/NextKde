@@ -150,6 +150,9 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: Math.round(root.height * 0.09)
+        // theme.conf: showClock=false hides the clock for setups that already
+        // paint one into their background image.
+        visible: typeof config === "undefined" || String(config.showClock) !== "false"
     }
 
     // ---- account, field, actions -----------------------------------------
