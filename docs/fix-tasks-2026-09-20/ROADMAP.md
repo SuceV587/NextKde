@@ -39,7 +39,7 @@
 | R26 | 四 | WallpaperColorSource 轮询降频/mtime | `shared/qml/colorize/WallpaperColorSource.qml` | — | L |
 | R27 | 四 | ColorScheme 结果 memoize + 异步 | `shared/qml/colorize/*.mjs`,`AppearanceTokens.qml` | R26(同目录) | L |
 | R28 | 四 | 抽 JsonlClient 合并 PlatformClient/DataClient + 测试 | `shell/.../platform/*.qml` | — | M |
-| R29 | 五 | 零散小项（lockscreen timer、ApplicationRunner、Scanner、死命令等） | 多文件 | 视子项 | N |
+| R29 [x] | 五 | 零散小项（lockscreen timer、ApplicationRunner、Scanner、死命令等） | 多文件 | 视子项 | N |
 
 ---
 

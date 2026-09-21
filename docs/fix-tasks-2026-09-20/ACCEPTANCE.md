@@ -133,7 +133,7 @@
 ### 阶段五 · 收尾
 
 **R29 零散项**
-- ☐ 各子项按任务卡逐条验收
+- ☑ 各子项按任务卡逐条验收
 
 ---
 
@@ -150,3 +150,4 @@
 | R7 | 2026-09-21 | 通过 | code-reviewer PASS（low 残余：硬链接同 inode 拷贝不防，预存在） | 分支 fix/2026-09-20-daemon-filecopy-async，commit 6ec1a98 |
 | R8 | 2026-09-21 | 通过 | code-reviewer PASS | 分支 fix/2026-09-20-daemon-netrefresh-async，commit 337b655 |
 | R9 | 2026-09-21 | 通过 | code-reviewer PASS | 分支 fix/2026-09-20-daemon-readbuf-cap，commit 88aa71e |
+| R29 | 2026-09-22 | 通过 | code-reviewer PASS（3 minor：SIGTERM persist 与主循环竞态窗口极小；listBootsSpan 对旧 systemd 无 tz 后缀静默降级；deliveredReminders >512 时窗口内告警可重发一次——均记录不阻塞） | 分支 fix/2026-09-20-cleanup，18 commits（88e75bb..a681dcd）；ApplicationRunner 稳定后停轮询、sddm showClock、data-service scanner/accept/reconcile/SIGTERM/list-boots、pim 信号驱动、kwin 重试上限、kosctl 死命令、tmp GC、platform.v1.md 同步等 |
