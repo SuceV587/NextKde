@@ -3068,6 +3068,83 @@ ApplicationWindow {
         property bool barLiquidDirty: false
         property string errorText: ""
 
+        // Per-surface visibility. The two id lists come from the Shell's own
+        // snapshot so this page never keeps a second copy of the surface names
+        // that could drift from the QML the shell actually builds. Each entry
+        // is { id, label, visible } and is rebuilt on every snapshot.
+        property var deskCenterWidgets: []
+        property var statusCells: []
+        readonly property var deskCenterWidgetLabels: ({
+            clock: "时钟",
+            weather: "天气",
+            calendar: "日历",
+            todo: "待办事项",
+            system: "系统监控",
+            activity: "活动统计",
+            music: "音乐",
+        })
+        readonly property var statusCellLabels: ({
+            network: "网络",
+            battery: "电池",
+            settings: "设置",
+            controlcenter: "控制中心",
+        })
+
+        function parseIdList(raw) {
+            try {
+                const parsed = JSON.parse(raw)
+                return Array.isArray(parsed) ? parsed : []
+            } catch (_) {
+                return []
+            }
+        }
+
+        // Builds one row per surface the Shell reported. The ids come from the
+        // Shell's snapshot rather than a list kept here, so a widget or cell
+        // added to the Shell shows up in this page without editing it.
+        //
+        // The row shape mirrors VisibilityPolicy.mjs in the Shell, but this
+        // process cannot import it: kos-settings is a separate binary that
+        // never imports Shell modules. Only the display copy is duplicated --
+        // the Shell remains the sole validator, via its own normalizeHiddenIds,
+        // so nothing here can put an unknown id or a hidden anchor into the
+        // persisted config.
+        function rebuildVisibilityRows(state) {
+            if (!state) return
+            const hiddenWidgets = parseIdList(state.hiddenDeskCenterWidgets)
+            const hiddenCells = parseIdList(state.hiddenStatusCells)
+            deskCenterWidgets = parseIdList(state.deskCenterWidgetIds).map(
+                function(id) {
+                    return {
+                        id: id,
+                        label: deskCenterWidgetLabels[id] ?? id,
+                        visible: hiddenWidgets.indexOf(id) < 0,
+                    }
+                })
+            statusCells = parseIdList(state.statusCellIds).map(
+                function(id) {
+                    return {
+                        id: id,
+                        label: statusCellLabels[id] ?? id,
+                        visible: hiddenCells.indexOf(id) < 0,
+                    }
+                })
+        }
+
+        function setDeskCenterWidgetVisible(id, visible) {
+            if (!bridge) return
+            applyState(bridge.updateDeskCenterWidgetVisibility(id, visible))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function setStatusCellVisible(id, visible) {
+            if (!bridge) return
+            applyState(bridge.updateStatusCellVisibility(id, visible))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
         function percentage(value) {
             return Math.round(value * 100) + "%"
         }
@@ -3095,6 +3172,7 @@ ApplicationWindow {
             barBlurDirty = false
             barLiquidDirty = false
             errorText = ""
+            rebuildVisibilityRows(state)
         }
 
         function refresh() {
@@ -3334,6 +3412,185 @@ ApplicationWindow {
                             onToggled: function(checked) {
                                 barPage.setBarIntegratedWithDock(checked)
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: "状态栏图标".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 4
+            visible: barPage.statusCells.length > 0
+        }
+
+        // The Shell owns one cell per entry; this page only flips visibility.
+        // The rows come from statusCellIds in the snapshot, so a cell added to
+        // BarStatusArea.qml shows up here without editing this file.
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: statusCellCol.implicitHeight
+            visible: barPage.statusCells.length > 0
+            radius: 18
+            color: theme.card
+
+            Column {
+                id: statusCellCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+
+                Repeater {
+                    model: barPage.statusCells
+
+                    delegate: Column {
+                        id: statusCellRow
+                        required property var modelData
+                        required property int index
+
+                        width: parent.width
+
+                        Item {
+                            width: parent.width
+                            height: 54
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 16
+                                anchors.rightMargin: 16
+                                spacing: 12
+                                SettingIcon {
+                                    symbol: statusCellRow.modelData.id === "controlcenter"
+                                        ? "◍" : "◉"
+                                    tint: "#5ac8fa"
+                                }
+                                Column {
+                                    Layout.fillWidth: true
+                                    spacing: 1
+                                    Text {
+                                        text: statusCellRow.modelData.label
+                                        color: theme.primaryText
+                                        font.pixelSize: 15
+                                        font.weight: Font.DemiBold
+                                    }
+                                    // The Control Center is the anchor the other
+                                    // panels hang from, so hiding it is called
+                                    // out rather than treated like the rest.
+                                    Text {
+                                        text: statusCellRow.modelData.id === "controlcenter"
+                                            ? "控制中心是其他面板的锚点，隐藏后这些面板将失去定位"
+                                            : "在顶栏状态区中显示此图标"
+                                        color: theme.secondaryText
+                                        font.pixelSize: 11
+                                    }
+                                }
+                                Item { Layout.fillWidth: true }
+                                LiquidControls.LiquidGlassSwitch {
+                                    checked: statusCellRow.modelData.visible
+                                    accentColor: theme.role("primary", "#0a84ff")
+                                    trackColor: theme.divider
+                                    onToggled: function(checked) {
+                                        barPage.setStatusCellVisible(
+                                            statusCellRow.modelData.id, checked)
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: 53
+                            height: 1
+                            color: theme.separator
+                            visible: statusCellRow.index < barPage.statusCells.length - 1
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: "桌面小组件".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 4
+            visible: barPage.deskCenterWidgets.length > 0
+        }
+
+        // The DeskCenter cards. The Shell filters its pack pass with the same
+        // hidden set, so an unchecked row stops the card being laid out at all
+        // rather than merely hiding an already-positioned surface.
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: deskCenterCol.implicitHeight
+            visible: barPage.deskCenterWidgets.length > 0
+            radius: 18
+            color: theme.card
+
+            Column {
+                id: deskCenterCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+
+                Repeater {
+                    model: barPage.deskCenterWidgets
+
+                    delegate: Column {
+                        id: deskCenterRow
+                        required property var modelData
+                        required property int index
+
+                        width: parent.width
+
+                        Item {
+                            width: parent.width
+                            height: 54
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 16
+                                anchors.rightMargin: 16
+                                spacing: 12
+                                SettingIcon { symbol: "▢"; tint: "#30d158" }
+                                Column {
+                                    Layout.fillWidth: true
+                                    spacing: 1
+                                    Text {
+                                        text: deskCenterRow.modelData.label
+                                        color: theme.primaryText
+                                        font.pixelSize: 15
+                                        font.weight: Font.DemiBold
+                                    }
+                                    Text {
+                                        text: "在桌面层显示此小组件卡片"
+                                        color: theme.secondaryText
+                                        font.pixelSize: 11
+                                    }
+                                }
+                                Item { Layout.fillWidth: true }
+                                LiquidControls.LiquidGlassSwitch {
+                                    checked: deskCenterRow.modelData.visible
+                                    accentColor: theme.role("primary", "#0a84ff")
+                                    trackColor: theme.divider
+                                    onToggled: function(checked) {
+                                        barPage.setDeskCenterWidgetVisible(
+                                            deskCenterRow.modelData.id, checked)
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: 53
+                            height: 1
+                            color: theme.separator
+                            visible: deskCenterRow.index < barPage.deskCenterWidgets.length - 1
                         }
                     }
                 }

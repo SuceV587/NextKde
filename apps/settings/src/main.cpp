@@ -332,6 +332,21 @@ public:
             QStringLiteral("updateDockWindowAnimationStyle"), style}));
     }
 
+    // `visible` is the wanted state; the Shell flips it into its stored hidden
+    // set. Passing the wanted value keeps the QML switch a plain mirror of the
+    // snapshot it just rendered, with no negation to keep in sync.
+    Q_INVOKABLE QVariantMap updateDeskCenterWidgetVisibility(const QString &id, bool visible) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateDeskCenterWidgetVisibility"), id,
+            visible ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
+    Q_INVOKABLE QVariantMap updateStatusCellVisibility(const QString &id, bool visible) {
+        return appearanceSnapshotFromReply(callAppearance({
+            QStringLiteral("updateStatusCellVisibility"), id,
+            visible ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
     Q_INVOKABLE QVariantMap resetAppearanceStrengths() {
         return appearanceSnapshotFromReply(callAppearance({QStringLiteral("resetStrengths")}));
     }
@@ -571,6 +586,23 @@ private:
                 object.value(QStringLiteral("barLayoutMode")).toString(QStringLiteral("transparent"))},
             {QStringLiteral("dockWindowAnimationStyle"),
                 object.value(QStringLiteral("dockWindowAnimationStyle")).toString()},
+            // Per-surface visibility, passed through as JSON strings for the
+            // same reason as materialColorSwatches: a QML array does not
+            // survive the QVariantMap crossing, and the page parses these
+            // itself. A Shell that predates the feature simply omits them, and
+            // the QML side then treats every surface as visible.
+            {QStringLiteral("hiddenDeskCenterWidgets"),
+                object.value(QStringLiteral("hiddenDeskCenterWidgets")).toString(
+                    QStringLiteral("[]"))},
+            {QStringLiteral("hiddenStatusCells"),
+                object.value(QStringLiteral("hiddenStatusCells")).toString(
+                    QStringLiteral("[]"))},
+            {QStringLiteral("deskCenterWidgetIds"),
+                object.value(QStringLiteral("deskCenterWidgetIds")).toString(
+                    QStringLiteral("[]"))},
+            {QStringLiteral("statusCellIds"),
+                object.value(QStringLiteral("statusCellIds")).toString(
+                    QStringLiteral("[]"))},
             {QStringLiteral("tokenVersion"), object.value(QStringLiteral("tokenVersion")).toInt()},
         };
     }
