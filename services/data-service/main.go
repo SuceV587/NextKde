@@ -842,41 +842,37 @@ func readRaw(path string) []byte {
 	return bytes.TrimSpace(raw)
 }
 
-// journalTimestampFirst returns the first entry's epoch timestamp of a boot
-// log without buffering the whole journal: head closes the pipe after one
-// line, so journalctl stops writing after its first record. The shell's exit
-// status is therefore 141 on a successful read; only the stdout line matters.
-func journalTimestampFirst(boot string) float64 {
-	out, err := exec.Command("sh", "-c",
-		"exec journalctl -b \"$1\" -o short-unix --no-pager 2>/dev/null | head -n1",
-		"journal-first", boot).Output()
-	if err != nil && len(out) == 0 {
+// listBootsSpan extracts the first-entry and last-entry timestamps from one
+// `journalctl --list-boots` line. Each record is
+//
+//	<idx> <boot-id> <first weekday> <first date> <first time> <tz> --
+//	<last weekday> <last date> <last time> <tz>
+//
+// so splitting on "--" and parsing the two trailing "<date> <time>" pairs
+// yields the same epoch bounds the former per-boot journalctl calls read.
+// A line that does not fit the shape yields (0, 0) and is skipped.
+func listBootsSpan(line string) (float64, float64) {
+	sides := strings.SplitN(line, "--", 2)
+	if len(sides) != 2 {
+		return 0, 0
+	}
+	parse := func(side string) float64 {
+		fields := strings.Fields(side)
+		if len(fields) < 3 {
+			return 0
+		}
+		text := fields[len(fields)-3] + " " + fields[len(fields)-2]
+		for _, layout := range []string{
+			"2006-01-02 15:04:05.999999999",
+			"2006-01-02 15:04:05",
+		} {
+			if t, err := time.ParseInLocation(layout, text, time.Local); err == nil {
+				return float64(t.UnixNano()) / 1e9
+			}
+		}
 		return 0
 	}
-	return shortUnixTimestamp(strings.TrimSpace(string(out)))
-}
-
-// journalTimestampLast uses journalctl's own tail read, so a years-long boot
-// log costs one line instead of an unbounded in-memory copy.
-func journalTimestampLast(boot string) float64 {
-	out, err := exec.Command("journalctl", "-b", boot, "-o", "short-unix",
-		"--no-pager", "-n", "1").Output()
-	if err != nil && len(out) == 0 {
-		return 0
-	}
-	return shortUnixTimestamp(strings.TrimSpace(string(out)))
-}
-
-func shortUnixTimestamp(line string) float64 {
-	if line == "" {
-		return 0
-	}
-	// short-unix timestamps are epoch seconds with a fractional tail.
-	parsed, err := strconv.ParseFloat(strings.SplitN(line, " ", 2)[0], 64)
-	if err != nil || parsed <= 0 {
-		return 0
-	}
-	return parsed
+	return parse(sides[0]), parse(sides[1])
 }
 
 // seedJournalHistory attributes uptime from past boots recorded by journald.
@@ -902,20 +898,17 @@ func (s *Service) seedJournalHistory() {
 		s.mu.Unlock()
 		return
 	}
-	// The first listed boot is the current one; historical uptime starts at
-	// the second. Boots beyond 84 stay outside the bounded daily view.
+	// --list-boots already carries each boot's first and last timestamps, so
+	// seeding costs this single journalctl spawn instead of two more per boot
+	// (~170 forks on a year-old journal). The first listed boot is the
+	// current one; historical uptime starts at the second. Boots beyond 84
+	// stay outside the bounded daily view.
 	limit := len(boots)
 	if limit > 85 {
 		limit = 85
 	}
 	for i := 1; i < limit; i++ {
-		fields := strings.Fields(boots[i])
-		if len(fields) == 0 {
-			continue
-		}
-		boot := fields[0]
-		first := journalTimestampFirst(boot)
-		last := journalTimestampLast(boot)
+		first, last := listBootsSpan(boots[i])
 		if last <= first {
 			continue
 		}
