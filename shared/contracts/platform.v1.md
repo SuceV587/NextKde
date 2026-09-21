@@ -41,7 +41,22 @@ Current operation groups are:
   `file.open-kde`
 - `kwin.subscribe`, `kwin.command`, `kwin.layout.update`
 - `kwin.animation.update-targets`, `kwin.animation.prepare-launch`
-- `settings.open` (allow-listed KDE System Settings modules)
+- `settings.open` (allow-listed KDE System Settings modules) and
+  `settings.launch` (launch the `kos-settings` app with a fixed argv; no
+  caller-supplied arguments)
+- `state.read`, `state.write` (bounded read/write of UTF-8 state files under
+  `$XDG_STATE_HOME/quickshell`; payload `{dir, file[, data]}` where `dir` is a
+  relative sub-path -- or an absolute path that must stay under the state root
+  -- and `file` is a bare file name. Paths are canonicalized and must remain
+  under the root (`..` and symlink escapes are rejected); payloads are capped
+  at 1 MiB. `state.write` commits atomically via a sibling temp file +
+  rename. `state.read` returns `{data, exists}` and reports `exists:false`
+  with an empty `data` for a missing file)
+- `notify` (freedesktop notification; payload `{summary, body?, icon?,
+  urgency?}` with `urgency` one of `low`/`normal`/`critical`. The daemon
+  calls `org.freedesktop.Notifications.Notify` when the service is
+  registered and otherwise spawns `notify-send` with a fixed argv; fields
+  are length-capped and never reach a shell)
 - `shortcuts.apply`, `shortcuts.uninstall` (kglobalaccel-owned global
   shortcuts; the Shell composes each Exec line, the daemon validates,
   persists, and registers)
