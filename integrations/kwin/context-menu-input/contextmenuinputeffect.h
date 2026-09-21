@@ -40,6 +40,7 @@ private:
 
     std::unique_ptr<ContextMenuPointerSpy> m_pointerSpy;
     bool m_pointerSpyInstalled = false;
+    int m_spyInstallAttempts = 0;
 };
 
 } // namespace KWin

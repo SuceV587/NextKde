@@ -117,8 +117,17 @@ void ContextMenuInputEffect::installPointerSpy()
 
     // Effects may be constructed before KWin finishes bringing up input on a
     // compositor restart. Retry on its event loop instead of silently ending
-    // up with a permanently inactive effect.
-    QTimer::singleShot(100, this, &ContextMenuInputEffect::installPointerSpy);
+    // up with a permanently inactive effect -- but bounded: the retry doubles
+    // each time and gives up after ~63s total, because a compositor that has
+    // not offered input() by then is not merely starting up.
+    constexpr int kMaxSpyInstallAttempts = 10;
+    if (++m_spyInstallAttempts >= kMaxSpyInstallAttempts) {
+        qWarning() << "KOS context-menu effect: input redirection never became"
+                      "available; pointer spy stays uninstalled";
+        return;
+    }
+    QTimer::singleShot(100 * (1 << (m_spyInstallAttempts - 1)), this,
+                       &ContextMenuInputEffect::installPointerSpy);
 }
 
 void ContextMenuInputEffect::handlePointerPress(const QPointF &position,
