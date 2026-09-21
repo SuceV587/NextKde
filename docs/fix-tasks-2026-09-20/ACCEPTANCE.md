@@ -150,6 +150,12 @@
 | R7 | 2026-09-21 | 通过 | code-reviewer PASS（low 残余：硬链接同 inode 拷贝不防，预存在） | 分支 fix/2026-09-20-daemon-filecopy-async，commit 6ec1a98 |
 | R8 | 2026-09-21 | 通过 | code-reviewer PASS | 分支 fix/2026-09-20-daemon-netrefresh-async，commit 337b655 |
 | R9 | 2026-09-21 | 通过 | code-reviewer PASS | 分支 fix/2026-09-20-daemon-readbuf-cap，commit 88aa71e |
+| R10 | 2026-09-21 | 通过 | code-reviewer PASS（5 minor：notify-send `--`、read cap+1、错误码、dispatch 顺序、契约上限——已合并为 polish commit） | 分支 fix/2026-09-20-daemon-state-ops，commit a4de0f1 |
+| R11 | 2026-09-21 | 通过 | code-reviewer FAIL→PASS（首轮：LockScreenFeedService 语法残缺+_packageInstalled 单向——已修；复审 PASS，3 minor 记录） | 分支 fix/2026-09-20-qml-state-store，commit 7520313（amend 后）；新增 JsonConfigStore.qml |
+| R12 | 2026-09-21 | 通过 | code-reviewer FAIL→PASS（首轮：nightlight 部分失败三方不一致——daemon 改 ok+applied:false；复审 PASS，1 minor：launchById terminal 路径） | 分支 fix/2026-09-20-qml-redline，10 commits（efa0e70..2b044b0）；daemon settings.launch 加 shellDir |
+| R13 | 2026-09-21 | 通过 | code-reviewer PASS（4 minor：无 contract 测试、TOCTOU、白名单比任务卡宽、QML 空格路径不加引号——均记录不阻塞） | 分支 fix/2026-09-20-daemon-shortcuts-exec，commit 6c7e676 |
+| R14 | 2026-09-21 | 通过 | code-reviewer PASS（3 minor 记录；WPA3-only AP 与旧 nmcli 同等覆盖；D-Bus 路径未实测真机） | 分支 fix/2026-09-20-daemon-wifi-secret，commit 4ccf49e |
+| R15 | 2026-09-21 | 通过 | code-reviewer PASS（cache 1.5s TTL + dataChanged 失效 + hash 门控 prune） | 同分支，commit 52382a7 |
 | R23 | 2026-09-22 | 通过 | code-reviewer PASS（备注：Qt5Compat.GraphicalEffects import 冗余残留，无害） | 分支 fix/2026-09-20-appicon-passthrough，commit 7d2f366；FBO 对比待部署实测 |
 | R24 | 2026-09-22 | 通过 | code-reviewer PASS（falloff 曲线收紧属任务授权；.qsb 二进制一致性仅可执行环境确认） | 分支 fix/2026-09-20-cardshadow-cheap，commit 0300a27；现存 KosFloatPanel 显式传参，默认值变化不影响 |
 | R25 | 2026-09-22 | 通过 | code-reviewer PASS（1 minor：Switch 门控用动画值而非意图，当前 Qt6 行为下无穿帮） | 分支 fix/2026-09-20-opacitymask-gate，commit 91514ef |

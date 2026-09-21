@@ -33,7 +33,8 @@ JsonlClient {
         "network.scan": true,
         "network.traffic": true,
         "nightlight.get": true,
-        "platform.ping": true
+        "platform.ping": true,
+        "state.read": true
     })
     // Per-operation expiry overrides for requests whose legitimate duration
     // exceeds the default: interactive screenshots and multi-gigabyte file
