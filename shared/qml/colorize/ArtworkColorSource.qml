@@ -119,9 +119,14 @@ Item {
         const cachePath = cacheDirectory + "/" + _cacheName(expectedSource)
         quantizerSource = ""
         const process = processFactory.createObject(root, {
+            // rm of '*.tmp' sweeps orphaned temp files from fetches killed
+            // mid-write (their names are <hash>.img.<pid>.tmp); the trailing
+            // '|| rm -f' removes this run's own temp when the fetch fails so
+            // the cache never accumulates partial downloads.
             command: ["sh", "-c",
-                "mkdir -p \"$1\" && if [ ! -s \"$2\" ]; then " + fetchCommand
-                    + " && mv \"$2.$$.tmp\" \"$2\"; fi",
+                "mkdir -p \"$1\" && rm -f \"$1\"/*.tmp"
+                    + " && if [ ! -s \"$2\" ]; then " + fetchCommand
+                    + " && mv \"$2.$$.tmp\" \"$2\" || rm -f \"$2.$$.tmp\"; fi",
                 "artwork-palette-cache", cacheDirectory, cachePath, payload]
         })
         _downloadProcess = process
