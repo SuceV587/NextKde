@@ -510,6 +510,13 @@ ApplicationWindow {
         spacing: 7
         property var bridge: (typeof settingsBridge !== "undefined") ? settingsBridge : null
         property real dockHeight: 60
+        property real dockEdgeMargin: 10
+        property bool edgeMarginDirty: false
+        property bool dockShowWidgets: true
+        property string dockWidgetMode: "carousel" // "carousel" | "fixed"
+        property string dockFixedWidget: "weather"  // "weather" | "temperature" | "clock" | "music"
+        property var dockEnabledWidgets: ({})
+        property int dockCarouselInterval: 30
         property int dockPositionIndex: 0
         readonly property var dockPositions: ["bottom", "left", "right"]
         property int iconModeIndex: 0
@@ -740,6 +747,8 @@ ApplicationWindow {
             if (!state || state.baseHeight === undefined)
                 return
             dockHeight = Number(state.baseHeight)
+            if (state.edgeMargin !== undefined)
+                dockEdgeMargin = Number(state.edgeMargin)
             dockPositionIndex = positionIndexFromString(state.position)
             iconModeIndex = iconModeIndexFromString(state.iconMode)
             iconOpacity = Number(state.iconOpacity)
@@ -747,9 +756,73 @@ ApplicationWindow {
             syncTintControls(colorFromHex(iconTintColor))
             visibilityModeIndex = visibilityModeIndexFromString(state.visibilityMode)
             windowGroupingIndex = windowGroupingIndexFromString(state.windowGrouping)
+            if (state.showWidgets !== undefined)
+                dockShowWidgets = Boolean(state.showWidgets)
+            if (state.widgetMode !== undefined)
+                dockWidgetMode = String(state.widgetMode)
+            if (state.fixedWidget !== undefined)
+                dockFixedWidget = String(state.fixedWidget)
+            if (state.enabledWidgets !== undefined && typeof state.enabledWidgets === "object")
+                dockEnabledWidgets = state.enabledWidgets
+            if (state.carouselInterval !== undefined)
+                dockCarouselInterval = Number(state.carouselInterval)
             iconOpacityDirty = false
             layoutDirty = false
+            edgeMarginDirty = false
             errorText = ""
+        }
+
+        function previewEdgeMargin(position) {
+            const clamped = Math.max(0, Math.min(1, position))
+            const nextMargin = Math.round(clamped * 72)
+            if (nextMargin === dockEdgeMargin)
+                return
+            dockEdgeMargin = nextMargin
+            edgeMarginDirty = true
+        }
+
+        function commitEdgeMargin() {
+            if (!edgeMarginDirty || !bridge)
+                return
+            edgeMarginDirty = false
+            applyState(bridge.updateDockEdgeMargin(dockEdgeMargin))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function saveShowWidgets(enabled) {
+            if (!bridge) return
+            applyState(bridge.updateDockShowWidgets(enabled))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function saveDockWidgetMode(mode) {
+            if (!bridge) return
+            applyState(bridge.updateDockWidgetMode(mode))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function saveDockFixedWidget(widget) {
+            if (!bridge) return
+            applyState(bridge.updateDockFixedWidget(widget))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function toggleDockWidget(id, enabled) {
+            if (!bridge) return
+            applyState(bridge.updateDockWidgetEnabled(id, enabled))
+            if (bridge.lastError)
+                errorText = bridge.lastError
+        }
+
+        function saveCarouselInterval(sec) {
+            if (!bridge) return
+            applyState(bridge.updateDockCarouselInterval(sec))
+            if (bridge.lastError)
+                errorText = bridge.lastError
         }
 
         function savePosition(index) {
@@ -902,6 +975,45 @@ ApplicationWindow {
                                 dockPage.previewDockHeight(position)
                             }
                             onCommitRequested: dockPage.commitLayout()
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 1
+                        color: theme.divider
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 54
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "⇲"; tint: "#5ac8fa" }
+                            Text {
+                                text: "边缘距离"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: Math.round(dockPage.dockEdgeMargin) + " pt"
+                                color: theme.secondaryText
+                                font.pixelSize: 12
+                            }
+                            LiquidControls.LiquidSlider {
+                                accentColor: theme.accent
+                                Layout.preferredWidth: 190
+                                value: Math.max(0, Math.min(1, dockPage.dockEdgeMargin / 72))
+                                trackColor: theme.divider
+                                onPreviewChanged: function(position) {
+                                    dockPage.previewEdgeMargin(position)
+                                }
+                                onCommitRequested: dockPage.commitEdgeMargin()
+                            }
                         }
                     }
                 }
@@ -1447,6 +1559,320 @@ ApplicationWindow {
                                 dockPage.previewDockLiquid(position)
                             }
                             onCommitRequested: dockPage.commitDockLiquid()
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: "DOCK 栏信息卡片".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 14
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            color: theme.card
+            radius: 18
+            implicitHeight: 64
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 12
+                SettingIcon { symbol: "▦"; tint: "#0a84ff" }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                        text: "显示 Dock 栏信息卡片"
+                        color: theme.primaryText
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        text: "在 Dock 栏最右侧展示天气、温控、时钟与播放卡片；关闭后仅保留应用图标并缩紧 Dock 栏"
+                        color: theme.secondaryText
+                        font.pixelSize: 11
+                    }
+                }
+                LiquidControls.LiquidGlassSwitch {
+                    checked: dockPage.dockShowWidgets
+                    accentColor: theme.role("primary", "#0a84ff")
+                    trackColor: theme.divider
+                    onToggled: function(checked) {
+                        dockPage.saveShowWidgets(checked)
+                    }
+                }
+            }
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 7
+            visible: dockPage.dockShowWidgets
+
+            Rectangle {
+                Layout.fillWidth: true
+                color: theme.card
+                radius: 18
+                implicitHeight: dockWidgetPageSettingsCol.implicitHeight
+
+                Column {
+                    id: dockWidgetPageSettingsCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+
+                    // 模式切换行：轮播模式 vs 固定某一个
+                    Item {
+                        width: parent.width
+                        height: 54
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🔄"; tint: "#5ac8fa" }
+                            Text {
+                                text: "显示方式"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Item { Layout.fillWidth: true }
+                            SettingsNavBar {
+                                model: [
+                                    { id: "carousel", label: "自动轮播" },
+                                    { id: "fixed", label: "固定显示某一个" }
+                                ]
+                                itemWidthOverride: 110
+                                currentIndex: dockPage.dockWidgetMode === "fixed" ? 1 : 0
+                                onSelectionChanged: function(idx) {
+                                    dockPage.saveDockWidgetMode(idx === 1 ? "fixed" : "carousel")
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                    }
+
+                    // 固定模式下：选择固定哪一个
+                    Item {
+                        width: parent.width
+                        height: 54
+                        visible: dockPage.dockWidgetMode === "fixed"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "📌"; tint: "#af52de" }
+                            Text {
+                                text: "固定展示项目"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Item { Layout.fillWidth: true }
+                            SettingsNavBar {
+                                model: [
+                                    { id: "weather", label: "天气" },
+                                    { id: "temperature", label: "温控" },
+                                    { id: "clock", label: "时钟" },
+                                    { id: "music", label: "音乐" }
+                                ]
+                                itemWidthOverride: 56
+                                currentIndex: dockPage.dockFixedWidget === "temperature" ? 1
+                                    : dockPage.dockFixedWidget === "clock" ? 2
+                                    : dockPage.dockFixedWidget === "music" ? 3 : 0
+                                onSelectionChanged: function(idx) {
+                                    const choices = ["weather", "temperature", "clock", "music"]
+                                    dockPage.saveDockFixedWidget(choices[idx])
+                                }
+                            }
+                        }
+                    }
+
+                    // 轮播模式下：轮播周期选择
+                    Item {
+                        width: parent.width
+                        height: 54
+                        visible: dockPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "⏱"; tint: "#ff9500" }
+                            Text {
+                                text: "轮播间隔时间"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Item { Layout.fillWidth: true }
+                            SettingsNavBar {
+                                model: [
+                                    { id: 10, label: "10 秒" },
+                                    { id: 30, label: "30 秒" },
+                                    { id: 60, label: "60 秒" }
+                                ]
+                                itemWidthOverride: 64
+                                currentIndex: dockPage.dockCarouselInterval <= 15 ? 0
+                                    : dockPage.dockCarouselInterval >= 45 ? 2 : 1
+                                onSelectionChanged: function(idx) {
+                                    const intervals = [10, 30, 60]
+                                    dockPage.saveCarouselInterval(intervals[idx])
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                        visible: dockPage.dockWidgetMode === "carousel"
+                    }
+
+                    // 轮播模式下：勾选哪些项参与轮播
+                    Item {
+                        width: parent.width
+                        height: 48
+                        visible: dockPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🌤"; tint: "#0a84ff" }
+                            Text {
+                                text: "轮播天气卡片"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                            }
+                            Item { Layout.fillWidth: true }
+                            LiquidControls.LiquidGlassSwitch {
+                                checked: dockPage.dockEnabledWidgets.weather !== false
+                                accentColor: theme.role("primary", "#0a84ff")
+                                trackColor: theme.divider
+                                onToggled: function(val) { dockPage.toggleDockWidget("weather", val) }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                        visible: dockPage.dockWidgetMode === "carousel"
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 48
+                        visible: dockPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🌡"; tint: "#ff9500" }
+                            Text {
+                                text: "轮播温控卡片"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                            }
+                            Item { Layout.fillWidth: true }
+                            LiquidControls.LiquidGlassSwitch {
+                                checked: dockPage.dockEnabledWidgets.temperature !== false
+                                accentColor: theme.role("primary", "#0a84ff")
+                                trackColor: theme.divider
+                                onToggled: function(val) { dockPage.toggleDockWidget("temperature", val) }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                        visible: dockPage.dockWidgetMode === "carousel"
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 48
+                        visible: dockPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🕒"; tint: "#5856d6" }
+                            Text {
+                                text: "轮播数字时钟卡片"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                            }
+                            Item { Layout.fillWidth: true }
+                            LiquidControls.LiquidGlassSwitch {
+                                checked: dockPage.dockEnabledWidgets.clock === true
+                                accentColor: theme.role("primary", "#0a84ff")
+                                trackColor: theme.divider
+                                onToggled: function(val) { dockPage.toggleDockWidget("clock", val) }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 56
+                        height: 1
+                        color: theme.separator
+                        visible: dockPage.dockWidgetMode === "carousel"
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 48
+                        visible: dockPage.dockWidgetMode === "carousel"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 16
+                            spacing: 12
+                            SettingIcon { symbol: "🎵"; tint: "#af52de" }
+                            Text {
+                                text: "轮播音乐卡片"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                            }
+                            Item { Layout.fillWidth: true }
+                            LiquidControls.LiquidGlassSwitch {
+                                checked: dockPage.dockEnabledWidgets.music !== false
+                                accentColor: theme.role("primary", "#0a84ff")
+                                trackColor: theme.divider
+                                onToggled: function(val) { dockPage.toggleDockWidget("music", val) }
+                            }
                         }
                     }
                 }

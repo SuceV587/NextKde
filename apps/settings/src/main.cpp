@@ -75,6 +75,11 @@ public:
                                            QString::number(height, 'f', 2)}));
     }
 
+    Q_INVOKABLE QVariantMap updateDockEdgeMargin(double margin) {
+        return snapshotFromReply(callDock({QStringLiteral("updateEdgeMargin"),
+                                           QString::number(margin, 'f', 2)}));
+    }
+
     Q_INVOKABLE QVariantMap updateDockPosition(const QString &position) {
         return snapshotFromReply(callDock({QStringLiteral("updatePosition"), position}));
     }
@@ -97,6 +102,30 @@ public:
 
     Q_INVOKABLE QVariantMap updateDockWindowGrouping(const QString &mode) {
         return snapshotFromReply(callDock({QStringLiteral("updateWindowGrouping"), mode}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockShowWidgets(bool enabled) {
+        return snapshotFromReply(callDock({QStringLiteral("updateShowWidgets"),
+                                           enabled ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockWidgetMode(const QString &mode) {
+        return snapshotFromReply(callDock({QStringLiteral("updateWidgetMode"), mode}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockFixedWidget(const QString &widget) {
+        return snapshotFromReply(callDock({QStringLiteral("updateFixedWidget"), widget}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockWidgetEnabled(const QString &id, bool enabled) {
+        return snapshotFromReply(callDock({QStringLiteral("updateDockWidgetEnabled"),
+                                           id,
+                                           enabled ? QStringLiteral("true") : QStringLiteral("false")}));
+    }
+
+    Q_INVOKABLE QVariantMap updateDockCarouselInterval(int interval) {
+        return snapshotFromReply(callDock({QStringLiteral("updateCarouselInterval"),
+                                           QString::number(interval)}));
     }
 
     Q_INVOKABLE QVariantMap appearanceSnapshot() {
@@ -477,12 +506,18 @@ private:
         setLastError({});
         return {
             {QStringLiteral("baseHeight"), object.value(QStringLiteral("baseHeight")).toDouble()},
+            {QStringLiteral("edgeMargin"), object.value(QStringLiteral("edgeMargin")).toDouble(10.0)},
             {QStringLiteral("position"), object.value(QStringLiteral("position")).toString()},
             {QStringLiteral("iconMode"), object.value(QStringLiteral("iconMode")).toString()},
             {QStringLiteral("iconOpacity"), object.value(QStringLiteral("iconOpacity")).toDouble()},
             {QStringLiteral("iconTintColor"), object.value(QStringLiteral("iconTintColor")).toString()},
             {QStringLiteral("visibilityMode"), object.value(QStringLiteral("visibilityMode")).toString()},
             {QStringLiteral("windowGrouping"), object.value(QStringLiteral("windowGrouping")).toString()},
+            {QStringLiteral("showWidgets"), object.value(QStringLiteral("showWidgets")).toBool(true)},
+            {QStringLiteral("widgetMode"), object.value(QStringLiteral("widgetMode")).toString(QStringLiteral("carousel"))},
+            {QStringLiteral("fixedWidget"), object.value(QStringLiteral("fixedWidget")).toString(QStringLiteral("weather"))},
+            {QStringLiteral("enabledWidgets"), object.value(QStringLiteral("enabledWidgets")).toObject().toVariantMap()},
+            {QStringLiteral("carouselInterval"), object.value(QStringLiteral("carouselInterval")).toInt(30)},
         };
     }
 

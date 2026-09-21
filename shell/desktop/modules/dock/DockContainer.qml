@@ -40,16 +40,16 @@ Item {
     // drag-reordering or persistence.
     readonly property int pinnedCount: DockModelService.pinnedCount + 2
     readonly property int windowCount: DockModelService.windowCount
-    readonly property bool hasPlayingMusic: DockMprisService.hasPlayingPlayer
-    readonly property bool hasWeather: WeatherService.available
+    readonly property bool hasPlayingMusic: ConfigService.isDockWidgetEnabled("music") && DockMprisService.hasPlayingPlayer
+    readonly property bool hasWeather: ConfigService.isDockWidgetEnabled("weather") && WeatherService.available
     // Side Dock Stack information keeps its clock page. The separate
     // top-of-Dock clock is intentionally not injected by DesktopEnvironment.
-    readonly property bool hasClock: clockInInfoCarousel || vertical
-    // Temperature is a permanent horizontal Dock page. MetricsService may
+    readonly property bool hasClock: ConfigService.isDockWidgetEnabled("clock") && (clockInInfoCarousel || vertical || ConfigService.widgetMode === "fixed")
+    // Temperature is a permanent horizontal Dock page when enabled. MetricsService may
     // still be loading its first snapshot; the card remains and shows "--".
-    readonly property bool hasTemperature: true
-    readonly property bool hasAvailableInfo: hasPlayingMusic || hasWeather || hasClock
-        || hasTemperature
+    readonly property bool hasTemperature: ConfigService.isDockWidgetEnabled("temperature")
+    readonly property bool hasAvailableInfo: ConfigService.showWidgets && (hasPlayingMusic || hasWeather || hasClock
+        || hasTemperature)
     readonly property int screenWidth: targetScreen?.width
         ?? Quickshell.screens[0]?.width ?? 1920
     readonly property int screenHeight: targetScreen?.height
@@ -839,6 +839,9 @@ Item {
             widthUnits: container.infoUnits
             showClock: container.hasClock
             showTemperature: container.hasTemperature
+            widgetMode: ConfigService.widgetMode
+            fixedWidget: ConfigService.fixedWidget
+            carouselInterval: ConfigService.carouselInterval
             visible: container.hasInfo && !container.vertical
         }
 
@@ -851,6 +854,9 @@ Item {
             widthUnits: container.infoUnits
             showClock: container.hasClock
             showTemperature: container.hasTemperature
+            widgetMode: ConfigService.widgetMode
+            fixedWidget: ConfigService.fixedWidget
+            carouselInterval: ConfigService.carouselInterval
             visible: container.hasInfo && container.vertical
         }
 

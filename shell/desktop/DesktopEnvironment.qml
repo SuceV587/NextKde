@@ -69,6 +69,7 @@ Item {
                 ? ConfigService.windowGrouping : "grouped"
             return JSON.stringify({
                 baseHeight: ConfigService.baseHeight,
+                edgeMargin: ConfigService.edgeMargin,
                 theme: theme,
                 position: position,
                 iconMode: iconMode,
@@ -76,11 +77,21 @@ Item {
                 iconTintColor: ConfigService.iconTintColor,
                 visibilityMode,
                 windowGrouping,
+                showWidgets: ConfigService.showWidgets,
+                widgetMode: ConfigService.widgetMode,
+                fixedWidget: ConfigService.fixedWidget,
+                enabledWidgets: ConfigService.enabledWidgets,
+                carouselInterval: ConfigService.carouselInterval,
             })
         }
 
         function updateLayout(height: real): string {
             ConfigService.updateLayout(height)
+            return snapshot()
+        }
+
+        function updateEdgeMargin(margin: real): string {
+            ConfigService.updateEdgeMargin(margin)
             return snapshot()
         }
 
@@ -119,6 +130,30 @@ Item {
             return snapshot()
         }
 
+        function updateShowWidgets(enabled: bool): string {
+            ConfigService.updateShowWidgets(enabled)
+            return snapshot()
+        }
+
+        function updateWidgetMode(mode: string): string {
+            ConfigService.updateWidgetMode(mode)
+            return snapshot()
+        }
+
+        function updateFixedWidget(widget: string): string {
+            ConfigService.updateFixedWidget(widget)
+            return snapshot()
+        }
+
+        function updateDockWidgetEnabled(id: string, enabled: bool): string {
+            ConfigService.updateDockWidgetEnabled(id, enabled)
+            return snapshot()
+        }
+
+        function updateCarouselInterval(seconds: int): string {
+            ConfigService.updateCarouselInterval(seconds)
+            return snapshot()
+        }
     }
 
     // Shell-wide appearance controls used by the standalone Settings app.

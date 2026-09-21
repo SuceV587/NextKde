@@ -55,7 +55,8 @@ PanelWindow {
     property bool clockInInfoCarousel: false
     readonly property bool vertical: root.position === "left"
         || root.position === "right"
-    readonly property int edgeMargin: AppearanceTokens.dock.edgeMargin
+    readonly property int edgeMargin: (ConfigService.edgeMargin !== undefined)
+        ? ConfigService.edgeMargin : AppearanceTokens.dock.edgeMargin
     readonly property int workspaceGap: AppearanceTokens.dock.workspaceGap
     // Wayland does not expose a trustworthy QWindow global position to QML.
     // Derive this layer surface's compositor-global origin from the output it
