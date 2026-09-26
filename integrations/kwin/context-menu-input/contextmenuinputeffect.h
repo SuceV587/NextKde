@@ -26,10 +26,10 @@ public:
 
 public slots:
     QVariantMap activeApplicationMenu() const;
-    // Type Ctrl+V into whatever window holds keyboard focus. An effect runs
+    // Type Ctrl+V only if the requested window still holds keyboard focus. An effect runs
     // inside KWin, so this needs no uinput device or external helper; the Shell
     // reaches it through kos-platform's input.paste operation.
-    void paste();
+    bool paste(const QString &expectedWindowId);
 
 private:
     friend class ContextMenuPointerSpy;
