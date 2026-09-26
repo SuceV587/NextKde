@@ -6,6 +6,8 @@
 #include <keyboard_input.h>
 #include <window.h>
 #include <workspace.h>
+#include <wayland_server.h>
+#include <wayland/seat.h>
 #include <xkb.h>
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -70,14 +72,23 @@ QVariantMap ContextMenuInputEffect::activeApplicationMenu() const
             {QStringLiteral("path"), path}};
 }
 
-void ContextMenuInputEffect::paste()
+bool ContextMenuInputEffect::paste(const QString &expectedWindowId)
 {
     InputRedirection *redirection = input();
     KeyboardInputRedirection *keyboard = redirection ? redirection->keyboard() : nullptr;
     Xkb *xkb = keyboard ? keyboard->xkb() : nullptr;
+    Window *target = Workspace::self() ? Workspace::self()->activeWindow() : nullptr;
+    SeatInterface *seat = waylandServer() ? waylandServer()->seat() : nullptr;
+    // Keyboard focus, rather than activeWindow(), also excludes an intervening
+    // layer surface, popup or lock screen. No event loop runs before injection.
+    const QUuid expected(expectedWindowId);
+    if (expected.isNull() || !target || target->internalId() != expected
+            || !target->surface() || !seat
+            || seat->focusedKeyboardSurface() != target->surface())
+        return false;
     if (!xkb) {
         qWarning() << "KOS paste: keyboard state unavailable; skipping injection";
-        return;
+        return false;
     }
 
     // Resolve the keycodes on the layout that is active right now. Going
@@ -89,7 +100,7 @@ void ContextMenuInputEffect::paste()
     const std::optional<Xkb::KeyCode> letterV = xkb->keycodeFromKeysym(XKB_KEY_v);
     if (!control || !letterV) {
         qWarning() << "KOS paste: Ctrl+V is not reachable on the active layout";
-        return;
+        return false;
     }
 
     // KWin stamps real input with the monotonic clock. Reusing it keeps key
@@ -102,6 +113,7 @@ void ContextMenuInputEffect::paste()
     keyboard->processKey(letterV->keyCode, KeyboardKeyState::Pressed, now);
     keyboard->processKey(letterV->keyCode, KeyboardKeyState::Released, now);
     keyboard->processKey(control->keyCode, KeyboardKeyState::Released, now);
+    return true;
 }
 
 void ContextMenuInputEffect::installPointerSpy()
