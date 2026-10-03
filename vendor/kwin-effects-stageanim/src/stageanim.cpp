@@ -54,7 +54,7 @@ static constexpr qreal kGlobalMinScale = 0.10;      // 全局矩形缩放下限
 static constexpr qreal kGlobalMaxScale = 0.40;      // 全局矩形缩放上限
 static constexpr qreal kDefaultGlassOpacity = 0.65; // 飞行玻璃透明度默认
 
-// shell（StageSidebarWindow.publishTargets）按窗口 KWin internalId 发布的
+// shell（StageSidebarContent.publishTargets）按窗口 KWin internalId 发布的
 // 卡片矩形。动画起止点 = 那扇窗口自己的卡片位置与尺寸（macOS 式连续交换）。
 struct StageTarget
 {

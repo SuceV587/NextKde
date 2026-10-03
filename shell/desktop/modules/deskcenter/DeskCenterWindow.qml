@@ -37,6 +37,14 @@ PanelWindow {
     implicitWidth: screen?.width ?? 1920
     implicitHeight: screen?.height ?? 1080
 
+    // Desktop overlays share this native surface, above widget drags (120)
+    // and below desktop menus (190). Their modules attach through the common
+    // registry; this host has no knowledge of their content or behavior.
+    DesktopOverlayHost {
+        screen: root.screen
+        z: 150
+    }
+
     // Coordinates shared with the separate Top-layer foreground surface.
     Item {
         id: desktopCoordinates

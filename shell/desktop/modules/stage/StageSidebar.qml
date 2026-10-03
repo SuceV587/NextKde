@@ -84,13 +84,13 @@ Scope {
         }
     }
 
-    StageSidebarWindow {
+    StageSidebarContent {
         id: stageWindow
-        screen: ScreenLifecycle.activeScreen
-        // 读 ScreenLifecycle 而非窗口自身的 screen 属性——后者随 open 的
-        // 映射而变化，会构成 open 绑定环（旧 WARN 的根源）
+        // Bind only to the public composition slot, never widget internals.
+        parent: DesktopSurfaceRegistry.overlayFor(ScreenLifecycle.activeScreen)
         open: StageModeService.enabled
             && ScreenLifecycle.outputAvailable
             && ScreenLifecycle.activeScreen !== null
+            && parent !== null
     }
 }

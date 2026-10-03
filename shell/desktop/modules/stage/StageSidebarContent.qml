@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell
-import Quickshell.Wayland
 // ⚠️ ScreencastingRequest 是本模块的类型（活体缩略图流开单窗口用）——
 // 曾被"未使用"审计误删导致 shell crash-loop（is not a type），勿再删
 import org.kde.taskmanager
@@ -10,40 +9,19 @@ import qs.desktop.modules.applauncher
 import "stage-geometry.mjs" as StageGeo
 import "stage-groups.mjs" as StageGroups
 
-// Stage Sidebar 面板本体：常驻侧栏（side 可配左/右）、全屏透明浮层
-//（卡片纯悬浮、不保留屏幕空间）。同应用的窗口堆叠在同一张卡上（×N
-// 角标）；scroll 模式固定间距自然排列、放不下滚轮滚动；adaptive 模式
-// 等比缩小全部显示。悬停卡原位放大置顶、其余原位退避；玻璃质感
-// 卡片 + 悬停辉光。窗宽 = 常驻条 + 两侧溢出余量（辉光不被窗缘硬切，
-// 余量区输入由 mask 穿透）。
-//
-// 分层：纯逻辑（分组/顺序表/矩形/模型对账）在 stage-groups.mjs 与
-// stage-geometry.mjs（node 单测覆盖）；展示在 StageCard；本文件只留
-// 编排——快照/发布/最小化的节拍控制。
-PanelWindow {
+// Stage cards retain their controller, model and interactions in this module.
+// The common desktop host supplies only a visual parent. Sharing its Bottom
+// surface gives a stable order above desktop widgets and below applications.
+Item {
     id: root
 
-    WlrLayershell.namespace: "quickshell-stagebar"
-    // Desktop cards sit above wallpaper but below normal application windows.
-    // Keep the lower layer during hover and drag so cards never cover an app.
-    WlrLayershell.layer: WlrLayer.Bottom
-    // 全屏透明浮层（2026-09-30 用户定稿"完完全全不用侧边栏，卡片就是
-    // 卡片"）：无保留区、无边框——悬停放大/倾斜投影/扇叠背板/拖拽越界
-    // 全都不会再被窗缘裁掉（旧 280px 窗实测裁掉扇叠）。输入只挡卡面
-    //（mask 只罩卡片实际范围，文件尾），其余区域点击穿透到桌面。
-    // ⚠️ reserveStrip 键废弃（全屏浮层天然无保留区），仅为配置兼容保留。
-    exclusionMode: ExclusionMode.Ignore
-    exclusiveZone: 0
-
+    anchors.fill: parent
     property bool open: false
+    property bool _sceneReady: false
 
-    // 启动台打开时隐藏卡片，避免继续显示和处理桌面卡片交互。
+    // Hide cards while the launcher owns the desktop interaction.
     visible: open && !AppLauncherService.open
-    color: "transparent"
-    // 常驻侧（stage-config side）：right 时卡片列锚屏幕右缘（内容层
-    // 各自镜像：StageCard/深度渐变/图标排）；窗体本身恒全屏
     readonly property bool rightSide: StageConfigService.side === "right"
-    anchors { top: true; bottom: true; left: true; right: true }
 
     // ── 舞台视角的活动窗 ──
     // 桥的活动窗在 shell 覆盖层（启动台）拿走焦点时会变空——但桌面上的
@@ -1544,8 +1522,6 @@ PanelWindow {
                 }
                 root._mergeAnimPending = { from: key, to: mergeKey }
                 root._mergeAnimTimer.restart()
-                _updateHitRegionExtent()   // dragKey 已清：立即收缩全窗拖拽
-                // 遮罩，别等收尾的 syncCards（期间整屏点击被吞）
                 return
             }
             root.mergeGroups(key, mergeKey)
@@ -2062,7 +2038,7 @@ PanelWindow {
             scroll: Math.round(root.scrollOffset),
             maxScroll: Math.round(root._maxScroll),
             totalWin: root.totalWindows, order: root._groupOrder,
-            hitRegion: [stripHitRegion.y, stripHitRegion.height],
+            hosted: root.parent !== null,
             slots: slots })
     }
 
@@ -2107,12 +2083,8 @@ PanelWindow {
     // 悬停自然消失，聚焦布局随即回落基础态；冻结反而会让悬停卡卡死在半路）
     function layoutCards(scrollPass) {
         const n = cardModel.count
-        if (n === 0) {
-            // 空态也要归零输入遮罩：早退会让 stripHitRegion 保持上一轮的
-            // 非零 extent，最后一张卡消失后旧卡区域继续吞点击（输入黑洞）
-            _updateHitRegionExtent()
+        if (n === 0)
             return
-        }
         if (StageConfigService.layoutMode === "scroll") {
             let h = -1
             if (!scrollPass) {
@@ -2231,7 +2203,6 @@ PanelWindow {
             root._maxScroll = lay.scrollMax
             if (root.scrollOffset > root._maxScroll)
                 root.scrollOffset = root._maxScroll
-            _updateHitRegionExtent()
             return
         }
         const lay = _layout(n)
@@ -2292,7 +2263,6 @@ PanelWindow {
             slot.z = n - i
             slot.dimmed = false
         }
-        _updateHitRegionExtent()
     }
     // 根窗口 onHeightChanged 不另设：cards 锚满窗体（上下留辉光余量），
     // 窗高变化必然带动 cards 高度 → cards.onHeightChanged 已覆盖，同帧
@@ -2349,6 +2319,8 @@ PanelWindow {
     // 窗口隐藏（启动台打开/面板关闭）时 release 不再送达——拖拽必须
     // 就地中断，否则 dragKey 永久卡死（拒新拖拽 + 杀死悬停聚焦）
     onVisibleChanged: if (!visible) _abortDrag()
+    // Screen changes detach the scene; do not retain an old pointer grab.
+    onParentChanged: if (_sceneReady) _abortDrag()
 
     onSideGroupsChanged: syncCards()
 
@@ -2373,6 +2345,7 @@ PanelWindow {
     }
 
     Component.onCompleted: {
+        _sceneReady = true
         stageActiveId = WindowService.activeWindowId
         // 自由组合落盘加载：读到的覆盖表就位后再对账一次（首帧先按自然
         // 组显示，不阻塞启动）
@@ -2578,64 +2551,6 @@ PanelWindow {
         layoutCards()
     }
 
-    // 输入遮罩：只罩住**卡片实际占据的纵向范围**——整条全高遮罩会把
-    // 首卡上方/末卡下方的大片透明区也变成输入黑洞，滑进侧栏下的窗口
-    // 那部分就点不到（实测"程序有一部分在侧边栏那边点不到"）。排布/
-    // 滚动/拖拽变化时由 layoutCards 尾部刷新；无卡=零高全穿透。
-    Item {
-        id: stripHitRegion
-        x: StageGeo.CARD_OVERFLOW_MARGIN   // layoutCards 尾部由 _updateHitRegionExtent 按侧校正
-        y: 0
-        width: StageGeo.PANEL_WIDTH
-        height: 0
-        visible: false
-    }
-    // mask 只罩卡条是给点击穿透用的；拖拽中几何扩成全窗（见
-    // _updateHitRegionExtent 头注释——指针离开输入区 = 事件停止送达 =
-    // 拖拽冻结在卡条内，"拖出没反应"的根源）
-    mask: Region {
-        Region { item: stripHitRegion }
-    }
-
-    function _updateHitRegionExtent() {
-        // 拖拽中 = 全窗输入区：指针必须能拖出卡条（中心手势）。⚠️ 走
-        // **同一 item 的几何扩展**而不是切换 Region.item——Region 对
-        // item 引用翻转是否触发输入区更新未证实（真机拖出卡条后事件
-        // 停止送达的实测嫌疑），几何变化是每天都在生效的已验证通道。
-        // 拖拽结束（dragKey 清掉后的首轮 layoutCards/syncCards）自动
-        // 落回条形范围。
-        if (root.dragKey !== "") {
-            stripHitRegion.x = 0
-            stripHitRegion.y = 0
-            stripHitRegion.width = root.width
-            stripHitRegion.height = root.height
-            return
-        }
-        let top = Infinity, bottom = -Infinity
-        for (let i = 0; i < cardRepeater.count; i++) {
-            const s = cardRepeater.itemAt(i)
-            if (!s || !s.visible)
-                continue
-            const wy = cards.y + s.y
-            const wh = s.height * (s.slotScale || 1)
-            if (wy < top)
-                top = wy
-            if (wy + wh > bottom)
-                bottom = wy + wh
-        }
-        if (top === Infinity) {
-            stripHitRegion.x = cards.x   // 四量显式复位（拖拽分支扩过全窗）
-            stripHitRegion.y = 0
-            stripHitRegion.height = 0
-            stripHitRegion.width = StageGeo.PANEL_WIDTH
-            return
-        }
-        // ⚠️ width 必须显式复位：拖拽分支把它扩成全窗宽，漏复位 = 卡片
-        // 纵向范围内整行屏幕的点击永远被吞（"点桌面收不起来"的根源）
-        stripHitRegion.width = StageGeo.PANEL_WIDTH
-        stripHitRegion.x = cards.x
-        stripHitRegion.y = Math.max(0, Math.floor(top) - StageGeo.GLOW_PAD)
-        stripHitRegion.height = Math.ceil(bottom - stripHitRegion.y)
-            + StageGeo.GLOW_PAD
-    }
+    // Only card controls accept pointer input. Empty areas reach the desktop
+    // below; Qt's mouse grab keeps a card drag alive outside its initial bounds.
 }

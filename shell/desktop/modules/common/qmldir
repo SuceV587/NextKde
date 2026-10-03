@@ -33,6 +33,8 @@ singleton AppearanceConfigService 1.0 AppearanceConfigService.qml
 singleton IconAppearanceService 1.0 IconAppearanceService.qml
 singleton AppearanceTokens 1.0 AppearanceTokens.qml
 singleton ScreenLifecycle 1.0 ScreenLifecycle.qml
+singleton DesktopSurfaceRegistry 1.0 DesktopSurfaceRegistry.qml
+DesktopOverlayHost 1.0 DesktopOverlayHost.qml
 
 MediaControlButton 1.0 MediaControlButton.qml
 

@@ -8,7 +8,7 @@ import qs.desktop.modules.dock
 import "stage-geometry.mjs" as StageGeo
 
 // StageCard — 台前侧栏的单张应用卡片（同应用窗口堆叠在同一张卡上）。
-// 纯展示组件：编排（快照/预测卡位/最小化派发）都在 StageSidebarWindow，
+// 纯展示组件：编排（快照/预测卡位/最小化派发）都在 StageSidebarContent，
 // 这里只发信号。ListModel 的角色名与 required property 一一对应自动绑定。
 // 卡面玻璃质感（圆角/背板/受光/描边/辉光/纵深）全部走 StageConfigService，
 // 设置应用「台前侧栏 → 玻璃质感」实时可调。
@@ -25,7 +25,7 @@ import "stage-geometry.mjs" as StageGeo
 //   悬停 = 放大 + 提亮 + 辉光 + 关闭钮浮现（放大是指向卡片的即时反馈）
 //   点击 = engageClicked() → 窗口编排（入队 + 同拍收编）→ engaging 原地
 //          淡出并保持倾斜，把姿态交棒给窗口动画（派发在窗口侧队列，
-//          engageDelay 到点统一处理——见 StageSidebarWindow._engageQueue）
+//          engageDelay 到点统一处理——见 StageSidebarContent._engageQueue）
 Item {
     id: card
 

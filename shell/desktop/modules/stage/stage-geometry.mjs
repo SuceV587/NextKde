@@ -24,7 +24,7 @@ export const PERSPECTIVE_FOCAL = 900    // 文档锚：本导出无代码消费�
                                         // 特效 stageanim.cpp kPerspectiveFocal 同步
 
 export const SCROLL_RETREAT = 20        // 聚焦退避：其余卡从原位向两侧平移的像素
-// ── 拖拽排序（StageCard 与 StageSidebarWindow 共用；阈值/视觉同源）──
+// ── 拖拽排序（StageCard 与 StageSidebarContent 共用；阈值/视觉同源）──
 export const DRAG_PICK_THRESHOLD = 12   // 按下位移超过此值才算拖拽（否则是点击）
 export const DRAG_SCALE = 1.06          // 被拖卡微放大（悬停放大走 config.hoverScale）
 export const DRAG_Z = 999               // 被拖卡置顶 z（盖过全部槽位 z = n-i）
@@ -34,7 +34,7 @@ export const DRAG_CENTER_BUFFER = 48    // 中心合并区：指针越过卡列�
 export const ENGAGE_FADE_MS = 180       // 点卡交棒/被吞卡淡出（_mergeAnimTimer
                                         // 收尾时长的下限基准，StageCard 同源）
 // 合并驻留时长/滞回边距：值在 StageConfigService.mergeDwellMs 与
-// StageSidebarWindow 的 _mergeExitRatio（手势时序类参数，不进几何库）
+// StageSidebarContent 的 _mergeExitRatio（手势时序类参数，不进几何库）
 // 辉光裁剪放宽：滚动视口只裁上下（滚动方向），左右各放宽这么多——
 // 悬停辉光外扩 13px×放大 1.05 + 倾斜投影后 ≈19px 超出卡面 inset，
 // 整条 clip 会把辉光侧边切掉（要与 CARD_OVERFLOW_MARGIN 同步核算）
