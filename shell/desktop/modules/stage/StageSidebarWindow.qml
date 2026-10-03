@@ -24,7 +24,9 @@ PanelWindow {
     id: root
 
     WlrLayershell.namespace: "quickshell-stagebar"
-    WlrLayershell.layer: WlrLayer.Top
+    // Desktop cards sit above wallpaper but below normal application windows.
+    // Keep the lower layer during hover and drag so cards never cover an app.
+    WlrLayershell.layer: WlrLayer.Bottom
     // 全屏透明浮层（2026-09-30 用户定稿"完完全全不用侧边栏，卡片就是
     // 卡片"）：无保留区、无边框——悬停放大/倾斜投影/扇叠背板/拖拽越界
     // 全都不会再被窗缘裁掉（旧 280px 窗实测裁掉扇叠）。输入只挡卡面
@@ -35,8 +37,7 @@ PanelWindow {
 
     property bool open: false
 
-    // 启动台打开时整窗隐藏：全屏浮层若留在原位会盖在启动台内容上
-    //（旧窄条不重叠所以无所谓，全屏必须躲）
+    // 启动台打开时隐藏卡片，避免继续显示和处理桌面卡片交互。
     visible: open && !AppLauncherService.open
     color: "transparent"
     // 常驻侧（stage-config side）：right 时卡片列锚屏幕右缘（内容层
