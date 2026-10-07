@@ -5,6 +5,8 @@ import Quickshell.Wayland
 import Quickshell.Widgets
 import qs.desktop.modules.common
 import qs.desktop.modules.dock
+import qs.desktop.modules.platform
+import qs.desktop.modules.wallpaper
 import "../../../Kos/Ui"
 import "ClipboardPlacement.mjs" as ClipboardPlacement
 
@@ -446,6 +448,26 @@ PanelWindow {
         }
     }
 
+    // ── Backdrop sampling ────────────────────────────────────────────────
+    // QML has no usable pixel readback here (Canvas.drawImage from an item
+    // returns rgba 0,0,0,0 in every formulation tried), and the compositor
+    // cannot report the backdrop it samples for its scrim. So the daemon does
+    // the reading: it maps the field's centre through the wallpaper's fit mode
+    // and returns the pixel's luminance. Polled slowly while the surface is up
+    // -- the wallpaper under the field only changes when it or the placement
+    // does -- and on open.
+    property real sampledBackdropLuma: -1
+    readonly property bool backdropSampleAvailable: WallpaperService.takeoverEnabled
+        && WallpaperService.mode === "image"
+
+    Timer {
+        interval: 700
+        repeat: true
+        triggeredOnStart: true
+        running: root.visible && root.backdropSampleAvailable
+        onTriggered: dialog.sampleBackdrop()
+    }
+
     Rectangle {
         id: dialog
         objectName: "quicksearch-dialog"
@@ -459,6 +481,48 @@ PanelWindow {
         readonly property color textOutlineColor: ThemeService.isDark
             ? Qt.rgba(0.05, 0.08, 0.12, 0.38)
             : Qt.rgba(1, 1, 1, 0.50)
+
+        // ── Backdrop-aware ink ────────────────────────────────────────────
+        // This surface floats straight over the wallpaper, and a bright patch of
+        // it (the pale field in this user's wallpaper) made the stock light ink
+        // unreadable while the wallpaper's *average* is dark. So the field
+        // samples the wallpaper file at its own centre -- Canvas.drawImage into
+        // a 1×1 canvas plus getImageData is the only pixel readback QML offers --
+        // and flips to near-black ink when that patch is light. `crop` fit is
+        // assumed, the same mode the wallpaper layer paints with: the file is
+        // scaled to cover the output and centred, so the mapping back to image
+        // pixels is a scale plus a half-crop offset.
+        readonly property bool fieldBackdropIsLight:
+            root.sampledBackdropLuma >= 0 && root.sampledBackdropLuma > 0.58
+        readonly property color fieldInk: fieldBackdropIsLight
+            ? "#15171a" : AppearanceTokens.content.glassInk(0.92)
+        readonly property color fieldOutlineColor: fieldBackdropIsLight
+            ? Qt.rgba(1, 1, 1, 0.45) : textOutlineColor
+        readonly property bool fieldUsesOutline: !fieldBackdropIsLight
+            && ThemeService.isDark
+
+        // Ask the daemon for the luminance under the search field. The field
+        // spans the header, so its centre is the dialog's centre-x and the
+        // header's centre-y; QFileInfo in the daemon does not treat "file://"
+        // as absolute, so the URL is stripped here.
+        function sampleBackdrop() {
+            if (!root.backdropSampleAvailable || !root.screen)
+                return
+            PlatformClient.request("wallpaper.sample", {
+                path: String(WallpaperService.wallpaperUrl).replace(/^file:\/\//, ""),
+                x: dialog.x + dialog.width / 2,
+                y: dialog.y + searchHeader.y + searchHeader.height / 2,
+                screenWidth: root.screen.width,
+                screenHeight: root.screen.height,
+                fitMode: WallpaperService.fitMode,
+            }, function(reply) {
+                if (reply && reply.ok && reply.result
+                        && reply.result.luminance !== undefined)
+                    root.sampledBackdropLuma = Number(reply.result.luminance)
+                else
+                    root.sampledBackdropLuma = -1
+            })
+        }
         x: root.mode === "clipboard" ? root.clipboardPosition.x : (parent.width - width) / 2
         y: root.mode === "clipboard" ? root.clipboardPosition.y : Math.round(parent.height * 0.16)
         radius: AppearanceTokens.surface.pick(AppearanceTokens.shape.extraLarge, 28)
@@ -500,10 +564,16 @@ PanelWindow {
             LiquidGlassPanel {
                 id: fieldPill
                 anchors {
+                    // The capsule's top edge sits 6px below the dialog's top
+                    // edge (searchHeader's topMargin), so its sides clear the
+                    // corner arc at that depth; the authored 12 stays the floor
+                    // while the radius is small enough not to reach it.
                     left: parent.left
                     right: parent.right
-                    leftMargin: 12
-                    rightMargin: 12
+                    leftMargin: Math.max(12,
+                        AppearanceTokens.shape.edgeInset(dialog.radius, 6))
+                    rightMargin: Math.max(12,
+                        AppearanceTokens.shape.edgeInset(dialog.radius, 6))
                     top: parent.top
                     bottom: parent.bottom
                 }
@@ -553,18 +623,18 @@ PanelWindow {
                 }
             }
 
-            GlassText {
-                anchors {
-                    left: fieldPill.left
-                    leftMargin: 14
-                    verticalCenter: fieldPill.verticalCenter
+                GlassText {
+                    anchors {
+                        left: fieldPill.left
+                        leftMargin: 14
+                        verticalCenter: fieldPill.verticalCenter
+                    }
+                    text: "⌕"
+                    color: dialog.fieldInk
+                    font.pixelSize: 20
+                    style: dialog.fieldUsesOutline ? Text.Outline : Text.Normal
+                    styleColor: dialog.fieldOutlineColor
                 }
-                text: "⌕"
-                color: AppearanceTokens.content.glassInk(0.72)
-                font.pixelSize: 20
-                style: ThemeService.isDark ? Text.Outline : Text.Normal
-                styleColor: dialog.textOutlineColor
-            }
 
             TextInput {
                 id: searchInput
@@ -576,7 +646,7 @@ PanelWindow {
                     rightMargin: root.mode === "clipboard" ? 180 : 130
                     verticalCenter: fieldPill.verticalCenter
                 }
-                color: ThemeService.foregroundColor
+                color: dialog.fieldInk
                 font {
                     family: "Noto Sans CJK SC"
                     pixelSize: 15
@@ -621,13 +691,18 @@ PanelWindow {
 
                 GlassText {
                     anchors.fill: parent
-                    visible: !searchInput.text
+                    // Also hide while the input method is composing: during a
+                    // pinyin preedit `searchInput.text` is still empty, so the
+                    // placeholder used to sit under the candidate window.
+                    visible: !searchInput.text && !searchInput.inputMethodComposing
                     text: root.placeholder
-                    color: AppearanceTokens.content.glassInk(0.54)
+                    color: dialog.fieldBackdropIsLight
+                        ? Qt.rgba(0.08, 0.09, 0.11, 0.62)
+                        : AppearanceTokens.content.glassInk(0.54)
                     font: searchInput.font
                     verticalAlignment: Text.AlignVCenter
-                    style: ThemeService.isDark ? Text.Outline : Text.Normal
-                    styleColor: dialog.textOutlineColor
+                    style: dialog.fieldUsesOutline ? Text.Outline : Text.Normal
+                    styleColor: dialog.fieldOutlineColor
                 }
             }
 
@@ -1038,8 +1113,13 @@ PanelWindow {
                 left: parent.left
                 right: parent.right
                 topMargin: 4
-                leftMargin: 8
-                rightMargin: 8
+                // The list ends 10px above the dialog's bottom edge, so its
+                // sides keep clear of the bottom corner arcs at that depth
+                // instead of letting a large 圆角大小 crop the rows.
+                leftMargin: Math.max(8,
+                    AppearanceTokens.shape.edgeInset(dialog.radius, 10))
+                rightMargin: Math.max(8,
+                    AppearanceTokens.shape.edgeInset(dialog.radius, 10))
             }
             height: root.mode === "clipboard"
                 ? Math.min(root.visibleResultCount * 52, Math.max(0, root.placementBounds.height - 90))
@@ -1311,8 +1391,12 @@ PanelWindow {
                 left: parent.left
                 right: parent.right
                 topMargin: 4
-                leftMargin: 8
-                rightMargin: 8
+                // Same clearance as the list view: the grid also runs into the
+                // dialog's bottom corner arcs.
+                leftMargin: Math.max(8,
+                    AppearanceTokens.shape.edgeInset(dialog.radius, 10))
+                rightMargin: Math.max(8,
+                    AppearanceTokens.shape.edgeInset(dialog.radius, 10))
             }
             height: root.mode === "clipboard"
                 ? Math.min(root.visibleGridRowCount * 94, Math.max(0, root.placementBounds.height - 90))
