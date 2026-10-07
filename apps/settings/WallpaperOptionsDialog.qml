@@ -64,6 +64,8 @@ Dialog {
                     LiquidControls.LiquidSelect {
                         objectName: "wallpaperFitMenu"
                         accentColor: dialog.colors.accent
+                        fillColor: dialog.colors.controlFill
+                        fillColorHover: dialog.colors.controlFillHover
                         model: ["填满屏幕", "完整显示", "拉伸", "居中"]
                         currentIndex: Math.max(0, ["crop", "fit", "stretch", "center"].indexOf(dialog.fitMode))
                         onActivated: function(index) {
@@ -79,6 +81,8 @@ Dialog {
                     LiquidControls.LiquidSelect {
                         objectName: "wallpaperTransitionMenu"
                         accentColor: dialog.colors.accent
+                        fillColor: dialog.colors.controlFill
+                        fillColorHover: dialog.colors.controlFillHover
                         model: WallpaperCatalog.transitions
                         textRole: "label"
                         currentIndex: Math.max(0, WallpaperCatalog.transitions.map(item => item.id).indexOf(dialog.transition))

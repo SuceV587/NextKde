@@ -661,6 +661,8 @@ ColumnLayout {
                 LiquidControls.LiquidSelect {
                     objectName: "wallpaperFitMenu"
                     accentColor: page.colors.accent
+                    fillColor: page.colors.controlFill
+                    fillColorHover: page.colors.controlFillHover
                     model: ["填满屏幕", "完整显示", "拉伸", "居中"]
                     currentIndex: Math.max(0, ["crop", "fit", "stretch", "center"].indexOf(page.fitMode))
                     onActivated: function(index) {
@@ -678,6 +680,8 @@ ColumnLayout {
                 LiquidControls.LiquidSelect {
                     objectName: "wallpaperTransitionMenu"
                     accentColor: page.colors.accent
+                    fillColor: page.colors.controlFill
+                    fillColorHover: page.colors.controlFillHover
                     model: WallpaperCatalog.transitions
                     textRole: "label"
                     currentIndex: Math.max(0, WallpaperCatalog.transitions.map(item => item.id).indexOf(page.transition))
@@ -760,6 +764,8 @@ ColumnLayout {
                 LiquidControls.LiquidSelect {
                     objectName: "wallpaperTypeMenu"
                     accentColor: page.colors.accent
+                    fillColor: page.colors.controlFill
+                    fillColorHover: page.colors.controlFillHover
                     model: ["图像", "色彩", "幻灯片", "主题壁纸"]
                     currentIndex: ["images", "colors", "slideshow", "themes"].indexOf(page.galleryCategory)
                     onActivated: function(index) {
@@ -780,6 +786,8 @@ ColumnLayout {
                 LiquidControls.LiquidSelect {
                     objectName: "frequencyMenu"
                     accentColor: page.colors.accent
+                    fillColor: page.colors.controlFill
+                    fillColorHover: page.colors.controlFillHover
                     model: page.intervals
                     textRole: "label"
                     currentIndex: Math.max(0, page.intervals.map(item => item.minutes).indexOf(page.slideshowIntervalMinutes))

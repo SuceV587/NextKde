@@ -113,16 +113,11 @@ Item {
                 border.width: 1
                 border.color: Qt.rgba(0.25, 0.85, 1, control.colors.dark ? 0.14 : 0.20)
             }
-            Rectangle {
-                anchors.fill: parent
-                anchors.margins: 2
-                radius: 17
-                gradient: Gradient {
-                    GradientStop { position: 0; color: control.colors.dark ? "#20ffffff" : "#aaffffff" }
-                    GradientStop { position: 0.4; color: "#00ffffff" }
-                    GradientStop { position: 1; color: control.colors.dark ? "#10000000" : "#08000000" }
-                }
-            }
+            // No vertical wash on top of the opaque base: the chip's fill is a
+            // solid colour and the glass reads from the rim layers above. The
+            // gradient that used to sit here (white 20% down to a dark 16% in
+            // dark mode) was the grey top-to-bottom shading the theme dropped
+            // from every control.
         }
         contentItem: Flickable {
             clip: true

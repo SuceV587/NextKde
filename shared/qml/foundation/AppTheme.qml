@@ -34,6 +34,20 @@ QtObject {
     readonly property color blackSeed: "#000000"
     readonly property color whiteSeed: "#ffffff"
 
+    // The one control fill, shared by every flattened control (segmented
+    // tracks, value chips, switch tracks): a solid one step off the card it
+    // sits on, instead of the per-control alpha washes and vertical gradients
+    // that used to disagree with each other.
+    //
+    // Keyed off what the surface actually renders, not the mode label: the
+    // settings window resolves its own appearance (Shell and Kos applications
+    // keep separate appearance sources), so `dark` can disagree with the
+    // palette the window is drawn with -- in follow-the-system sessions it did,
+    // and the fill came out white on a dark window.
+    readonly property bool surfaceIsDark: relativeLuminance(paletteWindow) < 0.5
+    readonly property color controlFill: surfaceIsDark ? "#2f2f2f" : "#d1d1d6"
+    readonly property color controlFillHover: surfaceIsDark ? "#3a3a3a" : "#c2c2c8"
+
     // Headless QPA plugins and partially configured themes can expose a
     // transparent or same-colour palette. Treat that as unavailable instead
     // of turning an application window into a transparent black surface.

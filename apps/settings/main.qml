@@ -19,6 +19,32 @@ ApplicationWindow {
     color: theme.background
 
     property int currentPage: 1
+
+    // One corner language for the whole window, and its numbers come from the
+    // shell: the snapshot carries the (already scaled) shape steps, so the
+    // cards and rows here land on the same radii the desktop paints with
+    // instead of a private literal. The fallbacks only apply to a shell old
+    // enough not to send them.
+    readonly property real cornerScale: (typeof settingsBridge !== "undefined"
+        && settingsBridge.appearanceState)
+            ? (settingsBridge.appearanceState.cornerScale ?? 1) : 1
+    readonly property var shapeSteps: (typeof settingsBridge !== "undefined"
+        && settingsBridge.appearanceState)
+            ? settingsBridge.appearanceState : ({})
+    function shapeStep(name, fallback) {
+        const value = Number(shapeSteps[name])
+        return Number.isFinite(value) && value > 0
+            ? Math.round(value) : Math.round(fallback * cornerScale)
+    }
+    readonly property real cardRadius: shapeStep("shapeLarge", 20)
+    readonly property real rowRadius: shapeStep("shapeSmall", 10)
+
+    // Ask once at startup so the shell-driven radii above are right before any
+    // page that refreshes the snapshot has been visited.
+    Component.onCompleted: {
+        if (typeof settingsBridge !== "undefined" && settingsBridge)
+            settingsBridge.appearanceSnapshot()
+    }
     readonly property int displayedPage: pageMotion.displayedPage === ""
         ? currentPage : pageMotion.displayedPage
     property string searchText: ""
@@ -114,6 +140,15 @@ ApplicationWindow {
             ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.06))
         readonly property color sidebarHover: role("surface_container_high", dark
             ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(0, 0, 0, 0.045))
+        // One grey for every control (segmented tracks, value chips, switch
+        // tracks): a solid one step off the card. Keyed off this window's own
+        // darkness -- the same source as `card` -- because the Shell and Kos
+        // applications keep separate appearance sources, and resolving it
+        // through the other one painted light chips on this dark window.
+        readonly property color controlFill: role("surface_container_highest",
+            dark ? "#2f2f2f" : "#d1d1d6")
+        readonly property color controlFillHover: role("surface_container_highest",
+            dark ? "#3a3a3a" : "#c2c2c8")
         readonly property color chevron: role("outline", dark ? "#636366" : "#c7c7cc")
         readonly property color iconForeground: role("on_surface", "#ffffff")
         // M3's navigation drawer carries a selected item as a secondaryContainer
@@ -336,10 +371,15 @@ ApplicationWindow {
         // the chip matches the 13px label's line height instead of towering
         // over it. Radius and glyph scale off the size so both stay proportioned.
         property int size: 29
+        // Sidebar tiles pass the row's radius so a tile and the highlight it
+        // sits in share one corner; -1 keeps the size-proportional default the
+        // rest of the window uses.
+        property real cornerRadius: -1
         readonly property bool flat: window.materialForm
         width: size
         height: size
-        radius: flat ? 0 : size * 0.345
+        radius: flat ? 0
+            : (cornerRadius >= 0 ? cornerRadius : size * 0.345)
         color: flat ? "transparent" : tint
         LiquidControls.VectorIcon {
             anchors.centerIn: parent
@@ -372,10 +412,11 @@ ApplicationWindow {
         visible: window.searchText.length === 0
             || label.toLowerCase().indexOf(window.searchText.toLowerCase()) >= 0
         background: Rectangle {
-            // M3's drawer items are full-round pills that carry selection in
-            // secondaryContainer; the iPadOS form keeps its squircle of tinted
-            // wash.
-            radius: height / 2
+            // One corner for the row and its icon tile: a rounded rectangle in
+            // both the hover (预选) and the selected state -- not M3's full-round
+            // drawer pill -- on the shell's own small step. The height clamp
+            // keeps a large 圆角大小 from turning the row back into a pill.
+            radius: Math.min(window.rowRadius, Math.floor(height / 2) - 4)
             color: parent.highlighted
                 ? (window.materialForm ? theme.selectedContainer : theme.selected)
                 : (parent.hovered ? theme.sidebarHover : "transparent")
@@ -387,6 +428,9 @@ ApplicationWindow {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 size: 18
+                // Same corner as the row highlight it sits in.
+                cornerRadius: Math.min(window.rowRadius,
+                    Math.floor(size / 2) - 1)
                 symbol: navSymbol
                 tint: navTint
                 highlighted: window.currentPage === pageIndex
@@ -417,8 +461,12 @@ ApplicationWindow {
         selectedItemColor: window.materialForm
             ? theme.role("on_primary", "#ffffff") : accentColor
         itemColor: theme.dark ? "#ffffff" : "#1c1c1e"
-        trackColor: theme.dark
-            ? Qt.rgba(1, 1, 1, 0.10) : "#d1d1d6"
+        // Flat per mode now that the track carries no gradient: dark mode is a
+        // solid one step brighter than the page (#2f2f2f), light mode a light
+        // grey one step darker than it. The selection thumb keeps the gloss.
+        // One grey for every control: the shared control fill (dark #2f2f2f over
+        // the #1c1c1e card, light the light grey one step off the page).
+        trackColor: theme.controlFill
         labelFontPixelSize: 10
         labelFontWeight: Font.DemiBold
     }
@@ -733,7 +781,7 @@ ApplicationWindow {
                     LiquidControls.LiquidGlassSwitch {
                         checked: fgSchedPage.snapshot.stageEnabled === true
                         accentColor: theme.accent
-                        trackColor: theme.divider
+                        trackColor: theme.controlFill
                         onToggled: function(checked) {
                             fgSchedPage.bridge.stageSidebarSet(checked)
                             // 开关自持；快照回读经完好绑定回写（原"回读
@@ -910,7 +958,7 @@ ApplicationWindow {
                     LiquidControls.LiquidGlassSwitch {
                         checked: fgSchedPage.stageAdvanced
                         accentColor: theme.accent
-                        trackColor: theme.divider
+                        trackColor: theme.controlFill
                         onToggled: function(checked) {
                             fgSchedPage.stageAdvanced = checked
                         }
@@ -1034,7 +1082,7 @@ ApplicationWindow {
                     LiquidControls.LiquidGlassSwitch {
                         checked: fgSchedPage.stageSnapshot.autoMinimize !== false
                         accentColor: theme.accent
-                        trackColor: theme.divider
+                        trackColor: theme.controlFill
                         onToggled: function(checked) {
                             fgSchedPage.stageSet("autoMinimize", checked)
                         }
@@ -1242,7 +1290,7 @@ ApplicationWindow {
                     LiquidControls.LiquidGlassSwitch {
                         checked: fgSchedPage.stageSnapshot.showCardTitle !== false
                         accentColor: theme.accent
-                        trackColor: theme.divider
+                        trackColor: theme.controlFill
                         onToggled: function(checked) {
                             fgSchedPage.stageSet("showCardTitle", checked)
                         }
@@ -1297,7 +1345,7 @@ ApplicationWindow {
                     LiquidControls.LiquidGlassSwitch {
                         checked: fgSchedPage.stageSnapshot.focusDim === true
                         accentColor: theme.accent
-                        trackColor: theme.divider
+                        trackColor: theme.controlFill
                         onToggled: function(checked) {
                             fgSchedPage.stageSet("focusDim", checked)
                         }
@@ -1332,7 +1380,7 @@ ApplicationWindow {
                         enabled: fgSchedPage.stageSnapshot.layoutMode === "adaptive"
                         checked: fgSchedPage.stageSnapshot.centerCards !== false
                         accentColor: theme.accent
-                        trackColor: theme.divider
+                        trackColor: theme.controlFill
                         onToggled: function(checked) {
                             fgSchedPage.stageSet("centerCards", checked)
                         }
@@ -1382,7 +1430,7 @@ ApplicationWindow {
                     LiquidControls.LiquidGlassSwitch {
                         checked: fgSchedPage.stageSnapshot.thumbLiveEffect === true
                         accentColor: theme.accent
-                        trackColor: theme.divider
+                        trackColor: theme.controlFill
                         onToggled: function(checked) {
                             fgSchedPage.stageSet("thumbLiveEffect", checked)
                         }
@@ -2442,7 +2490,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             color: theme.card
-            radius: 18
+            radius: window.cardRadius
             implicitHeight: 97
 
             Column {
@@ -2475,7 +2523,7 @@ ApplicationWindow {
                             accentColor: theme.accent
                             Layout.preferredWidth: 190
                             value: (dockPage.dockHeight - 40) / 60
-                            trackColor: theme.divider
+                            trackColor: theme.controlFill
                             onPreviewChanged: function(position) {
                                 dockPage.previewDockHeight(position)
                             }
@@ -2499,7 +2547,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             color: theme.card
-            radius: 18
+            radius: window.cardRadius
             implicitHeight: builtinRows.implicitHeight
 
             Column {
@@ -2606,7 +2654,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             color: theme.card
-            radius: 18
+            radius: window.cardRadius
             implicitHeight: 54
 
             RowLayout {
@@ -2627,7 +2675,7 @@ ApplicationWindow {
                     objectName: "window-grouping-switch"
                     checked: dockPage.windowGroupingIndex === 0
                     accentColor: theme.role("primary", "#0a84ff")
-                    trackColor: theme.divider
+                    trackColor: theme.controlFill
                     onToggled: function(checked) {
                         const requestedIndex = checked ? 0 : 1
                         if (requestedIndex !== dockPage.windowGroupingIndex) {
@@ -2822,7 +2870,7 @@ ApplicationWindow {
                             checked: dockPage.showNotificationBadges
                             enabled: dockPage.stateReady && !dockPage.notificationBadgeUpdatePending
                             accentColor: theme.role("primary", "#0a84ff")
-                            trackColor: theme.divider
+                            trackColor: theme.controlFill
                             Accessible.name: "显示通知角标"
                             onToggled: function(checked) {
                                 dockPage.saveNotificationBadgeVisibility(checked)
@@ -2856,7 +2904,7 @@ ApplicationWindow {
                             checked: dockPage.showRevealIndicator
                             enabled: dockPage.stateReady && !dockPage.revealIndicatorUpdatePending
                             accentColor: theme.role("primary", "#0a84ff")
-                            trackColor: theme.divider
+                            trackColor: theme.controlFill
                             Accessible.name: "显示隐藏提示条"
                             onToggled: function(checked) {
                                 dockPage.saveRevealIndicatorVisibility(checked)
@@ -2887,6 +2935,11 @@ ApplicationWindow {
         property bool showGlassMaterial: true
         property bool showIconAppearance: true
         property bool showSpatialWallpaper: false
+        // The corner pair is a global shape control, not part of the Material
+        // card: it lives in the 主题 page's global-appearance instance only.
+        // Without a flag of its own the section renders twice, once per
+        // instantiation of this component.
+        property bool showCornerShape: true
 
         property var bridge: (typeof settingsBridge !== "undefined")
             ? settingsBridge : null
@@ -2896,6 +2949,12 @@ ApplicationWindow {
         property string shellStyle: "macos"
         readonly property bool isMaterialDesign: shellStyle === "material"
         property bool glassFollowsAppearanceMode: false
+        // 圆角 section: a multiplier on every AppearanceTokens.shape radius and
+        // the superellipse curvature (3.0 = G2, the default). Values come back
+        // from the shell snapshot, so a rejected/clamped edit is visible here on
+        // the next read.
+        property real cornerScale: 1.0
+        property real cornerExponent: 3.0
         property bool spatialWallpaperEnabled: false
         property bool blurDirty: false
         property bool liquidDirty: false
@@ -2924,6 +2983,13 @@ ApplicationWindow {
             window.shellStyle = shellStyle
             if (state.glassFollowsAppearanceMode !== undefined)
                 glassFollowsAppearanceMode = !!state.glassFollowsAppearanceMode
+            // Corner pair. Absent from a snapshot produced by a shell that has
+            // not been updated yet, so fall back to the authored defaults rather
+            // than parking the sliders at zero.
+            cornerScale = state.cornerScale !== undefined
+                ? Number(state.cornerScale) : 1.0
+            cornerExponent = state.cornerExponent !== undefined
+                ? Number(state.cornerExponent) : 3.0
             spatialWallpaperEnabled = !!state.spatialWallpaperEnabled
             blurDirty = false
             liquidDirty = false
@@ -3017,6 +3083,25 @@ ApplicationWindow {
             bridge.updateGlassFollowsAppearanceMode(checked)
         }
 
+        // 圆角 sliders. The shell clamps into the renderable range and echoes
+        // the accepted value in the snapshot this triggers, so the row settles
+        // on what was actually stored.
+        function setCornerScale(value) {
+            if (!bridge) {
+                errorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            bridge.updateCornerScale(value)
+        }
+
+        function setCornerExponent(value) {
+            if (!bridge) {
+                errorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            bridge.updateCornerExponent(value)
+        }
+
         Connections {
             target: displayPage.bridge
             enabled: displayPage.bridge !== null
@@ -3051,7 +3136,7 @@ ApplicationWindow {
             // absent under Material, so the card collapses to just the
             // appearance-mode row instead of leaving a gap behind it.
             implicitHeight: displayPage.isMaterialDesign ? 54 : 109
-            radius: 18
+            radius: window.cardRadius
             color: theme.card
 
             Column {
@@ -3132,12 +3217,74 @@ ApplicationWindow {
                             // own default is the iPadOS blue this window was
                             // designed with.
                             accentColor: theme.accent
-                            trackColor: theme.divider
+                            trackColor: theme.controlFill
                             onToggled: function(checked) {
                                 displayPage.saveGlassFollowsAppearanceMode(checked)
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // ── 圆角 ──────────────────────────────────────────────────────────
+        // One pair of numbers drives every rounded surface: 圆角大小 multiplies
+        // the AppearanceTokens.shape radii (dock pill, panels, cards, popups,
+        // quick search, overview cards…), 圆角曲率 is the superellipse profile
+        // that also reaches the Glass effect as kwinrc CornerExponent. Surfaces
+        // that host content inset it with shape.contentInset(), so a large
+        // radius cannot let the mask clip what is inside.
+        Text {
+            visible: displayPage.showCornerShape
+            text: "圆角".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 10
+        }
+
+        Rectangle {
+            visible: displayPage.showCornerShape
+            Layout.fillWidth: true
+            implicitHeight: cornerColumn.implicitHeight + 28
+            radius: window.cardRadius
+            color: theme.card
+
+            ColumnLayout {
+                id: cornerColumn
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 12
+
+                StageSliderRow {
+                    label: "圆角大小"
+                    unit: "×"
+                    minV: 0.4
+                    maxV: 1.6
+                    decimals: 2
+                    current: displayPage.cornerScale
+                    onCommit: function(v) { displayPage.setCornerScale(v) }
+                }
+
+                StageSliderRow {
+                    label: "圆角曲率"
+                    minV: 2.0
+                    maxV: 4.0
+                    decimals: 1
+                    current: displayPage.cornerExponent
+                    onCommit: function(v) { displayPage.setCornerExponent(v) }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: "曲率 3.0 = G2 连续曲率（默认），2.0 为普通圆弧；数值越大转角越饱满。圆角越大，表面内的内容会自动留出更多边距。"
+                    color: theme.secondaryText
+                    font.pixelSize: 11
+                    wrapMode: Text.Wrap
                 }
             }
         }
@@ -3156,7 +3303,7 @@ ApplicationWindow {
             visible: displayPage.showSpatialWallpaper
             Layout.fillWidth: true
             implicitHeight: spatialWallpaperRow.implicitHeight + 20
-            radius: 18
+            radius: window.cardRadius
             color: theme.card
 
             RowLayout {
@@ -3191,7 +3338,7 @@ ApplicationWindow {
                     height: 25
                     checked: displayPage.spatialWallpaperEnabled
                     accentColor: theme.accent
-                    trackColor: theme.divider
+                    trackColor: theme.controlFill
                     onToggled: function(checked) {
                         if (displayPage.bridge)
                             displayPage.bridge.updateSpatialWallpaperEnabled(checked)
@@ -3215,7 +3362,7 @@ ApplicationWindow {
             visible: displayPage.showGlassMaterial
             Layout.fillWidth: true
             implicitHeight: displayPage.isMaterialDesign ? 48 : 145
-            radius: 18
+            radius: window.cardRadius
             color: theme.card
 
             Column {
@@ -3291,7 +3438,7 @@ ApplicationWindow {
                             accentColor: theme.accent
                             Layout.preferredWidth: 190
                             value: displayPage.blurStrength
-                            trackColor: theme.divider
+                            trackColor: theme.controlFill
                             onPreviewChanged: function(position) {
                                 displayPage.previewBlur(position)
                             }
@@ -3342,7 +3489,7 @@ ApplicationWindow {
                             accentColor: theme.accent
                             Layout.preferredWidth: 190
                             value: displayPage.liquidStrength
-                            trackColor: theme.divider
+                            trackColor: theme.controlFill
                             onPreviewChanged: function(position) {
                                 displayPage.previewLiquid(position)
                             }
@@ -3473,7 +3620,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: debugRows.implicitHeight + 8
-            radius: 18
+            radius: window.cardRadius
             color: theme.card
 
             Column {
@@ -3554,7 +3701,7 @@ ApplicationWindow {
                                     && modelData.readOnly !== true
                                 value: (currentNumber - Number(modelData.min))
                                     / Math.max(Number(modelData.max) - Number(modelData.min), 0.001)
-                                trackColor: theme.divider
+                                trackColor: theme.controlFill
                                 onPreviewChanged: function(position) {
                                     const raw = Number(modelData.min) + position
                                         * (Number(modelData.max) - Number(modelData.min))
@@ -3673,7 +3820,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 58
-            radius: 18
+            radius: window.cardRadius
             color: theme.card
             RowLayout {
                 anchors.fill: parent
@@ -3841,7 +3988,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: appearanceRows.implicitHeight
-            radius: 18
+            radius: window.cardRadius
             color: theme.card
             Column {
                 id: appearanceRows
@@ -4362,7 +4509,7 @@ ApplicationWindow {
                 // The old 136 cut 3px off that and squeezed the tiles.
                 implicitHeight: 152
                 visible: themePage.shellStyle === "material"
-                radius: 18
+                radius: window.cardRadius
                 color: theme.card
 
                 ColumnLayout {
@@ -4551,6 +4698,7 @@ ApplicationWindow {
                 showSystemAppearance: false
                 showGlassMaterial: true
                 showIconAppearance: false
+                showCornerShape: false
             }
         }
 
@@ -4587,7 +4735,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 82
-            radius: 18
+            radius: window.cardRadius
             color: theme.card
 
             RowLayout {
@@ -4739,7 +4887,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: barLayoutCol.implicitHeight
-            radius: 18
+            radius: window.cardRadius
             color: theme.card
 
             Column {
@@ -4854,7 +5002,7 @@ ApplicationWindow {
                         LiquidControls.LiquidGlassSwitch {
                             checked: barPage.barIntegratedWithDock
                             accentColor: theme.role("primary", "#0a84ff")
-                            trackColor: theme.divider
+                            trackColor: theme.controlFill
                             onToggled: function(checked) {
                                 barPage.setBarIntegratedWithDock(checked)
                             }
@@ -4990,7 +5138,7 @@ ApplicationWindow {
             id: shortcutsCard
             Layout.fillWidth: true
             color: theme.card
-            radius: 18
+            radius: window.cardRadius
             implicitHeight: shortcutsColumn.implicitHeight
 
             Column {
@@ -5266,7 +5414,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             color: theme.card
-            radius: 18
+            radius: window.cardRadius
             implicitHeight: 54
 
             Item {
@@ -5313,7 +5461,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             color: theme.card
-            radius: 18
+            radius: window.cardRadius
             implicitHeight: 221
 
             Column {
@@ -5565,7 +5713,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.bottomMargin: 15
                     color: theme.card
-                    radius: 18
+                    radius: window.cardRadius
                     implicitHeight: navGroup1.implicitHeight + 8
 
                     ColumnLayout {
@@ -5621,7 +5769,7 @@ ApplicationWindow {
                 Rectangle {
                     Layout.fillWidth: true
                     color: theme.card
-                    radius: 18
+                    radius: window.cardRadius
                     implicitHeight: navGroup2.implicitHeight + 8
 
                     ColumnLayout {
@@ -5692,7 +5840,7 @@ ApplicationWindow {
             y: inset
             width: parent.width - x - inset
             height: parent.height - inset * 2
-            radius: 18
+            radius: window.cardRadius
             color: theme.contentSurface
 
             Flickable {

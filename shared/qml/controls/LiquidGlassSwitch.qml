@@ -111,33 +111,10 @@ Item {
         visible: !root.materialForm
         anchors.fill: parent
         radius: height / 2
+        // Flat by design: the track used to stack an inner shadow and a top
+        // sheen (a grey vertical gradient over the accent) which the settings
+        // theme asked to drop -- a solid track with the solid thumb below.
         color: root.currentTrackColor
-
-        // Track inner shadow
-        Rectangle {
-            anchors.fill: parent
-            radius: parent.radius
-            gradient: Gradient {
-                orientation: Gradient.Vertical
-                GradientStop { position: 0; color: Qt.rgba(0, 0, 0, 0.15) }
-                GradientStop { position: 0.5; color: Qt.rgba(0, 0, 0, 0.05) }
-                GradientStop { position: 1; color: Qt.rgba(1, 1, 1, 0.08) }
-            }
-        }
-
-        // Track highlight (subtle top sheen). A full-pill rounded rect whose
-        // gradient fades out by 40% height renders identically to the old
-        // flat-topped strip clipped by the root OpacityMask, but its own
-        // radius keeps it inside the arc -- no mask needed at rest.
-        Rectangle {
-            anchors.fill: parent
-            radius: parent.radius
-            gradient: Gradient {
-                orientation: Gradient.Vertical
-                GradientStop { position: 0; color: Qt.rgba(1, 1, 1, 0.12) }
-                GradientStop { position: 0.4; color: Qt.rgba(1, 1, 1, 0.0) }
-            }
-        }
     }
 
     // Thumb shadow (fades out as thumb expands into glass)
@@ -172,36 +149,16 @@ Item {
         width: root.thumbWidth * (1 + 0.4 * root._expansion) * (1 - 0.2 * root._stretch)
         height: root.thumbHeight * (1 + 0.4 * root._expansion) * (1 + 0.3 * root._stretch)
 
-        // Layer 1: Base white pill (fades out when expanding)
+        // Layer 1: Base white pill (fades out when expanding). Flat: the depth
+        // gradient and the top highlight that used to sit on it read as the
+        // same grey vertical wash the settings theme asked to drop from every
+        // control, so the knob is a solid white pill now.
         Rectangle {
             id: basePill
             anchors.fill: parent
             radius: height / 2
             color: "#ffffff"
             opacity: 1 - root._expansion
-
-            // Subtle gradient for depth
-            gradient: Gradient {
-                orientation: Gradient.Vertical
-                GradientStop { position: 0; color: "#ffffff" }
-                GradientStop { position: 0.5; color: "#f5f5f7" }
-                GradientStop { position: 1; color: "#e8e8ed" }
-            }
-
-            // Top highlight
-            Rectangle {
-                anchors.top: parent.top
-                anchors.topMargin: 1
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: parent.width * 0.5
-                height: parent.height * 0.35
-                radius: width / 2
-                gradient: Gradient {
-                    orientation: Gradient.Vertical
-                    GradientStop { position: 0; color: Qt.rgba(1, 1, 1, 0.7) }
-                    GradientStop { position: 1; color: Qt.rgba(1, 1, 1, 0.0) }
-                }
-            }
         }
 
         // Layer 2: Glass refraction effect (visible when expanded)

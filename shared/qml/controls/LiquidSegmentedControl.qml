@@ -82,23 +82,16 @@ Item {
         }
     }
 
+    // Flat track: the glass form used to add a white-to-black vertical wash
+    // here, which read as a grey gradient. Hosts choose the tint (bright in
+    // dark mode, a light grey in light mode); only the selection thumb below
+    // keeps a gloss.
     Rectangle {
         anchors.fill: parent
         radius: root.materialForm ? height / 2 : height * 0.38
         color: root.backgroundColor
         border.width: 1
         border.color: AppTheme.border
-
-        Rectangle {
-            anchors.fill: parent
-            radius: parent.radius
-            visible: !root.materialForm
-            gradient: Gradient {
-                orientation: Gradient.Vertical
-                GradientStop { position: 0; color: Qt.rgba(1, 1, 1, 0.04) }
-                GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.02) }
-            }
-        }
     }
 
     Rectangle {

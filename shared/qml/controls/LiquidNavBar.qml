@@ -196,38 +196,17 @@ Item {
     }
 
     // ---- Glass background (the pill strip) ----
-    // Same structure as the LiquidGlassSwitch track: tinted base, inner
-    // depth gradient and a subtle top sheen. The sheen is a full-pill
-    // rounded rect whose gradient fades out by 40% height, so it clips
-    // itself to the arc -- no layer+OpacityMask needed on the track at all.
+    // A flat tint, deliberately: the track used to carry an inner depth
+    // gradient plus a top sheen, which read as a grey vertical gradient and
+    // made the capsule look like a separate material rather than a recess in
+    // the page. Hosts pick the tint per mode (Settings: a solid brighter than
+    // the background in dark mode, a light grey darker than it in light mode)
+    // and the selection thumb below carries the only gloss.
     Rectangle {
         id: track
         anchors.fill: parent
         radius: height / 2
         color: root.trackColor
-
-        Rectangle {
-            anchors.fill: parent
-            radius: parent.radius
-            visible: !root.materialForm
-            gradient: Gradient {
-                orientation: Gradient.Vertical
-                GradientStop { position: 0; color: Qt.rgba(0, 0, 0, 0.10) }
-                GradientStop { position: 0.5; color: Qt.rgba(0, 0, 0, 0.03) }
-                GradientStop { position: 1; color: Qt.rgba(1, 1, 1, 0.08) }
-            }
-        }
-
-        // Track highlight (subtle top sheen)
-        Rectangle {
-            anchors.fill: parent
-            radius: parent.radius
-            gradient: Gradient {
-                orientation: Gradient.Vertical
-                GradientStop { position: 0; color: Qt.rgba(1, 1, 1, 0.10) }
-                GradientStop { position: 0.4; color: Qt.rgba(1, 1, 1, 0.0) }
-            }
-        }
     }
 
     // ---- Click targets (z 30: below the thumb, above the background) ----

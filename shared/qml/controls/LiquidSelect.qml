@@ -26,6 +26,11 @@ Item {
     property color accentColor: "#0a84ff"
     property color textColor: darkAppearance ? "#f5f5f7" : "#1d1d1f"
     property color mutedTextColor: darkAppearance ? "#98989d" : "#6e6e73"
+    // Control fill pair. The defaults follow AppTheme (other hosts); the
+    // Settings window overrides them with its own appearance-sourced greys,
+    // because Shell and Kos applications keep separate appearance sources.
+    property color fillColor: AppTheme.controlFill
+    property color fillColorHover: AppTheme.controlFillHover
     property color sheetColor: darkAppearance ? "#262b31" : "#f6f8fb"
     property color outlineColor: darkAppearance ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.12)
     // Material 3 hosts draw the full-radius outlined dropdown; everything
@@ -133,61 +138,28 @@ Item {
         id: field
         anchors.fill: parent
         radius: root.fieldRadius
-        // Liquid rim: a gradient-drawn border -- a bright hairline at the top
-        // easing down to a faint one, like light catching the upper edge of a
-        // glass pill. Tonal (M3) hosts get a solid border instead: both stops
-        // share one colour, accent while focused.
-        gradient: Gradient {
-            orientation: Gradient.Vertical
-            GradientStop {
-                position: 0
-                color: root.materialForm
-                    ? (root.activeFocus || menu.opened ? root.accentColor : root.outlineColor)
-                    : (root.darkAppearance
-                       ? Qt.rgba(1, 1, 1, root._hovered || menu.opened ? 0.75 : 0.65)
-                       : Qt.rgba(1, 1, 1, 1.0))
-            }
-            GradientStop {
-                position: 1
-                color: root.materialForm
-                    ? (root.activeFocus || menu.opened ? root.accentColor : root.outlineColor)
-                    : (root.darkAppearance ? Qt.rgba(0, 0, 0, 0.35) : Qt.rgba(0, 0, 0, 0.18))
-            }
-        }
+        // Solid hairline rim: the border used to be a vertical gradient (bright
+        // at the top easing to dark) that read as the grey top-to-bottom shading
+        // the theme dropped from every control.
+        color: root.materialForm
+            ? (root.activeFocus || menu.opened ? root.accentColor : root.outlineColor)
+            : (root.darkAppearance
+               ? Qt.rgba(1, 1, 1, root._hovered || menu.opened ? 0.16 : 0.10)
+               : Qt.rgba(0, 0, 0, root._hovered || menu.opened ? 0.16 : 0.10))
+        Behavior on color { ColorAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
-        // Translucent grey fill, one pixel inside the rim, deliberately flat --
-        // all the highlight lives on the edge, so the pill's silhouette stays
-        // readable. Hover and open deepen it slightly.
+        // The shared control fill, opaque: one step off the card, identical to
+        // the segmented tracks and switch tracks. No glint, no wash -- the pill
+        // is a solid colour with a hairline. Hosts whose palette differs from
+        // AppTheme (the Settings window draws from its own appearance source)
+        // pass fillColor/fillColorHover explicitly.
         Rectangle {
             anchors.fill: parent
             anchors.margins: 1
             radius: root.fieldRadius - 1
-            color: root.darkAppearance
-                ? Qt.rgba(1, 1, 1, root._hovered || menu.opened ? 0.12 : 0.08)
-                : Qt.rgba(0, 0, 0, root._hovered || menu.opened ? 0.08 : 0.05)
+            color: root._hovered || menu.opened
+                ? root.fillColorHover : root.fillColor
             Behavior on color { ColorAnimation { duration: 150; easing.type: Easing.OutCubic } }
-        }
-
-        // Specular glint parked in the upper-left arc, like the LiquidGlassButton
-        // highlight scaled down for the pill. Brightens on hover/open.
-        Rectangle {
-            anchors.top: parent.top
-            anchors.topMargin: parent.height * 0.10
-            anchors.left: parent.left
-            anchors.leftMargin: parent.width * 0.06
-            width: Math.min(parent.width * 0.42, parent.height * 1.6)
-            height: parent.height * 0.32
-            radius: width / 2
-            opacity: root._hovered || menu.opened ? 1.0 : 0.7
-            gradient: Gradient {
-                orientation: Gradient.Vertical
-                GradientStop {
-                    position: 0
-                    color: Qt.rgba(1, 1, 1, root.darkAppearance ? 0.16 : 0.32)
-                }
-                GradientStop { position: 1; color: Qt.rgba(1, 1, 1, 0.0) }
-            }
-            Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
         }
 
         Text {

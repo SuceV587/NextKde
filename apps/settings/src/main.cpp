@@ -111,15 +111,17 @@ const PresetDebugKey *presetDebugKey(const QString &key)
 }
 
 // Rows that belong to neither side of this window: the shell rewrites them from
-// a design value on every appearance sync, so a Settings edit would take effect
-// and then silently revert. CornerExponent is the one such key today -- the
-// shell writes it from AppearanceTokens.shape.cornerExponent, which is a source
-// constant, not user configuration. Those rows are reported read-only so the UI
-// stops offering a control that cannot hold its value; the write path is refused
-// as well, so a stale UI cannot reintroduce the double write.
+// the theme's rounding tokens on every appearance sync, so a Settings edit would
+// take effect and then silently revert. CornerExponent and DockCornerRadius are
+// those keys today -- the theme page's 圆角 section owns both (曲率 via
+// theme.sync-glass, the dock corner following the pill ratio). The write path
+// refuses them as well, so a stale UI cannot reintroduce the double write; the
+// rows themselves are gone from the debug page, which is why this list is now
+// only a guard.
 bool isReadOnlyDebugKey(const QString &key)
 {
-    return key == QLatin1String("CornerExponent");
+    return key == QLatin1String("CornerExponent")
+        || key == QLatin1String("DockCornerRadius");
 }
 
 } // namespace
@@ -891,6 +893,20 @@ public:
         callAppearance({QStringLiteral("snapshot")});
     }
 
+    // The raw appearance snapshot (every key the shell sent), exposed as a
+    // property so window-level chrome can follow the theme without subscribing
+    // to appearanceSnapshotChanged itself -- the sidebar rows' corner radius
+    // reads cornerScale from here. Named appearanceState, NOT appearanceSnapshot:
+    // a property sharing the invokable's name shadows it, and every
+    // `bridge.appearanceSnapshot()` call site then throws TypeError.
+    Q_PROPERTY(QVariantMap appearanceState READ appearanceStateMap
+                   NOTIFY appearanceStateChanged)
+    QVariantMap appearanceStateMap() const
+    {
+        return m_appearanceSnapshot.toVariantMap();
+    }
+    Q_SIGNAL void appearanceStateChanged();
+
     Q_INVOKABLE void updateBlurStrength(double strength) {
         callAppearance({
             QStringLiteral("updateGlobalBlurStrength"),
@@ -913,6 +929,22 @@ public:
         callAppearance({
             QStringLiteral("updateGlobalLiquidStrength"),
             QString::number(strength, 'f', 3)});
+    }
+
+    // Corner shape pair behind the theme page's 圆角 section. Sent as plain
+    // decimals; the shell clamps both to the range the surfaces can render
+    // (scale 0.4-1.6, curvature 2.0-4.0) and echoes the accepted values in the
+    // snapshot it returns.
+    Q_INVOKABLE void updateCornerScale(double scale) {
+        callAppearance({
+            QStringLiteral("updateCornerScale"),
+            QString::number(scale, 'f', 3)});
+    }
+
+    Q_INVOKABLE void updateCornerExponent(double exponent) {
+        callAppearance({
+            QStringLiteral("updateCornerExponent"),
+            QString::number(exponent, 'f', 3)});
     }
 
     Q_INVOKABLE void updateGlassStyle(const QString &style) {
@@ -1567,6 +1599,7 @@ private:
         // object carries every preset field, while the map below hand-picks the
         // ones the appearance pages consume.
         m_appearanceSnapshot = object;
+        Q_EMIT appearanceStateChanged();
         return {
             {QStringLiteral("globalBlurStrength"), globalBlur},
             {QStringLiteral("globalLiquidStrength"), globalLiquid},
@@ -1613,6 +1646,14 @@ private:
             {QStringLiteral("dockWindowAnimationStyle"),
                 object.value(QStringLiteral("dockWindowAnimationStyle")).toString()},
             {QStringLiteral("tokenVersion"), object.value(QStringLiteral("tokenVersion")).toInt()},
+            // Corner pair for the theme page's 圆角 section. Without these the
+            // sliders commit to the shell and then bounce back to the default:
+            // the page reads its displayed value from this map, not from the
+            // snapshot it just wrote.
+            {QStringLiteral("cornerScale"),
+                object.value(QStringLiteral("cornerScale")).toDouble(1.0)},
+            {QStringLiteral("cornerExponent"),
+                object.value(QStringLiteral("cornerExponent")).toDouble(3.0)},
         };
     }
 
@@ -1748,9 +1789,13 @@ private:
         add("MaterialSoftness", "柔和度", "材质", "real", 0, 1, .01, 0.0);
         add("MaterialReflectionStrength", "宽反射强度", "材质", "real", 0, 1, .01, 0.0);
         add("ExcludeDecorations", "窗口装饰不应用染色", "适用范围", "bool", 0, 1, 1, false);
+        // MenuCornerRadius stays editable here: the switcher/menu corner is the
+        // effect's own concern and has no home on the theme page yet.
+        // DockCornerRadius and CornerExponent moved to the theme page's 圆角
+        // section -- the shell now writes both on every appearance sync (the
+        // dock corner follows the pill ratio, the exponent follows 圆角曲率), so
+        // a slider here could only take effect and then silently revert.
         add("MenuCornerRadius", "菜单圆角", "圆角", "real", 0, 100, 1, 0.0);
-        add("DockCornerRadius", "Dock 圆角", "圆角", "real", 0, 100, 1, 0.0);
-        add("CornerExponent", "圆角连续度", "圆角", "real", 2, 8, .1, 3.0);
         add("UseDeclaredCornerRadius", "优先使用应用声明圆角", "圆角", "bool", 0, 1, 1, false);
         add("IgnoreContentBlurRegion", "忽略内容模糊区域", "圆角", "bool", 0, 1, 1, false);
         add("DynamicCorners", "动态圆角", "圆角", "bool", 0, 1, 1, false);
