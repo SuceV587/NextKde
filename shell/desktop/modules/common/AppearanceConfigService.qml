@@ -25,6 +25,19 @@ QtObject {
     // Every style is a preset over the same compositor material. Keeping the
     // values flattened makes user-tuned presets easy to persist and migrate.
     property string glassStyle: "liquid" // "liquid" | "soft" | "frosted"
+
+    // ── Corner shape (theme page: 圆角大小 / 圆角曲率) ──────────────────────
+    // cornerScale multiplies every AppearanceTokens.shape radius, so the size
+    // hierarchy (small / medium / large / …) survives while one slider moves the
+    // whole shell. cornerExponent is the superellipse curvature: 2.0 is a
+    // circular arc, 3.0 the G2 continuous-curvature default, 4.0 hugs the corner
+    // tip harder. Both are read through AppearanceTokens — the exponent also
+    // reaches the compositor as kwinrc CornerExponent through theme.sync-glass —
+    // and every surface that hosts content insets it with
+    // AppearanceTokens.shape.contentInset(), so a large radius cannot let the
+    // mask eat what is inside.
+    property real cornerScale: 1.0
+    property real cornerExponent: 3.0
     // Liquid glass deliberately favors refraction over frosting.
     property real liquidPresetBlurStrength: 0.0
     property real liquidPresetLiquidStrength: 1.0
@@ -339,6 +352,40 @@ QtObject {
         return true
     }
 
+    // Corner sliders. Ranges are the ones the surfaces can actually render:
+    // below 0.4 the size hierarchy collapses into itself, above 1.6 the pill
+    // surfaces clamp at half their height anyway; 2.0-4.0 is the useful squircle
+    // band for the exponent.
+    function updateCornerScale(rawValue) {
+        const value = Number(rawValue)
+        if (!Number.isFinite(value))
+            return false
+        const clamped = Math.max(0.4, Math.min(1.6, value))
+        if (Math.abs(cornerScale - clamped) <= 0.001)
+            return false
+        cornerScale = clamped
+        // Radii are consumed as tokens by QML and as protocol state by the
+        // masks (Kos.SurfaceShape); nothing else has to be pushed anywhere.
+        saveTimer.restart()
+        return true
+    }
+
+    function updateCornerExponent(rawValue) {
+        const value = Number(rawValue)
+        if (!Number.isFinite(value))
+            return false
+        const clamped = Math.max(2.0, Math.min(4.0, value))
+        if (Math.abs(cornerExponent - clamped) <= 0.001)
+            return false
+        cornerExponent = clamped
+        // Curvature is also effect state: theme.sync-glass writes it into kwinrc
+        // for the Glass plugin, so the running compositor and the QML masks stay
+        // on the same profile. Debounced, so a slider drag cannot spam kwinrc.
+        saveTimer.restart()
+        effectSyncTimer.restart()
+        return true
+    }
+
     function updateGlassStyle(rawStyle) {
         const style = String(rawStyle)
         if (!isValidGlassStyle(style) || glassStyle === style)
@@ -614,11 +661,13 @@ QtObject {
         if (!service._widgetStyleResolved)
             return // Migration will restart the save timer once icons are loaded.
         const payload = JSON.stringify({
-            version: 29,
+            version: 30,
             globalBlurStrength: service.globalBlurStrength,
             globalLiquidStrength: service.globalLiquidStrength,
             materialPresetBlurStrength: service.materialPresetBlurStrength,
             glassStyle: service.glassStyle,
+            cornerScale: service.cornerScale,
+            cornerExponent: service.cornerExponent,
             liquidPresetBlurStrength: service.liquidPresetBlurStrength,
             liquidPresetLiquidStrength: service.liquidPresetLiquidStrength,
             softPresetBlurStrength: service.softPresetBlurStrength,
@@ -688,6 +737,13 @@ QtObject {
             materialSoftness: materialBlurOnly ? 0 : service.activePresetSoftness,
             materialReflectionStrength: materialBlurOnly ? 0 : service.activePresetReflection,
             cornerExponent: AppearanceTokens.shape.cornerExponent,
+            // The effect's own dock corner is theme-owned: its blur mask has to
+            // trace the same pill the shell draws, or the two disagree at the
+            // caps. Same ratio the Dock paints with, expressed in the effect's
+            // 0..100 scale (100 = a stadium).
+            dockCornerRadius: Math.round(Math.min(0.5,
+                AppearanceTokens.dock.radiusRatio
+                    * AppearanceTokens.shape.scale) * 100),
         }, function(response) {
             if (!response?.ok)
                 console.warn("[AppearanceConfig] Glass effect sync failed: "
@@ -802,6 +858,19 @@ QtObject {
                         service.dockWindowAnimationStyle = animationStyle
                     if (service.isValidGlassStyle(glassStyle))
                         service.glassStyle = glassStyle
+                    // v30 adds the corner shape pair. Files written before it
+                    // carry neither key, so Number(undefined) stays NaN and the
+                    // authored defaults (1.0 scale / 3.0 G2 curvature) hold; a
+                    // hand-edited value outside the slider range is clamped
+                    // rather than dropped.
+                    const loadedCornerScale = Number(object.cornerScale)
+                    if (Number.isFinite(loadedCornerScale))
+                        service.cornerScale = Math.max(0.4,
+                            Math.min(1.6, loadedCornerScale))
+                    const loadedCornerExponent = Number(object.cornerExponent)
+                    if (Number.isFinite(loadedCornerExponent))
+                        service.cornerExponent = Math.max(2.0,
+                            Math.min(4.0, loadedCornerExponent))
 
                     // One loop over every style's preset, driven by the same
                     // range table that updateGlassPresetParameter() clamps
@@ -900,7 +969,7 @@ QtObject {
                     service.globalLiquidStrength = service.activePresetLiquidStrength
                     service.liquidStrength = service.activePresetLiquidStrength
 
-                    if (Number(object.version) !== 29
+                    if (Number(object.version) !== 30
                             || !service.isValidWidgetStyle(widgetStyle)
                             || !service.isValidShellStyle(style)
                             || !service.isValidThemeMode(themeMode)

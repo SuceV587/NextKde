@@ -128,7 +128,10 @@ Item {
         radius: Math.max(1, Math.min(
             Math.round(root.cardRadius),
             Math.floor(Math.min(root.cardWidth, root.cardHeight) / 2)))
-        cornerExponent: 2.0
+        // The card's glass outline follows the shell's curvature token like
+        // every other panel (G2 by default); the published shape has to use the
+        // same exponent as the QML mask or the two edges split around 45°.
+        cornerExponent: AppearanceTokens.shape.cornerExponent
         baseColor: root.cardColor
         surfaceOpacity: root.cardOpacity
         // Same see-through scrim posture as the Dock: on, at the subtle level.

@@ -378,6 +378,21 @@ Item {
             return JSON.stringify({
                 globalBlurStrength: AppearanceConfigService.globalBlurStrength,
                 globalLiquidStrength: AppearanceConfigService.globalLiquidStrength,
+                // Corner shape pair, edited by the theme page's 圆角 section:
+                // a multiplier on every AppearanceTokens.shape radius and the
+                // superellipse curvature (3.0 = G2 default). Both are also
+                // reachable from the shell side through AppearanceTokens, and
+                // the curvature additionally lands in kwinrc via theme.sync-glass.
+                cornerScale: AppearanceConfigService.cornerScale,
+                cornerExponent: AppearanceConfigService.cornerExponent,
+                // The shell's rounded-surface steps, already scaled by
+                // 圆角大小. Standalone applications (the settings window) cannot
+                // import AppearanceTokens, so the steps travel in the snapshot:
+                // their cards and rows then land on the same radii the desktop
+                // paints with instead of a private literal.
+                shapeSmall: AppearanceTokens.shape.small,
+                shapeMedium: AppearanceTokens.shape.medium,
+                shapeLarge: AppearanceTokens.shape.large,
                 glassStyle: AppearanceConfigService.glassStyle,
                 // Every field of the active style's preset, because the Settings
                 // debug page is the editor for them: a raw kwinrc write there is
@@ -453,6 +468,16 @@ Item {
 
         function updateGlobalLiquidStrength(value: real): string {
             AppearanceConfigService.updateGlobalLiquidStrength(value)
+            return snapshot()
+        }
+
+        function updateCornerScale(value: real): string {
+            AppearanceConfigService.updateCornerScale(value)
+            return snapshot()
+        }
+
+        function updateCornerExponent(value: real): string {
+            AppearanceConfigService.updateCornerExponent(value)
             return snapshot()
         }
 

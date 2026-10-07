@@ -293,7 +293,12 @@ PanelWindow {
                             Rectangle {
                                 id: cardBg
                                 anchors.fill: parent
-                                radius: 16
+                                // Follows the shell's 圆角大小 scale (16 at the
+                                // default), so the window cards move with the
+                                // same slider as every other rounded surface.
+                                readonly property real cardRadius: Math.round(
+                                    16 * AppearanceTokens.shape.scale)
+                                radius: cardRadius
                                 color: cardDelegate.isSelected
                                     ? Qt.rgba(0.12, 0.18, 0.28, 0.88)
                                     : (cardDelegate.isHovered ? Qt.rgba(0.08, 0.11, 0.18, 0.80) : Qt.rgba(0.04, 0.06, 0.10, 0.65))
@@ -307,7 +312,13 @@ PanelWindow {
 
                                 Column {
                                     anchors.fill: parent
-                                    anchors.margins: 10
+                                    // Content keeps clear of the card's corner
+                                    // arc, so a large radius shifts the header
+                                    // and thumbnail inward instead of cropping
+                                    // them.
+                                    anchors.margins: Math.max(10,
+                                        AppearanceTokens.shape.contentInset(
+                                            cardBg.cardRadius))
                                     spacing: 8
 
                                     // Card Header: App Icon + App Name + Window Title + Close Button

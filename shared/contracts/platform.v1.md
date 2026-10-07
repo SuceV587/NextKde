@@ -168,4 +168,19 @@ own the KDE configuration writes; Shell and Settings never invoke `qdbus6` or
 `kwriteconfig6`. `theme.apply-system` and `theme.toggle` change only the KDE
 color scheme when that tool is available; applying a complete Look-and-Feel
 package is a compatibility fallback, because replacing icons and workspace
-defaults is outside the light/dark toggle contract.
+defaults is outside the light/dark toggle contract. `theme.sync-glass` also
+mirrors the theme's corner pair into `[Effect-blurplus]` — `CornerExponent` and
+`DockCornerRadius` (the Dock's corner expressed in the effect's 0..100 scale,
+derived from the pill the shell draws) — so the compositor masks trace the same
+curves as the QML surfaces; an omitted `dockCornerRadius` leaves the stored value
+untouched.
+
+`wallpaper.sample` answers with the colour and luminance of one pixel of the
+resolved wallpaper file, so surfaces that float over the wallpaper can adapt
+their ink: the Shell has no pixel readback (`Canvas.drawImage` from an item
+returns rgba 0,0,0,0 in Quickshell) and the compositor cannot report the backdrop
+it samples for its own scrim. The payload carries `path`, the point in output
+coordinates (`x`, `y`), the output size (`screenWidth`, `screenHeight`) and the
+wallpaper layer's `fitMode`; the daemon owns the mapping to image pixels and
+caches the decoded image, so polling costs a lookup rather than a decode. It
+returns `{color, luminance}`.

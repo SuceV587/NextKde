@@ -60,9 +60,19 @@ PopupWindow {
         const label = appName.trim().length > 0 ? appName.trim() : "窗口"
         return windowCount > 1 ? label + " · " + windowCount + " 个窗口" : label
     }
-    readonly property real cardWidth: 174
-    readonly property real cardHeight: 124
-    readonly property real rowPadding: 7
+    // Popup corner radius follows the shell's rounding token (medium, 14 at the
+    // default scale). The corner inset and the card size trade off, so the
+    // popup's footprint stays about the same while its contents breathe: a
+    // large 圆角大小 shrinks the cards instead of letting the mask crop them,
+    // and a small one gives the thumbnails the freed space back. At the default
+    // scale (radius 14) both sides land on the authored 7 / 174 / 124.
+    readonly property real popupRadius:
+        AppearanceTokens.surface.pick(AppearanceTokens.shape.medium, 14)
+    readonly property real rowPadding: Math.max(4,
+        AppearanceTokens.shape.contentInset(popupRadius))
+    readonly property real cardInsetDelta: 7 - rowPadding
+    readonly property real cardWidth: Math.max(96, 174 + cardInsetDelta * 2)
+    readonly property real cardHeight: Math.max(72, 124 + cardInsetDelta * 2)
     readonly property real rowSpacing: 6
 
     readonly property real calculatedWidth: rowPadding * 2
@@ -208,7 +218,7 @@ PopupWindow {
         transform: Translate {
             y: (1.0 - preview.revealProgress) * 7
         }
-        radius: 14
+        radius: preview.popupRadius
         cornerExponent: AppearanceTokens.shape.cornerExponent
         baseColor: ThemeService.backgroundColor
         surfaceOpacity: 0.88

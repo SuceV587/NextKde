@@ -4861,6 +4861,13 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
             payload.value(QStringLiteral("materialReflectionStrength")).toDouble(), 1.0);
         const double cornerExponent = qBound(2.0,
             payload.value(QStringLiteral("cornerExponent")).toDouble(3.0), 8.0);
+        // The Dock's corner in the effect's 0..100 scale (100 = a stadium). The
+        // shell derives it from the pill it draws, so the blur mask and the
+        // outline stay on the same curve. Absent field: leave the stored value
+        // alone (older shells do not send it).
+        const QJsonValue dockCornerValue = payload.value(QStringLiteral("dockCornerRadius"));
+        const bool hasDockCornerRadius = dockCornerValue.isDouble();
+        const double dockCornerRadius = qBound(0.0, dockCornerValue.toDouble(0.0), 100.0);
         const QString kwriteconfig = QStandardPaths::findExecutable(
             QStringLiteral("kwriteconfig6"));
         if (kwriteconfig.isEmpty()) {
@@ -4868,7 +4875,7 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
                     QStringLiteral("KDE 主题配置工具不可用"), false);
             return true;
         }
-        const QList<QStringList> writes{
+        QList<QStringList> writes{
             {QStringLiteral("--file"), QStringLiteral("kwinrc"), QStringLiteral("--group"),
              QStringLiteral("Effect-blurplus"), QStringLiteral("--key"),
              QStringLiteral("BlurStrength"), QString::number(contentBlur)},
@@ -4899,6 +4906,12 @@ bool PlatformServer::handleSystemOperation(QLocalSocket *socket, const QJsonObje
             {QStringLiteral("--file"), QStringLiteral("kwinrc"), QStringLiteral("--group"),
              QStringLiteral("Effect-blur"), QStringLiteral("--key"),
              QStringLiteral("BlurStrength"), QString::number(contentBlur)}};
+        if (hasDockCornerRadius) {
+            writes.append({QStringLiteral("--file"), QStringLiteral("kwinrc"),
+                QStringLiteral("--group"), QStringLiteral("Effect-blurplus"),
+                QStringLiteral("--key"), QStringLiteral("DockCornerRadius"),
+                QString::number(dockCornerRadius, 'f', 1)});
+        }
         // QProcess::execute is waitForFinished(-1): a wedged kwriteconfig
         // would freeze the whole event loop. Run the writes as a watchdog-
         // armed async chain instead.
@@ -5124,6 +5137,80 @@ bool PlatformServer::handleWallpaperOperation(QLocalSocket *socket,
                                                const QJsonObject &request)
 {
     const QString op = operation(request);
+    // Sample one pixel of a wallpaper file at an output position. The Shell has
+    // no pixel readback (Canvas.drawImage from an item returns rgba 0,0,0,0
+    // here), and the compositor cannot report the backdrop it samples for its
+    // own scrim, so the daemon -- which has QImage -- answers instead. The Shell
+    // sends the surface's position in output coordinates plus the fit mode the
+    // wallpaper layer paints with; the mapping to image pixels lives here so
+    // both sides agree on one implementation.
+    if (op == QStringLiteral("wallpaper.sample")) {
+        const QJsonObject payload = request.value(QStringLiteral("payload")).toObject();
+        const QString path = payload.value(QStringLiteral("path")).toString();
+        const double screenW = payload.value(QStringLiteral("screenWidth")).toDouble();
+        const double screenH = payload.value(QStringLiteral("screenHeight")).toDouble();
+        const double pointX = payload.value(QStringLiteral("x")).toDouble(-1.0);
+        const double pointY = payload.value(QStringLiteral("y")).toDouble(-1.0);
+        const QString fitMode = payload.value(QStringLiteral("fitMode"))
+            .toString(QStringLiteral("crop"));
+        if (path.isEmpty() || screenW <= 0 || screenH <= 0
+                || pointX < 0 || pointY < 0) {
+            respond(socket, request, false, {}, QStringLiteral("invalid-argument"),
+                    QStringLiteral("壁纸取色参数无效"), false);
+            return true;
+        }
+        // One cached entry: the wallpaper is one file, re-decoded only when it
+        // changes, so a polling surface costs a QImage lookup, not a decode.
+        static QHash<QString, QPair<QDateTime, QImage>> sampleCache;
+        const QFileInfo info(path);
+        if (!info.isFile() || !info.isReadable()) {
+            respond(socket, request, false, {}, QStringLiteral("wallpaper-unavailable"),
+                    QStringLiteral("壁纸文件无法读取"), false);
+            return true;
+        }
+        auto cached = sampleCache.constFind(path);
+        if (cached == sampleCache.constEnd() || cached->first != info.lastModified()) {
+            QImage loaded(path);
+            if (loaded.isNull()) {
+                respond(socket, request, false, {},
+                        QStringLiteral("wallpaper-decode-failed"),
+                        QStringLiteral("壁纸图片无法解码"), false);
+                return true;
+            }
+            sampleCache.clear();
+            sampleCache.insert(path, {info.lastModified(), loaded});
+            cached = sampleCache.constFind(path);
+        }
+        const QImage &image = cached->second;
+        const double imageW = image.width();
+        const double imageH = image.height();
+        double u = 0.0;
+        double v = 0.0;
+        if (fitMode == QLatin1String("stretch")) {
+            u = pointX / screenW;
+            v = pointY / screenH;
+        } else if (fitMode == QLatin1String("center")) {
+            u = (pointX - (screenW - imageW) / 2) / imageW;
+            v = (pointY - (screenH - imageH) / 2) / imageH;
+        } else if (fitMode == QLatin1String("fit")) {
+            const double scale = std::min(screenW / imageW, screenH / imageH);
+            u = (pointX - (screenW - imageW * scale) / 2) / (imageW * scale);
+            v = (pointY - (screenH - imageH * scale) / 2) / (imageH * scale);
+        } else {
+            const double scale = std::max(screenW / imageW, screenH / imageH);
+            u = (pointX + (imageW * scale - screenW) / 2) / (imageW * scale);
+            v = (pointY + (imageH * scale - screenH) / 2) / (imageH * scale);
+        }
+        const int px = qBound(0, int(u * (imageW - 1.0) + 0.5), image.width() - 1);
+        const int py = qBound(0, int(v * (imageH - 1.0) + 0.5), image.height() - 1);
+        const QColor color = image.pixelColor(px, py);
+        respond(socket, request, true, QJsonObject{
+            {QStringLiteral("color"), color.name(QColor::HexRgb)},
+            {QStringLiteral("luminance"), 0.2126 * color.redF()
+                + 0.7152 * color.greenF() + 0.0722 * color.blueF()},
+        });
+        return true;
+    }
     if (op == QStringLiteral("wallpaper.preview.desktop")) {
         const QPointer<QLocalSocket> guardedSocket(socket);
         const QPointer<PlatformServer> guard(this);

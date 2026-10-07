@@ -180,6 +180,9 @@ Item {
     // layout grows to the available edge length. distributionSlack is spent
     // only by relaxed content, between apps/windows and trailing components.
     readonly property int naturalDockWidth: Math.round(_layout.dockWidth
+        // edgePadding can exceed the authored hpad when the cap would reach the
+        // end icons; the pill has to be that much wider for them to fit.
+        + 2 * (edgePadding - hPadding)
         + accessoryContentWidth
         + accessoryDividerCount * (2 + dividerMargin * 2)
         + accessoryGapCount * itemSpacing)
@@ -192,8 +195,26 @@ Item {
     readonly property int hPadding: _layout.hPadding
     readonly property int vPadding: _layout.vPadding
     readonly property int dividerMargin: _layout.dividerMargin
+    // The pill's cap follows the shell's 圆角大小 scale, clamped at half the
+    // height: a stadium (ratio 0.5) is as round as a pill gets, so the slider
+    // can shrink the dock's corner but never make it "rounder than a pill".
+    readonly property real pillRadiusRatio: Math.min(0.5,
+        AppearanceTokens.dock.radiusRatio * AppearanceTokens.shape.scale)
     readonly property int pillRadius: Math.round(computedDockHeight
-        * AppearanceTokens.dock.radiusRatio)
+        * pillRadiusRatio)
+    // Keep the first/last icon clear of that cap. At the icon's top (or bottom)
+    // edge a cap of radius R pulls the shape in by R - sqrt(R² - (iconSize/2)²)
+    // -- 7px for the stock 44px icon in an 88px pill, which the authored hpad
+    // already covers; the formula is here so a slimmer padding or a rounder
+    // ratio cannot quietly start cropping the end icons. The width accounting
+    // below adds any difference, so the pill still fits its content.
+    readonly property int capClearance: {
+        const half = iconSize / 2
+        const inside = Math.max(0, pillRadius * pillRadius - half * half)
+        return Math.ceil(pillRadius - Math.sqrt(inside))
+    }
+    readonly property int edgePadding: Math.max(hPadding,
+        Math.min(capClearance, Math.round(hPadding * 2)))
     // DockIcon reserves this invisible outer slot even when inactive. This
     // keeps the Row width stable while the active background appears/disappears.
     readonly property real activeBackgroundGap: _layout.activeBackgroundGap
@@ -502,8 +523,8 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: container.itemSpacing
-        leftPadding: container.hPadding
-        rightPadding: container.hPadding
+        leftPadding: container.edgePadding
+        rightPadding: container.edgePadding
         height: container.computedDockHeight
 
         Loader {

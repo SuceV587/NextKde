@@ -243,20 +243,58 @@ QtObject {
     }
 
     readonly property QtObject shape: QtObject {
-        // Matches the practical scale used by end4-pC: 6/8/12/17/23/30.
-        readonly property real unsharpened: tokens.isMaterial ? 6 : 5
-        readonly property real extraSmall: tokens.isMaterial ? 8 : 5
-        readonly property real small: tokens.isMaterial ? 12 : 10
-        readonly property real medium: tokens.isMaterial ? 17 : 14
-        readonly property real large: tokens.isMaterial ? 23 : 20
-        readonly property real extraLarge: tokens.isMaterial ? 30 : 26
+        // Matches the practical scale used by end4-pC: 6/8/12/17/23/30, each
+        // multiplied by the theme page's 圆角大小 slider (cornerScale). The
+        // hierarchy between the steps survives; only its size moves. Rounded to
+        // whole pixels because the compositor's backdrop mask is integral --
+        // a fractional radius there would round twice and drift from the QML
+        // outline.
+        readonly property real scale: AppearanceConfigService.cornerScale
+        readonly property real unsharpened: Math.round((tokens.isMaterial ? 6 : 5) * scale)
+        readonly property real extraSmall: Math.round((tokens.isMaterial ? 8 : 5) * scale)
+        readonly property real small: Math.round((tokens.isMaterial ? 12 : 10) * scale)
+        readonly property real medium: Math.round((tokens.isMaterial ? 17 : 14) * scale)
+        readonly property real large: Math.round((tokens.isMaterial ? 23 : 20) * scale)
+        readonly property real extraLarge: Math.round((tokens.isMaterial ? 30 : 26) * scale)
+        // Pills: Qt and the compositor both clamp a "full" radius to half the
+        // surface, so scaling it would change nothing but the intent.
         readonly property real full: 999
+
+        // Content inset for a surface of this radius. The corner's geometric
+        // intrusion along the 45° diagonal is r*(1 - cos 45°) = 0.293r; the G2
+        // profile overhangs the circular arc by 2^(1/2-1/n) - 1 (12% at n = 3);
+        // 2px keeps the anti-aliasing band clear of the content. Surfaces that
+        // host content (dock window previews, quick search, overview cards,
+        // dock icons against the pill's cap) space themselves with this instead
+        // of a hard-coded padding, so raising 圆角大小 can never let the mask
+        // eat what is inside.
+        function contentInset(radius) {
+            return Math.ceil(Math.max(0, radius) * 0.33 + 2)
+        }
+
+        // Precise version of the same idea for content that sits a known
+        // distance from an edge: at depth d below (or right of) the edge, a
+        // circular corner of radius r pulls the shape in by
+        // r - sqrt(r² - (r-d)²), which is ~r near the very edge and 0 once
+        // d >= r. The G2 overhang factor and the AA margin match contentInset,
+        // and the result is 0 past the arc, so a header or a list keeps its
+        // authored spacing when the radius is small and only moves in when the
+        // corner actually reaches it.
+        function edgeInset(radius, distance) {
+            const r = Math.max(0, radius)
+            const d = Math.max(0, distance)
+            if (r <= 0 || d >= r)
+                return 0
+            return Math.ceil((r - Math.sqrt(Math.max(0, r * r - (r - d) * (r - d)))) * 1.12 + 2)
+        }
+
         // Corner continuity, not corner size: 2.0 is a circular arc and keeps
         // Rectangle.radius and today's compositor mask. Everything above it
         // sweeps the corner towards the continuous-curvature profile iOS uses,
         // which makes the corner fuller without moving where the straight edge
         // ends. The geometry lives in Squircle.mjs / SquircleMask.qml; this is
-        // only the knob. 2.5-4 is the useful range, and the dial is easy to
+        // only the knob -- driven by the theme page's 圆角曲率 slider, default
+        // 3.0 (G2). 2.5-4 is the useful range, and the dial is easy to
         // read: the corner overhangs the circular arc by 2^(1/2-1/n) - 1 along
         // the diagonal, so 7% at 2.5, 12% at 3, 19% at 4 -- bigger n hugs the
         // corner tip harder, which reads as "squarer". The anti-aliasing band
@@ -278,7 +316,7 @@ QtObject {
         // again -- but the Dock pill is not the pre-token surface either way,
         // because it now carries a LiquidGlassPanel where the compositor used
         // to paint alone.
-        readonly property real cornerExponent: 3.0
+        readonly property real cornerExponent: AppearanceConfigService.cornerExponent
     }
 
     // Every shell surface consumes this policy rather than treating Material as
