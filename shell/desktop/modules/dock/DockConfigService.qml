@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import qs.desktop.modules.common
 import qs.desktop.modules.platform
+import "DockCornerShape.mjs" as CornerShape
 
 // ────────────────────────────────────────────────────────────────
 // DockConfigService — Persistent JSON configuration.
@@ -43,6 +44,31 @@ QtObject {
     // Compact keeps the whole content group together. Relaxed spends any
     // taskbar slack between apps/windows and the trailing information area.
     property string contentStyle: "compact"
+    // ── Corner shape: the Dock's own silhouette ──
+    // Two user choices, one policy (DockCornerShape.mjs). "default" keeps what
+    // the active shell style has always drawn -- a proportional cap, a capsule
+    // at 0.5 of the height, with the Dock's softened corner. "g2" is the rounded
+    // rectangle: the cap comes from cornerCurvature and the corner sweeps the
+    // continuous-curvature (G2) profile. The Dock ships as a rounded rectangle,
+    // so a fresh profile defaults to G2; "默认" is the opt-out that restores the
+    // capsule. The same policy feeds the selection plates inside the glass, so
+    // the inner corner and the outer one stay one shape family.
+    //
+    // Floats, not ints: the cap ratio multiplies the solved dock height, and
+    // rounding happens once, in DockContainer.pillRadius, where the compositor
+    // mask needs an integer.
+    property string cornerShape: "g2"
+    property real cornerCurvature: CornerShape.DEFAULT_CURVATURE
+    readonly property var cornerPolicy: CornerShape.cornerPolicy(
+        cornerShape, cornerCurvature, {
+            radiusRatio: AppearanceTokens.dock.radiusRatio,
+            innerRadiusRatio: AppearanceTokens.dock.activeRadiusRatio,
+            // What the shell drew before this policy existed.
+            exponent: 2.35,
+            g2Exponent: AppearanceTokens.shape.cornerExponent,
+            // A taskbar fills the screen edge, so it has no corners to shape.
+            stretched: widthMode === "stretch"
+        })
     // Internal compatibility projections while renderers consume the concise
     // product model. They are derived, never persisted or exposed in settings.
     readonly property string widthMode: dockStyle === "taskbar" ? "stretch" : "auto"
@@ -219,6 +245,27 @@ QtObject {
         if (contentStyle === nextStyle)
             return false
         contentStyle = nextStyle
+        scheduleSave()
+        return true
+    }
+
+    // ── Corner policy ──
+    // Validation lives HERE, next to the value it protects: a bad shape name
+    // would otherwise reach the compositor mask through the policy binding.
+    function updateCornerShape(rawShape) {
+        const nextShape = String(rawShape)
+        if (!CornerShape.isValidShape(nextShape) || cornerShape === nextShape)
+            return false
+        cornerShape = nextShape
+        scheduleSave()
+        return true
+    }
+
+    function updateCornerCurvature(rawCurvature) {
+        const nextCurvature = CornerShape.normalizeCurvature(rawCurvature)
+        if (Math.abs(cornerCurvature - nextCurvature) <= 0.0005)
+            return false
+        cornerCurvature = nextCurvature
         scheduleSave()
         return true
     }
@@ -516,13 +563,16 @@ QtObject {
     // ═══════════════════════════════════════════════════════════
     function _doSave() {
         const obj = {
-            version: 10,
+            version: 11,
             baseHeight:    svc.baseHeight,
             theme:         svc.theme,
             position:      svc.position,
             // Product-level layout (v6)
             dockStyle:     svc.dockStyle,
             contentStyle:  svc.contentStyle,
+            // Corner shape (v11)
+            cornerShape:     svc.cornerShape,
+            cornerCurvature: svc.cornerCurvature,
             barHeight:     svc.barHeight,
             iconOverrides: svc.iconOverrides,
             dockItems:     svc.dockItems,
@@ -607,6 +657,27 @@ QtObject {
                 svc.contentStyle = obj.contentStyle
             } else {
                 console.warn("[DockConfig] invalid contentStyle ignored")
+                scheduleSave()
+            }
+        }
+        // v11 corner shape. A missing pair keeps the rounded-rectangle default;
+        // a malformed one is rewritten on the next ordinary save instead of
+        // being carried into the policy binding.
+        if (obj.cornerShape !== undefined) {
+            if (CornerShape.isValidShape(obj.cornerShape)) {
+                svc.cornerShape = obj.cornerShape
+            } else {
+                console.warn("[DockConfig] invalid cornerShape ignored")
+                scheduleSave()
+            }
+        }
+        if (obj.cornerCurvature !== undefined) {
+            const curvature = Number(obj.cornerCurvature)
+            if (Number.isFinite(curvature)
+                    && Math.abs(curvature - CornerShape.normalizeCurvature(curvature)) <= 0.0005) {
+                svc.cornerCurvature = curvature
+            } else {
+                console.warn("[DockConfig] invalid cornerCurvature ignored")
                 scheduleSave()
             }
         }

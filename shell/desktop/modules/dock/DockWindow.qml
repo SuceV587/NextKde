@@ -256,9 +256,11 @@ PanelWindow {
             // the compositor realign the capsule back into the clipped region.
             visible: ConfigService.dockStyle !== "transparent" && hide.revealProgress > 0
             radius: root.stretched ? 0 : dockContainer.pillRadius
-            // Soften the shell-wide squircle for this low-height capsule while
-            // retaining a little continuous-corner character.
-            cornerExponent: 2.35
+            // The corner continuity follows the same policy as the cap ratio
+            // above: "默认" keeps the Dock's softened 2.35, "G2" sweeps the
+            // shell's continuous-curvature exponent. A taskbar's radius is 0,
+            // so the exponent is inert there.
+            cornerExponent: ConfigService.cornerPolicy.exponent
             baseColor: ThemeService.backgroundColor
             surfaceOpacity: 1.0
             // Compositor contrast scrim. The tint (black vs white) is owned by

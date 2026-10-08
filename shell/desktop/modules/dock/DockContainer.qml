@@ -192,8 +192,14 @@ Item {
     readonly property int hPadding: _layout.hPadding
     readonly property int vPadding: _layout.vPadding
     readonly property int dividerMargin: _layout.dividerMargin
+    // The cap ratio is the user's corner policy (DockCornerShape.mjs), not the
+    // style's fixed 0.5: "默认" reproduces the capsule, "G2" the rounded
+    // rectangle, and the curvature control moves between them. Rounded here
+    // because the compositor mask is integer. A smaller cap than the old 0.5
+    // only ever narrows the corner, so no icon can newly fall outside the edge
+    // padding the layout solved.
     readonly property int pillRadius: Math.round(computedDockHeight
-        * AppearanceTokens.dock.radiusRatio)
+        * ConfigService.cornerPolicy.radiusRatio)
     // DockIcon reserves this invisible outer slot even when inactive. This
     // keeps the Row width stable while the active background appears/disappears.
     readonly property real activeBackgroundGap: _layout.activeBackgroundGap
