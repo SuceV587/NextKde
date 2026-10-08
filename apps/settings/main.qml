@@ -39,6 +39,19 @@ ApplicationWindow {
     // hard-coding a second, drifting palette.
     property string shellStyle: "macos"
     readonly property bool materialForm: shellStyle === "material"
+    // The sidebar's group cards and the selection wash inside them. The wash
+    // radius is the card's minus the row's inset from it, so the two corners run
+    // parallel: the nested-corner rule Material and Apple both use, and the one
+    // that reads as "the same rounding" where it is actually compared -- a
+    // selection sitting on a card's first row has its corner four pixels from
+    // the card's. The card's own 18 cannot be used directly: on the row a live
+    // session renders (40px tall -- the Controls style adds 12px of padding on
+    // top of the 28 the layout asks for) it is within two pixels of a full
+    // capsule and reads as a stadium there, while the card stays a soft rounded
+    // rectangle.
+    readonly property int sidebarCardRadius: 18
+    readonly property int sidebarRowInset: 4
+    readonly property int sidebarSelectionRadius: sidebarCardRadius - sidebarRowInset
     property string materialSeed: ""
     // Material 3 palette, rebuilt from that accent by the same implementation
     // the shell derives its own with. The shared colorize singleton cannot be
@@ -364,7 +377,9 @@ ApplicationWindow {
         required property color navTint
         width: parent ? parent.width : 0
         // Compact rows: 28 (user-picked) pulls the titles tight; the icon (18)
-        // sits level with the 14px label.
+        // sits level with the 14px label. This is the intent, not what renders:
+        // the layout owns a child's height, and the Controls style pads the
+        // delegate, so a live session draws these rows ~40px tall.
         height: 28
         leftPadding: 10
         rightPadding: 10
@@ -374,8 +389,12 @@ ApplicationWindow {
         background: Rectangle {
             // M3's drawer items are full-round pills that carry selection in
             // secondaryContainer; the iPadOS form keeps its squircle of tinted
-            // wash.
-            radius: height / 2
+            // wash -- and a squircle is what the card behind it draws too, so
+            // the wash takes the nested radius (the card's minus this row's
+            // inset) instead of the full-height capsule. See
+            // window.sidebarSelectionRadius for why it is not the card's value.
+            radius: window.materialForm ? height / 2
+                : window.sidebarSelectionRadius
             color: parent.highlighted
                 ? (window.materialForm ? theme.selectedContainer : theme.selected)
                 : (parent.hovered ? theme.sidebarHover : "transparent")
@@ -5719,12 +5738,14 @@ ApplicationWindow {
 
                 // 侧栏条目也按 session 分组卡片呈现：背景和圆角对齐右侧内容区
                 // 的卡片（theme.card / radius 18），组间 15px。搜索过滤掉条目时
-                // ColumnLayout 只按可见项撑高，卡片会跟着收缩。
+                // ColumnLayout 只按可见项撑高，卡片会跟着收缩。半径走
+                // window.sidebarCardRadius：卡片里的选中项用同一套声明（见
+                // sidebarSelectionRadius），两处写死 18 迟早分叉。
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.bottomMargin: 15
                     color: theme.card
-                    radius: 18
+                    radius: window.sidebarCardRadius
                     implicitHeight: navGroup1.implicitHeight + 8
 
                     ColumnLayout {
@@ -5732,7 +5753,7 @@ ApplicationWindow {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.top: parent.top
-                        anchors.margins: 4
+                        anchors.margins: window.sidebarRowInset
                         spacing: 0
 
                         SidebarEntry {
@@ -5780,7 +5801,7 @@ ApplicationWindow {
                 Rectangle {
                     Layout.fillWidth: true
                     color: theme.card
-                    radius: 18
+                    radius: window.sidebarCardRadius
                     implicitHeight: navGroup2.implicitHeight + 8
 
                     ColumnLayout {
@@ -5788,7 +5809,7 @@ ApplicationWindow {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.top: parent.top
-                        anchors.margins: 4
+                        anchors.margins: window.sidebarRowInset
                         spacing: 0
 
                         SidebarEntry {
