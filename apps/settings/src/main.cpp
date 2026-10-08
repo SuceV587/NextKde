@@ -1297,6 +1297,19 @@ public:
         callAppearance({QStringLiteral("updateBarLayoutMode"), mode});
     }
 
+    // The Bar's forced blur strip. The tint travels as a three-decimal number;
+    // the shell clamps it to 0..1 and the page's slider only produces values in
+    // its own narrower range.
+    Q_INVOKABLE void updateBarForceBlur(bool enabled) {
+        callAppearance({QStringLiteral("updateBarForceBlur"),
+                        enabled ? QStringLiteral("true") : QStringLiteral("false")});
+    }
+
+    Q_INVOKABLE void updateBarForceBlurTint(double tint) {
+        callAppearance({QStringLiteral("updateBarForceBlurTint"),
+                        QString::number(tint, 'f', 3)});
+    }
+
     Q_INVOKABLE void updateDockWindowAnimationStyle(const QString &style) {
         callAppearance({QStringLiteral("updateDockWindowAnimationStyle"), style});
     }
@@ -1610,6 +1623,13 @@ private:
                 barVisibility.isEmpty() ? QStringLiteral("always") : barVisibility},
             {QStringLiteral("barLayoutMode"),
                 object.value(QStringLiteral("barLayoutMode")).toString(QStringLiteral("transparent"))},
+            // A shell older than this page has neither key; the fallbacks are
+            // the off/30% values such a shell renders with, so the switch and
+            // the slider agree with the Bar even before the first write.
+            {QStringLiteral("barForceBlur"),
+                object.value(QStringLiteral("barForceBlur")).toBool(false)},
+            {QStringLiteral("barForceBlurTint"),
+                object.value(QStringLiteral("barForceBlurTint")).toDouble(0.30)},
             {QStringLiteral("dockWindowAnimationStyle"),
                 object.value(QStringLiteral("dockWindowAnimationStyle")).toString()},
             {QStringLiteral("tokenVersion"), object.value(QStringLiteral("tokenVersion")).toInt()},

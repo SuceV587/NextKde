@@ -457,6 +457,41 @@ QtObject {
         readonly property string surfaceMode: "transparent"
         readonly property bool unifiedWithDock:
             AppearanceConfigService.barIntegratedWithDock
+
+        // ── Forced blur strip ───────────────────────────────────────────────
+        // True while the standalone Bar owns a blurred, tinted ground of its
+        // own. An integrated Bar lives inside the Dock's glass and keeps the
+        // Dock's outlines, so the switch must never reach it -- hence the
+        // integration term, not `barForceBlur` alone.
+        readonly property bool forceBlur:
+            AppearanceConfigService.barForceBlur
+                && !AppearanceConfigService.barIntegratedWithDock
+        readonly property real forceBlurTint:
+            AppearanceConfigService.barForceBlurTint
+        // How bright the thing behind the Bar is. The shell already samples the
+        // wallpaper -- the dominant colour the context menus tint their glass
+        // with -- so its luminance is the estimate; until one has been sampled
+        // the system window colour stands in, which is what the display-mode
+        // branch effectively measured before this.
+        readonly property color forceBlurBackdrop:
+            WallpaperColorSource.ready
+                ? WallpaperColorSource.primary : tokens.systemPalette.window
+        readonly property real forceBlurBackdropLuminance:
+            forceBlurBackdrop.r * 0.2126 + forceBlurBackdrop.g * 0.7152
+                + forceBlurBackdrop.b * 0.0722
+        // The plate opposes the backdrop: a bright wallpaper takes the dark
+        // grey so the strip separates from it, a dark wallpaper the light grey.
+        // The ink then flips against the plate (ThemeService.barInk) -- black on
+        // the light plate, white on the dark one.
+        //
+        // Both greys are the macOS vibrancy neutrals, deliberately untinted so
+        // the strip reads as a system grey rather than as a coloured plate.
+        readonly property bool forceBlurPlateIsLight:
+            forceBlurBackdropLuminance <= 0.5
+        readonly property color forceBlurTintColor:
+            forceBlurPlateIsLight
+                ? Qt.rgba(0.961, 0.961, 0.969, 1.0)   // #F5F5F7
+                : Qt.rgba(0.114, 0.114, 0.122, 1.0)   // #1D1D1F
     }
 
     readonly property QtObject widget: QtObject {

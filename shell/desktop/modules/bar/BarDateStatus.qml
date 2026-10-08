@@ -25,7 +25,10 @@ Item {
             id: timeText
             anchors.verticalCenter: parent.verticalCenter
             text: Qt.formatDateTime(clock.date, "h:mm")
-            color: ThemeService.foregroundColor
+            // With the forced-blur strip on, the clock's ink follows the
+            // display mode and the readability edge goes away with it.
+            color: ThemeService.barInk
+            outlineEnabled: !AppearanceTokens.bar.forceBlur
             renderType: Text.NativeRendering
             font {
                 family: AppearanceTokens.typography.displayFamily
@@ -37,7 +40,8 @@ Item {
         GlassText {
             anchors.verticalCenter: parent.verticalCenter
             text: Qt.formatDateTime(clock.date, "M月d日 dddd")
-            color: ThemeService.foregroundColor
+            color: ThemeService.barInk
+            outlineEnabled: !AppearanceTokens.bar.forceBlur
             renderType: Text.NativeRendering
             font {
                 family: AppearanceTokens.typography.displayFamily

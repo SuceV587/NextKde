@@ -165,6 +165,14 @@ QtObject {
     property bool barIntegratedWithDock: false
     property string barVisibilityMode: "always" // "always" | "smart" | "persistent"
     property string barLayoutMode: "transparent" // "full" | "floating" | "transparent"
+    // Force the Bar to carry its own readable ground. With this on the Bar
+    // publishes its backdrop blur region even in the transparent layout, and
+    // paints a light/dark grey tint between that blur and its content, so the
+    // strip stays legible over any wallpaper without relying on text outlines.
+    // barForceBlurTint is that tint's opacity -- the one adjustable value; the
+    // blur strength itself follows the compositor's own region-material frost.
+    property bool barForceBlur: false
+    property real barForceBlurTint: 0.30
     property string dockWindowAnimationStyle: "scale"
     // Which individual surfaces are shown. Both lists hold the ids that are
     // *hidden*; an absent id is visible, so a newly added widget or StatusArea
@@ -545,6 +553,25 @@ QtObject {
         return true
     }
 
+    function updateBarForceBlur(rawValue) {
+        const value = _toBool(rawValue)
+        if (barForceBlur === value)
+            return false
+        barForceBlur = value
+        saveTimer.restart()
+        return true
+    }
+
+    function updateBarForceBlurTint(rawValue) {
+        const value = _normalized(rawValue)
+        if (!Number.isFinite(value)
+                || Math.abs(barForceBlurTint - value) <= 0.001)
+            return false
+        barForceBlurTint = value
+        saveTimer.restart()
+        return true
+    }
+
     function updateDockWindowAnimationStyle(rawStyle) {
         const style = String(rawStyle)
         if (!isValidDockWindowAnimationStyle(style)
@@ -614,7 +641,7 @@ QtObject {
         if (!service._widgetStyleResolved)
             return // Migration will restart the save timer once icons are loaded.
         const payload = JSON.stringify({
-            version: 29,
+            version: 30,
             globalBlurStrength: service.globalBlurStrength,
             globalLiquidStrength: service.globalLiquidStrength,
             materialPresetBlurStrength: service.materialPresetBlurStrength,
@@ -658,6 +685,8 @@ QtObject {
             barIntegratedWithDock: service.barIntegratedWithDock,
             barVisibilityMode: service.barVisibilityMode,
             barLayoutMode: service.barLayoutMode,
+            barForceBlur: service.barForceBlur,
+            barForceBlurTint: service.barForceBlurTint,
             dockWindowAnimationStyle: service.dockWindowAnimationStyle,
             // Sorted before writing so a reorder in the UI never produces a
             // spurious diff, and so the file stays readable by hand.
@@ -736,6 +765,12 @@ QtObject {
                     const hasBarIntegration = typeof object.barIntegratedWithDock === "boolean"
                     const barVisibility = String(object.barVisibilityMode ?? "")
                     const barLayout = String(object.barLayoutMode ?? "")
+                    // v30 adds the Bar's forced blur strip. A file written
+                    // before it has neither key, and the off/30% defaults are
+                    // exactly the appearance those installations already had,
+                    // so a missing pair is not a reason to rewrite the file.
+                    const hasBarForceBlur = typeof object.barForceBlur === "boolean"
+                        && Number.isFinite(Number(object.barForceBlurTint))
                     const animationStyle = String(object.dockWindowAnimationStyle ?? "")
                     // v28 adds per-surface visibility. Files written before it
                     // carry neither key, and the empty arrays they fall back to
@@ -798,6 +833,13 @@ QtObject {
                         service.barVisibilityMode = barVisibility
                     if (service.isValidBarLayoutMode(barLayout))
                         service.barLayoutMode = barLayout
+                    if (hasBarForceBlur) {
+                        service.barForceBlur = object.barForceBlur
+                        const forceBlurTint = service._normalized(
+                            object.barForceBlurTint)
+                        if (Number.isFinite(forceBlurTint))
+                            service.barForceBlurTint = forceBlurTint
+                    }
                     if (service.isValidDockWindowAnimationStyle(animationStyle))
                         service.dockWindowAnimationStyle = animationStyle
                     if (service.isValidGlassStyle(glassStyle))
@@ -900,7 +942,7 @@ QtObject {
                     service.globalLiquidStrength = service.activePresetLiquidStrength
                     service.liquidStrength = service.activePresetLiquidStrength
 
-                    if (Number(object.version) !== 29
+                    if (Number(object.version) !== 30
                             || !service.isValidWidgetStyle(widgetStyle)
                             || !service.isValidShellStyle(style)
                             || !service.isValidThemeMode(themeMode)
@@ -908,6 +950,7 @@ QtObject {
                             || !hasBarIntegration
                             || !hasGlassFollows
                             || !hasSpatialWallpaper
+                            || !hasBarForceBlur
                             || !service.isValidBarVisibilityMode(barVisibility)
                             || !service.isValidBarLayoutMode(barLayout)
                             || !service.isValidGlassStyle(glassStyle)

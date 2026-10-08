@@ -425,6 +425,8 @@ Item {
                     AppearanceConfigService.barIntegratedWithDock,
                 barVisibilityMode: AppearanceConfigService.barVisibilityMode,
                 barLayoutMode: AppearanceConfigService.barLayoutMode,
+                barForceBlur: AppearanceConfigService.barForceBlur,
+                barForceBlurTint: AppearanceConfigService.barForceBlurTint,
                 dockWindowAnimationStyle:
                     AppearanceConfigService.dockWindowAnimationStyle,
                 // Same reason as materialColorSwatches above: these are arrays,
@@ -533,6 +535,16 @@ Item {
 
         function updateBarLayoutMode(mode: string): string {
             AppearanceConfigService.updateBarLayoutMode(mode)
+            return snapshot()
+        }
+
+        function updateBarForceBlur(enabled: bool): string {
+            AppearanceConfigService.updateBarForceBlur(enabled)
+            return snapshot()
+        }
+
+        function updateBarForceBlurTint(value: real): string {
+            AppearanceConfigService.updateBarForceBlurTint(value)
             return snapshot()
         }
 

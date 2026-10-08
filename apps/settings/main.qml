@@ -4667,6 +4667,14 @@ ApplicationWindow {
         readonly property var barVisibilityModes: ["always", "smart", "persistent"]
         property int barLayoutModeIndex: 2
         readonly property var barLayoutModes: ["full", "floating", "transparent"]
+        property bool barForceBlur: false
+        // The tint opacity. The shell clamps it to 0..1 (AppearanceConfigService);
+        // the slider only ever produces values inside this narrower range, which
+        // runs from "barely there" to "nearly opaque plate".
+        property real barForceBlurTint: 0.30
+        readonly property real minBarForceBlurTint: 0.05
+        readonly property real maxBarForceBlurTint: 0.85
+        property bool tintDirty: false
         property string errorText: ""
 
         function barVisibilityModeIndexFromString(mode) {
@@ -4684,6 +4692,12 @@ ApplicationWindow {
             barIntegratedWithDock = Boolean(state.barIntegratedWithDock)
             barVisibilityModeIndex = barVisibilityModeIndexFromString(state.barVisibilityMode)
             barLayoutModeIndex = barLayoutModeIndexFromString(state.barLayoutMode)
+            barForceBlur = state.barForceBlur === true
+            const tint = Number(state.barForceBlurTint)
+            barForceBlurTint = Number.isFinite(tint)
+                ? Math.max(minBarForceBlurTint, Math.min(maxBarForceBlurTint, tint))
+                : 0.30
+            tintDirty = false
             errorText = ""
         }
 
@@ -4693,6 +4707,34 @@ ApplicationWindow {
                 return
             }
             bridge.appearanceSnapshot()
+        }
+
+        function setBarForceBlur(enabled) {
+            if (!bridge) {
+                errorText = "尚未构建 Settings 桥接程序"
+                return
+            }
+            bridge.updateBarForceBlur(enabled)
+        }
+
+        // The tint slider previews while dragging and commits on release, like
+        // the Dock curvature slider: the shell writes the config once, and the
+        // snapshot that comes back is authoritative.
+        function previewBarForceBlurTint(position) {
+            const next = Math.round((minBarForceBlurTint
+                + position * (maxBarForceBlurTint - minBarForceBlurTint)) * 100) / 100
+            if (Math.abs(next - barForceBlurTint) <= 0.001)
+                return
+            barForceBlurTint = next
+            tintDirty = true
+        }
+
+        function commitBarForceBlurTint() {
+            if (!tintDirty)
+                return
+            tintDirty = false
+            if (bridge)
+                bridge.updateBarForceBlurTint(barForceBlurTint)
         }
 
         function setBarIntegratedWithDock(enabled) {
@@ -5145,6 +5187,130 @@ ApplicationWindow {
                             height: 1
                             color: theme.separator
                             visible: index < shortcutsPage.shortcuts.length - 1
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: "强制模糊".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 8
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: forceBlurCol.implicitHeight
+            radius: 18
+            color: theme.card
+
+            Column {
+                id: forceBlurCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+
+                Item {
+                    width: parent.width
+                    height: 64
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "◍"; tint: "#64d2ff" }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "强制模糊"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                // The strip and the ink are one decision: the
+                                // switch is where the user learns that the
+                                // outlines go away with it.
+                                text: "在顶栏与背景之间加一层高斯模糊着色，文字与图标随之改用随显示模式切换的纯色"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+                        LiquidControls.LiquidGlassSwitch {
+                            checked: barPage.barForceBlur
+                            accentColor: theme.role("primary", "#0a84ff")
+                            trackColor: theme.divider
+                            onToggled: function(checked) {
+                                barPage.setBarForceBlur(checked)
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 53
+                    height: 1
+                    color: theme.separator
+                }
+
+                Item {
+                    width: parent.width
+                    height: 62
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "◐"; tint: "#5e5ce6" }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "着色浓度"
+                                color: theme.primaryText
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                // The tint only draws while the strip is on, so
+                                // the row says so instead of silently doing
+                                // nothing.
+                                text: barPage.barForceBlur
+                                    ? "亮色模式铺浅灰、暗色模式铺深灰；越高越不透明"
+                                    : "仅在「强制模糊」开启后生效"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: Math.round(barPage.barForceBlurTint * 100) + "%"
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                        }
+                        LiquidControls.LiquidSlider {
+                            id: forceBlurTintSlider
+                            accentColor: theme.accent
+                            trackColor: theme.divider
+                            Layout.preferredWidth: 156
+                            enabled: barPage.barForceBlur
+                            value: (barPage.barForceBlurTint
+                                - barPage.minBarForceBlurTint)
+                                / (barPage.maxBarForceBlurTint
+                                    - barPage.minBarForceBlurTint)
+                            onPreviewChanged: function(position) {
+                                barPage.previewBarForceBlurTint(position)
+                            }
+                            onCanceled: { barPage.tintDirty = false; barPage.refresh() }
+                            onCommitRequested: barPage.commitBarForceBlurTint()
                         }
                     }
                 }
