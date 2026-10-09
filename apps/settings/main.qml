@@ -1426,6 +1426,17 @@ ApplicationWindow {
                 }
 
                 StageSliderRow {
+                    label: "卡片不透明度"
+                    unit: ""
+                    minV: 0.2
+                    maxV: 1
+                    decimals: 2
+                    current: fgSchedPage.stageSnapshot.cardOpacity !== undefined
+                        ? fgSchedPage.stageSnapshot.cardOpacity : 1.0
+                    onCommit: function(v) { fgSchedPage.stageSet("cardOpacity", v) }
+                }
+
+                StageSliderRow {
                     label: "背板浓度"
                     unit: ""
                     minV: 0.2
