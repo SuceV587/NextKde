@@ -50,7 +50,17 @@ try {
         DockWindow: window,
         ConfigService: object(`property string dockStyle: "floating"; property string visibilityMode: "always"
             property bool showRevealIndicator: true
-            property bool ready: true; property int barHeight: 35`),
+            property bool ready: true; property int barHeight: 35
+            // Corner policy, mirrored from DockConfigService so the shipping
+            // DockWindow bindings resolve to real values here.
+            property string cornerShape: "g2"
+            property real cornerCurvature: 0.30
+            readonly property var cornerPolicy: ({
+                g2: cornerShape === "g2",
+                radiusRatio: cornerShape === "g2" ? cornerCurvature : 0.5,
+                exponent: cornerShape === "g2" ? 3.0 : 2.35,
+                innerRadiusRatio: cornerShape === "g2" ? cornerCurvature : 0.3
+            })`),
         DockContainer: `import QtQuick
 Item {
     property var targetScreen; property real surfaceOriginX; property real surfaceOriginY

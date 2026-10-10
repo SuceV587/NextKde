@@ -397,6 +397,11 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/shell/desktop/modules/dock/test_adaptive.mjs
         )
         set_tests_properties(kos-shell.dock-adaptive PROPERTIES TIMEOUT 10)
+        add_test(NAME kos-shell.dock-corner-shape
+            COMMAND ${KOS_NODE_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/shell/desktop/modules/dock/test_corner_shape.mjs
+        )
+        set_tests_properties(kos-shell.dock-corner-shape PROPERTIES TIMEOUT 10)
         add_test(NAME kos-shell.dock-autohide
             COMMAND ${KOS_NODE_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/shell/desktop/modules/dock/test_autohide.mjs
@@ -533,6 +538,7 @@ if(BUILD_TESTING)
             kos-shell.process-identity
             kos-shell.stage-geometry kos-shell.stage-groups kos-shell.stage-effects kos-shell.stage-protocol
             kos-shell.appearance-config kos-shell.dock-adaptive
+            kos-shell.dock-corner-shape
             kos-shell.dock-autohide kos-deskcenter.desktop-outputs
             kos-shell.screen-selection
             kos-ui.visual-contract kos-ui.color-scheme

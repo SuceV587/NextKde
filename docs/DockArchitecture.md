@@ -358,15 +358,17 @@ application-grid order in Dock configuration.
 File: `Quickshell.stateDir + "/dock/config.json"`. This keeps runtime user
 state outside the watched QML source directory.
 
-Core user configuration fields (schema version 10):
+Core user configuration fields (schema version 11):
 
 ```json
 {
-  "version": 10,
+  "version": 11,
   "baseHeight": 60,
   "theme": "dark",
   "position": "bottom",
   "barHeight": 35,
+  "cornerShape": "g2",
+  "cornerCurvature": 0.3,
   "iconOverrides": {},
   "dockItems": [
     { "type": "app", "appId": "code.desktop" },
@@ -402,6 +404,11 @@ the edge hit target, hover/click reveal, and visibility mode remain unchanged.
 The Settings switch follows the confirmed snapshot and handles its own pending
 request, so unrelated snapshots cannot prematurely re-enable it.
 
+Schema 11 adds `cornerShape` (`"default" | "g2"`, default `"g2"`) and
+`cornerCurvature` (default 0.30, clamped to 0.12–0.50): the Dock's own
+silhouette, a rounded rectangle by default. See "Corner shape" for the policy
+behind them and the surfaces it feeds.
+
 Schema 9 adds `showLauncher` and `showTrash`. Both default to `true` for old
 configurations; only an explicit boolean `false` hides an icon. Settings uses
 `dock-settings.updateBuiltinVisibility(id, visible)` with `launcher` or `trash`.
@@ -415,6 +422,40 @@ closes its open menu. An information-only or accessory-only Dock retains usable
 dimensions without reserving orphan dividers; an entirely empty Dock has zero
 height.
 
+### Corner shape (schema 11)
+
+`cornerShape` (`"default" | "g2"`) and `cornerCurvature` (0.12–0.50) are one
+policy, derived in `DockCornerShape.mjs` and consumed by everything that rounds
+a Dock corner:
+
+| Consumer | Reads | Effect |
+| --- | --- | --- |
+| `DockContainer.pillRadius` | `cornerPolicy.radiusRatio` | the glass silhouette's cap; `DockWindow` zeroes it for a taskbar |
+| `DockWindow`'s `LiquidGlassPanel` | `cornerPolicy.exponent` | continuous-curvature corners in G2, the softened 2.35 in `默认` |
+| `DockIcon.activeBackgroundRadius` | `cornerPolicy.innerRadiusRatio` | the selection/hover plate rounds with the glass around it |
+
+`默认` reproduces the pre-policy Dock exactly: a proportional cap (0.5 of the
+height, i.e. a capsule) with the softened corner, so the opt-out cannot drift
+from what users had. `g2` is the rounded rectangle: the cap becomes the
+curvature value and the corner sweeps the shell's continuous-curvature
+exponent, which is what makes the silhouette read as a rounded rectangle rather
+than a capsule. Because the G2 cap is always below the old 0.5, a corner can
+only narrow -- no icon can newly fall outside the edge padding the layout
+solved.
+
+A stretched taskbar is the documented exception: it fills the screen edge, so
+its own corners stay square and its plates keep the shell style's ratio
+(carried as `stretched` in the policy input).
+
+Settings writes both through `dock-settings.updateCornerShape(shape)` /
+`updateCornerCurvature(value)`; the curvature row is part of the Dock page and
+disables itself while `默认` is selected. The value is persisted as a float and
+clamped on load, so a hand-edited file cannot produce an unusable shape.
+`kos-shell.dock-corner-shape` covers the derivation (defaults, clamping,
+taskbar exception); `tests/dock-surface` asserts the shipping `DockWindow`
+bindings follow `ConfigService.cornerPolicy` and that `默认` restores the
+capsule.
+
 `kos-shell.dock-builtins` checks defaults, independent changes and persistence
 across a reload. `kos-settings.builtin-checkboxes` uses the actual Settings page
 with a simulated bridge to exercise clicks, pending state, failed replies and
@@ -426,6 +467,7 @@ Persist:
 - ordered `dockItems`; app IDs are canonical desktop IDs
 - layout proportions and size preferences
 - theme, position, visibility, and window-grouping preferences
+- corner shape and curvature (the Dock's own silhouette, see "Corner shape")
 - legacy icon appearance and override fields for round-trip compatibility
 
 Do not persist:

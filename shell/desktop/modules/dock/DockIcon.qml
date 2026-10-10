@@ -110,10 +110,14 @@ Item {
     // The shared indicator approach caused coordinate bugs during layout changes.
     property bool   useSharedActiveBackground: false
 
-    // Active background radius is proportional to the icon height. This is
-    // intentionally independent from the icon/background gap.
+    // Active background radius is proportional to the icon height, and it takes
+    // its ratio from the Dock's own corner policy: the plate behind an icon and
+    // the glass around it then round together instead of being two independent
+    // numbers. In "默认" this is the style's value (0.30 on macOS, i.e. exactly
+    // what this shipped with), so only G2 mode moves it. Intentionally
+    // independent from the icon/background gap.
     readonly property real activeBackgroundRadius: iconSize
-        * AppearanceTokens.dock.activeRadiusRatio
+        * ConfigService.cornerPolicy.innerRadiusRatio
     readonly property real iconSlotSize: iconSize + activeBackgroundGap * 2
     readonly property bool dotIndicator:
         AppearanceTokens.dock.indicatorStyle === "dot"

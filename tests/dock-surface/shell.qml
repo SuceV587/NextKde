@@ -49,9 +49,24 @@ ShellRoot {
                     check(dock.testPill.visible && dock.testRegions.regions.length === 2,
                         edge + " revealing restores the glass during the animation")
                 }
+                // Corner policy: the glass silhouette takes both its cap and its
+                // continuity from the Dock's policy, and "默认" restores the
+                // capsule the Dock shipped with.
+                check(bottomDock.testPill.cornerExponent === 3.0,
+                    "G2 sweeps the continuous-curvature exponent")
+                check(bottomDock.testPill.radius === bottomDock.testContainer.pillRadius,
+                    "floating glass uses the policy's cap radius")
+                ConfigService.cornerShape = "default"
+                check(bottomDock.testPill.cornerExponent === 2.35,
+                    "默认 restores the softened corner")
+                check(bottomDock.testPill.radius === bottomDock.testContainer.pillRadius,
+                    "默认 keeps the container's capsule radius")
+                ConfigService.cornerShape = "g2"
                 ConfigService.dockStyle = "taskbar"
                 check(leftDock.edgeMargin === 0 && leftDock.workspaceMargin === 0
                     && leftDock.exclusiveZone === 56, "taskbar keeps its flush edge reservation")
+                check(leftDock.testPill.radius === 0,
+                    "taskbar stays square: the policy cannot round an edge fill")
                 console.log("DOCK_SURFACE_PASS")
             } catch (error) {
                 console.log("FAIL " + error)

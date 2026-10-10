@@ -915,6 +915,18 @@ public:
         callDock({QStringLiteral("updateDockStyle"), style});
     }
 
+    // Corner shape: "default" (the capsule the Dock shipped with) or "g2" (the
+    // rounded rectangle). The curvature is the G2 cap ratio, so it travels as a
+    // three-decimal number and the shell clamps it into its own range.
+    Q_INVOKABLE void updateDockCornerShape(const QString &shape) {
+        callDock({QStringLiteral("updateCornerShape"), shape});
+    }
+
+    Q_INVOKABLE void updateDockCornerCurvature(double curvature) {
+        callDock({QStringLiteral("updateCornerCurvature"),
+                  QString::number(curvature, 'f', 3)});
+    }
+
     Q_INVOKABLE void updateDockIconMode(const QString &mode) {
         callDock({QStringLiteral("updateIconMode"), mode});
     }
@@ -1488,6 +1500,13 @@ private:
             // every snapshot refresh.
             {QStringLiteral("contentStyle"), object.value(QStringLiteral("contentStyle")).toString()},
             {QStringLiteral("dockStyle"), object.value(QStringLiteral("dockStyle")).toString()},
+            // Corner policy. The fallbacks are the values a profile that has
+            // never opened this page renders with, so the pickers and the Dock
+            // agree even when the shell is older than this page.
+            {QStringLiteral("cornerShape"),
+             object.value(QStringLiteral("cornerShape")).toString(QStringLiteral("g2"))},
+            {QStringLiteral("cornerCurvature"),
+             object.value(QStringLiteral("cornerCurvature")).toDouble(0.30)},
             {QStringLiteral("iconMode"), object.value(QStringLiteral("iconMode")).toString()},
             {QStringLiteral("iconOpacity"), object.value(QStringLiteral("iconOpacity")).toDouble()},
             {QStringLiteral("iconTintColor"), object.value(QStringLiteral("iconTintColor")).toString()},

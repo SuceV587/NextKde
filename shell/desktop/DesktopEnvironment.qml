@@ -15,6 +15,7 @@ import qs.desktop.modules.common
 import qs.desktop.modules.platform
 import qs.desktop.modules.shortcuts
 import qs.desktop.modules.weather
+import "modules/dock/DockCornerShape.mjs" as DockCornerShape
 
 Item {
     id: shell
@@ -262,12 +263,16 @@ Item {
                 ? ConfigService.contentStyle : "compact"
             const infoCardMode = ConfigService.isValidInfoCardMode(ConfigService.infoCardMode)
                 ? ConfigService.infoCardMode : "carousel"
+            const cornerShape = DockCornerShape.isValidShape(ConfigService.cornerShape)
+                ? ConfigService.cornerShape : "g2"
             return JSON.stringify({
                 baseHeight: ConfigService.baseHeight,
                 theme: theme,
                 position: position,
                 dockStyle: dockStyle,
                 contentStyle: contentStyle,
+                cornerShape: cornerShape,
+                cornerCurvature: ConfigService.cornerCurvature,
                 infoCardMode: infoCardMode,
                 infoCardAutoRotate: ConfigService.infoCardAutoRotate,
                 infoCardOrder: JSON.stringify(ConfigService.infoCardOrder),
@@ -315,6 +320,16 @@ Item {
 
         function updateDockStyle(newStyle: string): string {
             ConfigService.updateDockStyle(newStyle)
+            return snapshot()
+        }
+
+        function updateCornerShape(newShape: string): string {
+            ConfigService.updateCornerShape(newShape)
+            return snapshot()
+        }
+
+        function updateCornerCurvature(curvature: real): string {
+            ConfigService.updateCornerCurvature(curvature)
             return snapshot()
         }
 

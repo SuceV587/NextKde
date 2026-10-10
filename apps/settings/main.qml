@@ -39,6 +39,19 @@ ApplicationWindow {
     // hard-coding a second, drifting palette.
     property string shellStyle: "macos"
     readonly property bool materialForm: shellStyle === "material"
+    // The sidebar's group cards and the selection wash inside them. The wash
+    // radius is the card's minus the row's inset from it, so the two corners run
+    // parallel: the nested-corner rule Material and Apple both use, and the one
+    // that reads as "the same rounding" where it is actually compared -- a
+    // selection sitting on a card's first row has its corner four pixels from
+    // the card's. The card's own 18 cannot be used directly: on the row a live
+    // session renders (40px tall -- the Controls style adds 12px of padding on
+    // top of the 28 the layout asks for) it is within two pixels of a full
+    // capsule and reads as a stadium there, while the card stays a soft rounded
+    // rectangle.
+    readonly property int sidebarCardRadius: 18
+    readonly property int sidebarRowInset: 4
+    readonly property int sidebarSelectionRadius: sidebarCardRadius - sidebarRowInset
     property string materialSeed: ""
     // Material 3 palette, rebuilt from that accent by the same implementation
     // the shell derives its own with. The shared colorize singleton cannot be
@@ -366,7 +379,9 @@ ApplicationWindow {
         required property color navTint
         width: parent ? parent.width : 0
         // Compact rows: 28 (user-picked) pulls the titles tight; the icon (18)
-        // sits level with the 14px label.
+        // sits level with the 14px label. This is the intent, not what renders:
+        // the layout owns a child's height, and the Controls style pads the
+        // delegate, so a live session draws these rows ~40px tall.
         height: 28
         leftPadding: 10
         rightPadding: 10
@@ -376,8 +391,12 @@ ApplicationWindow {
         background: Rectangle {
             // M3's drawer items are full-round pills that carry selection in
             // secondaryContainer; the iPadOS form keeps its squircle of tinted
-            // wash.
-            radius: height / 2
+            // wash -- and a squircle is what the card behind it draws too, so
+            // the wash takes the nested radius (the card's minus this row's
+            // inset) instead of the full-height capsule. See
+            // window.sidebarSelectionRadius for why it is not the card's value.
+            radius: window.materialForm ? height / 2
+                : window.sidebarSelectionRadius
             color: parent.highlighted
                 ? (window.materialForm ? theme.selectedContainer : theme.selected)
                 : (parent.hovered ? theme.sidebarHover : "transparent")
@@ -2272,6 +2291,13 @@ ApplicationWindow {
         readonly property var dockContentStyles: ["compact", "relaxed"]
         property int dockStyleIndex: 0
         readonly property var dockStyles: ["floating", "taskbar", "transparent"]
+        property int dockCornerShapeIndex: 1
+        readonly property var dockCornerShapes: ["default", "g2"]
+        // The G2 cap ratio. The shell clamps to the same range (see
+        // DockCornerShape.mjs); the slider only ever produces values inside it.
+        property real dockCornerCurvature: 0.30
+        readonly property real minCornerCurvature: 0.12
+        readonly property real maxCornerCurvature: 0.50
         property int visibilityModeIndex: 0
         readonly property var visibilityModes: ["always", "smart", "persistent"]
         property int windowGroupingIndex: 0
@@ -2286,6 +2312,7 @@ ApplicationWindow {
         property bool builtinUpdatePending: false
         property string errorText: ""
         property bool layoutDirty: false
+        property bool curvatureDirty: false
 
         function positionIndexFromString(position) {
             const idx = dockPositions.indexOf(position)
@@ -2300,6 +2327,13 @@ ApplicationWindow {
         function dockStyleIndexFromString(style) {
             const idx = dockStyles.indexOf(style)
             return idx >= 0 ? idx : 0
+        }
+
+        function dockCornerShapeIndexFromString(shape) {
+            const idx = dockCornerShapes.indexOf(shape)
+            // An unknown/absent key means a shell that predates the corner
+            // policy, which draws the shipped G2 default.
+            return idx >= 0 ? idx : 1
         }
 
         function visibilityModeIndexFromString(mode) {
@@ -2319,6 +2353,11 @@ ApplicationWindow {
             dockPositionIndex = positionIndexFromString(state.position)
             dockContentStyleIndex = dockContentStyleIndexFromString(state.contentStyle)
             dockStyleIndex = dockStyleIndexFromString(state.dockStyle)
+            dockCornerShapeIndex = dockCornerShapeIndexFromString(state.cornerShape)
+            const curvature = Number(state.cornerCurvature)
+            dockCornerCurvature = Number.isFinite(curvature)
+                ? Math.max(minCornerCurvature, Math.min(maxCornerCurvature, curvature))
+                : 0.30
             visibilityModeIndex = visibilityModeIndexFromString(state.visibilityMode)
             windowGroupingIndex = windowGroupingIndexFromString(state.windowGrouping)
             showLauncher = state.showLauncher !== false
@@ -2327,6 +2366,7 @@ ApplicationWindow {
             showRevealIndicator = state.showRevealIndicator !== false
             stateReady = true
             layoutDirty = false
+            curvatureDirty = false
             errorText = ""
         }
 
@@ -2349,6 +2389,37 @@ ApplicationWindow {
             if (!bridge)
                 return
             bridge.updateDockStyle(dockStyles[index])
+        }
+
+        function saveCornerShape(index) {
+            if (!bridge)
+                return
+            bridge.updateDockCornerShape(dockCornerShapes[index])
+        }
+
+        // The curvature slider previews while dragging and commits on release,
+        // exactly like the height slider: the shell writes the config once, and
+        // the snapshot that comes back is authoritative.
+        function previewDockCurvature(position) {
+            const next = Math.round((minCornerCurvature
+                + position * (maxCornerCurvature - minCornerCurvature)) * 100) / 100
+            if (Math.abs(next - dockCornerCurvature) <= 0.001)
+                return
+            dockCornerCurvature = next
+            curvatureDirty = true
+        }
+
+        function commitCurvature() {
+            if (!curvatureDirty)
+                return
+            curvatureDirty = false
+            saveCornerCurvature()
+        }
+
+        function saveCornerCurvature() {
+            if (!bridge)
+                return
+            bridge.updateDockCornerCurvature(dockCornerCurvature)
         }
 
         function saveVisibilityMode(index) {
@@ -2495,6 +2566,113 @@ ApplicationWindow {
                             }
                             onCanceled: { dockPage.layoutDirty = false; dockPage.refresh() }
                             onCommitRequested: dockPage.commitLayout()
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: "圆角".toUpperCase()
+            color: theme.secondaryText
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            Layout.leftMargin: 13
+            Layout.topMargin: 14
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            color: theme.card
+            radius: 18
+            implicitHeight: cornerColumn.implicitHeight
+
+            Column {
+                id: cornerColumn
+                anchors.fill: parent
+
+                Item {
+                    width: parent.width
+                    height: 62
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "◌"; tint: "#ff9f0a" }
+                        ColumnLayout {
+                            spacing: 1
+                            Text { text: "圆角样式"; color: theme.primaryText; font.pixelSize: 14 }
+                            Text {
+                                text: dockPage.dockCornerShapeIndex === 1
+                                    ? "G2 圆角矩形：连续曲率的转角"
+                                    : "胶囊端帽，沿用当前风格"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                        SettingsNavBar {
+                            id: cornerShapeNavBar
+                            model: [
+                                { id: "default", label: "默认" },
+                                { id: "g2", label: "G2" }
+                            ]
+                            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                            itemWidthOverride: 62
+                            currentIndex: dockPage.dockCornerShapeIndex
+                            onSelectionChanged: function(index) {
+                                dockPage.saveCornerShape(index)
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { width: parent.width; height: 1; color: theme.separator }
+
+                Item {
+                    width: parent.width
+                    height: 62
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 16
+                        spacing: 12
+                        SettingIcon { symbol: "◐"; tint: "#30d158" }
+                        ColumnLayout {
+                            spacing: 1
+                            Text { text: "曲率"; color: theme.primaryText; font.pixelSize: 14 }
+                            Text {
+                                // The curvature only draws the G2 shape, so the
+                                // row says so instead of silently doing nothing.
+                                text: dockPage.dockCornerShapeIndex === 1
+                                    ? "越小越方，50% 回到胶囊"
+                                    : "仅在 G2 圆角样式下生效"
+                                color: theme.secondaryText
+                                font.pixelSize: 11
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: Math.round(dockPage.dockCornerCurvature * 100) + "%"
+                            color: theme.secondaryText
+                            font.pixelSize: 12
+                        }
+                        LiquidControls.LiquidSlider {
+                            id: cornerCurvatureSlider
+                            accentColor: theme.accent
+                            Layout.preferredWidth: 156
+                            trackColor: theme.divider
+                            enabled: dockPage.dockCornerShapeIndex === 1
+                            value: (dockPage.dockCornerCurvature
+                                - dockPage.minCornerCurvature)
+                                / (dockPage.maxCornerCurvature
+                                    - dockPage.minCornerCurvature)
+                            onPreviewChanged: function(position) {
+                                dockPage.previewDockCurvature(position)
+                            }
+                            onCanceled: { dockPage.curvatureDirty = false; dockPage.refresh() }
+                            onCommitRequested: dockPage.commitCurvature()
                         }
                     }
                 }
@@ -5665,12 +5843,14 @@ ApplicationWindow {
 
                 // 侧栏条目也按 session 分组卡片呈现：背景和圆角对齐右侧内容区
                 // 的卡片（theme.card / radius 18），组间 15px。搜索过滤掉条目时
-                // ColumnLayout 只按可见项撑高，卡片会跟着收缩。
+                // ColumnLayout 只按可见项撑高，卡片会跟着收缩。半径走
+                // window.sidebarCardRadius：卡片里的选中项用同一套声明（见
+                // sidebarSelectionRadius），两处写死 18 迟早分叉。
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.bottomMargin: 15
                     color: theme.card
-                    radius: 18
+                    radius: window.sidebarCardRadius
                     implicitHeight: navGroup1.implicitHeight + 8
 
                     ColumnLayout {
@@ -5678,7 +5858,7 @@ ApplicationWindow {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.top: parent.top
-                        anchors.margins: 4
+                        anchors.margins: window.sidebarRowInset
                         spacing: 0
 
                         SidebarEntry {
@@ -5734,7 +5914,7 @@ ApplicationWindow {
                 Rectangle {
                     Layout.fillWidth: true
                     color: theme.card
-                    radius: 18
+                    radius: window.sidebarCardRadius
                     implicitHeight: navGroup2.implicitHeight + 8
 
                     ColumnLayout {
@@ -5742,7 +5922,7 @@ ApplicationWindow {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.top: parent.top
-                        anchors.margins: 4
+                        anchors.margins: window.sidebarRowInset
                         spacing: 0
 
                         SidebarEntry {
