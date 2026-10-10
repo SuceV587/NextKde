@@ -242,9 +242,14 @@ Item {
     // Scale model
     // ═══════════════════════════════════════════════════════════
     // Distance-based magnification. The Item's width/height remain the fixed
-    // layout slot; only its visual transform changes.
+    // layout slot; only its visual transform changes. An explicit user value
+    // (dock settings) turns it on in every style, so the sliders work on the
+    // taskbar-like styles too; otherwise the active style decides.
     readonly property bool _usesDistanceMagnification:
-        AppearanceTokens.dock.magnificationEnabled && magnificationRoot !== null
+        (AppearanceTokens.dock.magnificationEnabled
+            || ConfigService.hoverScale !== null
+            || ConfigService.hoverLift !== null)
+        && magnificationRoot !== null
     readonly property bool _distanceMagnificationEnabled:
         _usesDistanceMagnification
         && magnificationPointer.x > -9999
@@ -299,26 +304,26 @@ Item {
     }
     readonly property real _magnificationScale:
         1.0 + _magnificationProgress
-            * (AppearanceTokens.dock.magnificationMaxScale - 1.0)
+            * (ConfigService.effectiveHoverScale - 1.0)
     // Continuous (sub-pixel) lift: rounding this to whole pixels would quantise
     // the small magnification lift into a couple of visible steps.
     readonly property real _magnificationLift:
         -(icon.iconSize
-            * AppearanceTokens.dock.magnificationLiftRatio
+            * ConfigService.effectiveHoverLift
             * _magnificationProgress)
     // The distance curve already includes the hovered icon. Keep the original
-    // one-icon fallback for non-macOS shell styles.
+    // one-icon fallback for hosts without a shared pointer.
     property real _hoverScale:
         !_usesDistanceMagnification && _hovering
-            ? AppearanceTokens.dock.hoverScale : 1.0
+            ? ConfigService.effectiveHoverScale : 1.0
     // Only isolated/non-fisheye hosts use binary hover feedback. Adding it to
     // the distance curve introduces a several-pixel jump at every slot edge.
     // Keep it disabled even during pointer exit, while the fisheye settles.
     property real _hoverLift: !_usesDistanceMagnification
         && _hovering && !showActiveBackground
-        && AppearanceTokens.dock.hoverLiftRatio > 0
+        && ConfigService.effectiveHoverLift > 0
         ? -Math.max(2, Math.round(iconSize
-            * AppearanceTokens.dock.hoverLiftRatio)) : 0
+            * ConfigService.effectiveHoverLift)) : 0
     property real _attentionScale: 1.0
     property real _attentionLift: 0
     property real _attentionGlow: 0
