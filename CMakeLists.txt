@@ -134,11 +134,18 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/shell/desktop/modules/bar/test_control_center_submenu_state.mjs
         )
         set_tests_properties(kos-shell.control-center-submenu-state PROPERTIES TIMEOUT 10)
+        add_test(NAME kos-shell.application-traffic
+            COMMAND ${KOS_NODE_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/status-area/test_application_traffic.mjs)
+        set_tests_properties(kos-shell.application-traffic PROPERTIES LABELS logic TIMEOUT 10)
         add_test(NAME kos-shell.visibility-policy
             COMMAND ${KOS_NODE_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/shell/desktop/modules/common/test_visibility_policy.mjs
         )
         set_tests_properties(kos-shell.visibility-policy PROPERTIES TIMEOUT 10)
+        add_test(NAME kos-shell.status-area-state
+            COMMAND ${KOS_NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/status-area/logic.mjs)
+        set_tests_properties(kos-shell.status-area-state PROPERTIES LABELS logic TIMEOUT 10)
         find_program(KOS_QMLTESTRUNNER_EXECUTABLE NAMES qmltestrunner
             HINTS /usr/lib/qt6/bin /usr/lib64/qt6/bin)
         if(KOS_QMLTESTRUNNER_EXECUTABLE)
@@ -205,6 +212,11 @@ if(BUILD_TESTING)
         set_tests_properties(kos-shell.stage-protocol PROPERTIES TIMEOUT 10)
         find_program(KOS_QUICKSHELL_EXECUTABLE NAMES quickshell)
         if(KOS_QUICKSHELL_EXECUTABLE)
+            add_test(NAME kos-shell.status-panel-power
+                COMMAND ${KOS_NODE_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/status-area/run-power.mjs
+                    ${KOS_QUICKSHELL_EXECUTABLE})
+            set_tests_properties(kos-shell.status-panel-power PROPERTIES LABELS ui TIMEOUT 25)
             add_test(NAME kos-shell.dock-surface
                 COMMAND ${KOS_NODE_EXECUTABLE}
                     ${CMAKE_CURRENT_SOURCE_DIR}/tests/dock/runtime.mjs surface
@@ -250,6 +262,11 @@ if(BUILD_TESTING)
             set_tests_properties(kos-shell.dock-reveal-indicator PROPERTIES
                 LABELS ui TIMEOUT 25
                 ENVIRONMENT "QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml")
+            add_test(NAME kos-shell.status-area
+                COMMAND ${KOS_NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/status-area/run.mjs
+                    ${KOS_QUICKSHELL_EXECUTABLE})
+            set_tests_properties(kos-shell.status-area PROPERTIES LABELS ui TIMEOUT 30 RUN_SERIAL TRUE
+                ENVIRONMENT "QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml")
             add_test(NAME kos-shell.notification-history
                 COMMAND ${KOS_NODE_EXECUTABLE}
                     ${CMAKE_CURRENT_SOURCE_DIR}/tests/notification-history/run.mjs
