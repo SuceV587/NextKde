@@ -49,6 +49,19 @@ ColumnLayout {
 
             Controls.StageSliderRow {
                 colors: section.colors
+                label: I18n.tr("Card opacity")
+                unit: ""
+                minV: 0.2
+                maxV: 1
+                decimals: 2
+                current: section.stageSnapshot.cardOpacity !== undefined
+                    ? section.stageSnapshot.cardOpacity : 1.0
+                onCommit: function(v) { section.settingRequested("cardOpacity", v)
+            }
+            }
+
+            Controls.StageSliderRow {
+                colors: section.colors
                 label: I18n.tr("Backdrop density")
                 unit: ""
                 minV: 0.2
