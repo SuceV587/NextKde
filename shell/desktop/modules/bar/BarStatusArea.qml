@@ -16,6 +16,10 @@ Item {
     // cluster that is not inside a sliding Bar (the Dock host) and for a Bar
     // that is permanently visible.
     property real barRevealProgress: 1
+    // Screen of the Bar that owns this cluster. Forwarded to the status-area
+    // editor's dismissal catcher; stays null in the Dock host, which never opens
+    // that editor.
+    property var targetScreen: null
     readonly property bool contextualEditingAvailable: !dockHosted
     readonly property bool verticalDock: dockHosted && dockEdge !== "bottom"
     // DockContainer uses this stable, single-row maximum for its width solver.
@@ -63,7 +67,27 @@ Item {
             ControlCenterService.notePanelOpen(false)
     }
 
+    // The status-area editor is a Bar popup too, but it is deliberately kept out
+    // of `anyPanelOpen`: that flag also drives ControlCenterService's 3s and
+    // 1.8s fast polls (and NetworkService's), which an editor showing no live
+    // data has no use for. It only inhibits the Bar's auto-hide, through
+    // BarWindow's `popupOpen`.
+    readonly property bool statusEditorOpen: statusAreaEditor.requestedOpen
+    function closeStatusEditor() { statusAreaEditor.close() }
+
+    // The editor is opened from the status cluster's right-click, through one
+    // place, so the other Bar popups release the shared surface first and the
+    // editor's own anchor is the cluster the user clicked.
+    function openStatusEditor(item) {
+        networkPanel.close()
+        bluetoothPanel.close()
+        root.closeControlCenter()
+        notificationPanel.close()
+        statusAreaEditor.openFor(item)
+    }
+
     function toggleControlCenter(anchorItem) {
+        root.closeStatusEditor()
         if (controlCenterOpen) {
             closeControlCenter()
             return
@@ -86,6 +110,7 @@ Item {
     // confirmation dialog, exactly like choosing the entry in the panel.
     property string pendingSessionAction: ""
     function presentSessionConfirmation(action) {
+        root.closeStatusEditor()
         notificationPanel.close()
         if (controlCenter) {
             if (!controlCenter.isOpen)
@@ -144,6 +169,7 @@ Item {
                         || bluetoothPanel.requestedOpen || root.controlCenterOpen
                         || notificationPanel.requestedOpen
                     onPanelToggleRequested: {
+                        root.closeStatusEditor()
                         notificationPanel.close()
                         bluetoothPanel.close()
                         if (!networkPanel.requestedOpen)
@@ -200,6 +226,7 @@ Item {
                 dockEdge: root.dockEdge
                 verticalDock: root.verticalDock
                 onPanelToggleRequested: {
+                    root.closeStatusEditor()
                     if (!notificationPanel.requestedOpen) {
                         networkPanel.close()
                         bluetoothPanel.close()
@@ -275,11 +302,13 @@ Item {
         acceptedButtons: Qt.RightButton
         gesturePolicy: TapHandler.ReleaseWithinBounds
         enabled: root.contextualEditingAvailable
-        onTapped: statusAreaEditor.openFor(root)
+        onTapped: root.openStatusEditor(root)
     }
 
     StatusAreaEditor {
         id: statusAreaEditor
+        barRevealProgress: root.barRevealProgress
+        targetScreen: root.targetScreen
     }
 
     NotificationHistoryPanel {

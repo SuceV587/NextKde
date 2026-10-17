@@ -476,6 +476,8 @@ Item {
                     JSON.stringify(AppearanceTokens.colorSchemeSwatches),
                 glassFollowsAppearanceMode:
                     AppearanceConfigService.glassFollowsAppearanceMode,
+                nativeTextRendering:
+                    AppearanceConfigService.nativeTextRendering,
                 spatialWallpaperEnabled:
                     AppearanceConfigService.spatialWallpaperEnabled,
                 barIntegratedWithDock:
@@ -517,6 +519,11 @@ Item {
 
         function updateGlassStyle(style: string): string {
             AppearanceConfigService.updateGlassStyle(style)
+            return snapshot()
+        }
+
+        function updateNativeTextRendering(value: bool): string {
+            AppearanceConfigService.updateNativeTextRendering(value)
             return snapshot()
         }
 

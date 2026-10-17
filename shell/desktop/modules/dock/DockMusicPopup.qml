@@ -181,6 +181,7 @@ AnimatedPopupWindow {
                 spacing: 4
 
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     width: parent.width
                     text: popup.player?.trackTitle || I18n.tr("No track playing")
                     color: ThemeService.foregroundColor
@@ -191,6 +192,7 @@ AnimatedPopupWindow {
                     }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     width: parent.width
                     text: popup.player?.trackArtist || I18n.tr("Unknown artist")
                     color: ThemeService.foregroundColor
@@ -199,6 +201,7 @@ AnimatedPopupWindow {
                     font.pixelSize: 12
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     width: parent.width
                     text: DockMprisService.playbackStatus || popup.player?.trackAlbum || popup.player?.identity || "MPRIS Player"
                     color: ThemeService.foregroundColor
@@ -316,6 +319,7 @@ AnimatedPopupWindow {
             }
             height: 14
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 anchors.left: parent.left
                 text: popup.formatTime(popup.player?.position ?? 0)
                 color: ThemeService.foregroundColor
@@ -323,6 +327,7 @@ AnimatedPopupWindow {
                 font.pixelSize: 10
             }
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 anchors.right: parent.right
                 text: popup.safeLength > 0 ? popup.formatTime(popup.safeLength) : "--:--"
                 color: ThemeService.foregroundColor

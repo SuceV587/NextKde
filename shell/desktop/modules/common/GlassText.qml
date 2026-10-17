@@ -12,6 +12,13 @@ Text {
     property real readabilityBackdropOpacity: 0.09
     color: AppearanceTokens.isDarkTheme ? "#ffffff" : "#000000"
     style: Text.Normal
+    // Qt's per-channel (LCD subpixel) coverage tints glyph edges; over the
+    // glass each colour channel then blends with a different backdrop, which
+    // is the coloured fringing this shell's text used to carry. The appearance
+    // switch trades that for native, grayscale rasterisation. Applied here
+    // once for every glass surface rather than per call site.
+    renderType: AppearanceConfigService.nativeTextRendering
+        ? Text.NativeRendering : Text.QtRendering
     // Fit a rounded rectangular gradient to the text block, including padding.
     // Its opacity changes throughout the area, not just at a blurred border.
     Loader {

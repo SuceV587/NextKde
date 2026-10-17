@@ -242,6 +242,7 @@ Item {
                     spacing: 6
 
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         id: trackTitle
                         anchors.verticalCenter: parent.verticalCenter
                         text: widget.player?.trackTitle ?? "No Track"
@@ -251,6 +252,7 @@ Item {
                     }
 
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         id: trackArtist
                         anchors.verticalCenter: parent.verticalCenter
                         text: widget.player?.trackArtist
@@ -341,6 +343,7 @@ Item {
                 }
 
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     id: compactTrackTitle
                     anchors.verticalCenter: parent.verticalCenter
                     text: compactTrackViewport.metadata

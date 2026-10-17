@@ -1559,6 +1559,7 @@ PanelWindow {
                                 color: Qt.rgba(0.027, 0.753, 0.376, 1.0)
 
                                 Text {
+                                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                     anchors.centerIn: parent
                                     text: I18n.tr("Done")
                                     color: "white"
@@ -2312,6 +2313,7 @@ PanelWindow {
                                 }
 
                                 Text {
+                                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                     id: folderTitle
                                     anchors.centerIn: parent
                                     visible: !root.folderRenameActive
@@ -2375,6 +2377,7 @@ PanelWindow {
                                 }
 
                                 Text {
+                                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                     anchors {
                                         right: parent.right
                                         verticalCenter: parent.verticalCenter
@@ -2606,6 +2609,7 @@ PanelWindow {
                                             }
                                             color: Qt.rgba(0.95, 0.27, 0.25, 0.96)
                                             Text {
+                                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                                 anchors.centerIn: parent
                                                 text: "−"
                                                 color: "white"
@@ -2741,6 +2745,7 @@ PanelWindow {
                                     width: parent.width
                                     height: 30
                                     Text {
+                                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                         anchors {
                                             left: parent.left
                                             verticalCenter: parent.verticalCenter

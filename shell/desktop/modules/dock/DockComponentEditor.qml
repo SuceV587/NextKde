@@ -73,11 +73,13 @@ AnimatedPopupWindow {
             RowLayout {
                 Layout.fillWidth: true
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     text: I18n.tr("Dock Widgets")
                     color: ThemeService.foregroundColor
                     font { pixelSize: 14; weight: Font.DemiBold }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     text: I18n.tr("Drag to reorder, tap to add or remove")
                     color: ThemeService.foregroundColor
                     opacity: 0.58
@@ -90,6 +92,7 @@ AnimatedPopupWindow {
                         AppearanceTokens.colors.primaryContainer,
                         Qt.rgba(1, 1, 1, ThemeService.isDark ? 0.13 : 0.72))
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         anchors.centerIn: parent
                         text: I18n.tr("Done")
                         color: AppearanceTokens.surface.pick(
@@ -153,12 +156,14 @@ AnimatedPopupWindow {
                             anchors.centerIn: parent
                             spacing: 4
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: editor.symbols[card.modelData]
                                 color: ThemeService.foregroundColor
                                 font.pixelSize: 22
                             }
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: editor.labels[card.modelData]
                                 color: ThemeService.foregroundColor
@@ -171,6 +176,7 @@ AnimatedPopupWindow {
                             width: 20; height: 20; radius: 10
                             color: active ? "#ff453a" : ThemeService.accentColor
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors.centerIn: parent
                                 text: card.active ? "−" : "+"
                                 color: "white"
@@ -224,11 +230,13 @@ AnimatedPopupWindow {
                 ColumnLayout {
                     spacing: 1
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         text: I18n.tr("Auto rotate")
                         color: ThemeService.foregroundColor
                         font { pixelSize: 13; weight: Font.DemiBold }
                     }
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         text: I18n.tr("When off, hover and scroll wheel still switch pages")
                         color: ThemeService.foregroundColor
                         opacity: 0.58

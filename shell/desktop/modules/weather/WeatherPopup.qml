@@ -44,6 +44,7 @@ AnimatedPopupWindow {
             anchors { top: parent.top; left: parent.left; right: parent.right; margins: 16 }
             spacing: 14
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 text: WeatherService.conditionSymbol(WeatherService.weatherCode, WeatherService.isDay)
                 color: ThemeService.foregroundColor
                 font.pixelSize: 54

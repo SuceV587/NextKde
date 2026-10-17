@@ -217,6 +217,7 @@ PanelWindow {
                                 }
 
                                 Text {
+                                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                     id: desktopLabel
                                     text: modelData.name || I18n.tr("Desktop %1").arg(index + 1)
                                     color: isCurrent ? "#ffffff" : Qt.rgba(1, 1, 1, 0.78)
@@ -335,6 +336,7 @@ PanelWindow {
                                             }
 
                                             Text {
+                                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                                 text: modelData.identity?.name || modelData.title || I18n.tr("App")
                                                 color: "white"
                                                 font { pixelSize: 12; weight: Font.Bold }
@@ -343,6 +345,7 @@ PanelWindow {
                                             }
 
                                             Text {
+                                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                                 visible: text.length > 0
                                                 text: "— " + (modelData.title || "")
                                                 color: Qt.rgba(1, 1, 1, 0.58)
@@ -368,6 +371,7 @@ PanelWindow {
                                             Behavior on color { ColorAnimation { duration: 120 } }
 
                                             Text {
+                                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                                 anchors.centerIn: parent
                                                 text: "✕"
                                                 font.pixelSize: 10
@@ -426,6 +430,7 @@ PanelWindow {
                                                 }
 
                                                 Text {
+                                                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                                     anchors.horizontalCenter: parent.horizontalCenter
                                                     text: modelData.title || I18n.tr("Window preview")
                                                     color: Qt.rgba(1, 1, 1, 0.40)
@@ -474,6 +479,7 @@ PanelWindow {
                     }
 
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: I18n.tr("No open app windows on this desktop")
                         color: Qt.rgba(1, 1, 1, 0.45)

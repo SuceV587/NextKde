@@ -456,6 +456,7 @@ Item {
                         color: Qt.rgba(0.18, 0.18, 0.20, 0.95)
 
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             id: tooltipText
                             anchors.centerIn: parent
                             text: trayItem.tooltip

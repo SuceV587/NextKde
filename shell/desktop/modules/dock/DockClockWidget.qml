@@ -71,6 +71,7 @@ Item {
             spacing: Math.max(1, Math.round(widget.iconSize * 0.04))
 
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 text: label
                 color: ThemeService.foregroundColor
                 opacity: 0.72
@@ -81,6 +82,7 @@ Item {
                 }
             }
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 text: value
                 color: ThemeService.foregroundColor
                 opacity: value === "--:--" ? 0.48 : 0.92
@@ -164,6 +166,7 @@ Item {
                     cached: true
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     id: glyphMask
                     anchors.fill: parent
                     text: timeText.text
@@ -206,6 +209,7 @@ Item {
                 }
 
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     id: timeText
                     anchors.centerIn: parent
                     width: parent.width
@@ -232,6 +236,7 @@ Item {
             }
 
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 width: parent.width
                 height: Math.round(widget.iconSize * 0.27)
                 text: I18n.fmt(calendarClock.dayDate, I18n.tr("MMMM d, yyyy"))
@@ -285,6 +290,7 @@ Item {
             glyphColor: "white"
         }
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             text: Qt.formatDateTime(calendarClock.minuteDate, "HH:mm")
             color: "white"
             anchors.verticalCenter: parent.verticalCenter
@@ -295,6 +301,7 @@ Item {
             }
         }
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             text: I18n.tr("· Sunset %1").arg(WeatherService.sunsetTime)
             color: "white"
             opacity: 0.68

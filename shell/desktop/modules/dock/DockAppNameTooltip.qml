@@ -75,6 +75,7 @@ PopupWindow {
         border.width: 1
         border.color: ThemeService.borderColor
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             id: appNameText
             anchors.centerIn: parent
             text: tooltip.targetIcon ? tooltip.targetIcon.displayName : ""

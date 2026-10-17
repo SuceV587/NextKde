@@ -128,6 +128,7 @@ Item {
     }
 
     Text {
+    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
         visible: root.title.length > 0
         text: root.title
         color: AppearanceTokens.surface.widgetForeground

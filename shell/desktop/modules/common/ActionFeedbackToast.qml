@@ -51,6 +51,7 @@ LiquidGlassPanel {
             color: root.foregroundColor
         }
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             anchors.verticalCenter: parent.verticalCenter
             text: root.message
             color: root.foregroundColor

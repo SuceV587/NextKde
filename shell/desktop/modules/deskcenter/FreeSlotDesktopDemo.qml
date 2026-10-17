@@ -901,6 +901,7 @@ Item {
         radius: 16
         z: 190
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             anchors.centerIn: parent
             text: root.externalDragAction === Qt.MoveAction
                 ? I18n.tr("Move to desktop") : I18n.tr("Copy to desktop")
@@ -1226,6 +1227,7 @@ Item {
                         outlined: true
                     }
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         anchors {
                             horizontalCenter: parent.horizontalCenter
                             top: parent.top
@@ -1253,6 +1255,7 @@ Item {
                     visible: root.renamingId !== delegateRoot.itemId
 
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         id: fileTitleIcon
                         visible: delegateRoot.fileTitleIcon !== ""
                         anchors.verticalCenter: fileTitleText.verticalCenter
@@ -1269,6 +1272,7 @@ Item {
                         }
                     }
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         id: fileTitleText
                         font: titleFontMetrics.font
                         x: fileTitleIcon.visible

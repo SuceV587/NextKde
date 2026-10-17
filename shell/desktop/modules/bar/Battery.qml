@@ -85,6 +85,7 @@ Item {
     }
 
     Text {
+    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
         anchors.centerIn: outline
         visible: root.isCharging
         text: "⚡"

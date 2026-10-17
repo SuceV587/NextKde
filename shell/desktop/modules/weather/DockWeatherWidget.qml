@@ -170,6 +170,7 @@ Item {
         // Together they form an exact 10px divider-to-metrics gap.
         readonly property int metricGapFiller: Math.max(0, 10 - spacing * 2)
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             width: Math.round(widget.iconSize * 0.82)
             text: WeatherService.conditionSymbol(WeatherService.weatherCode, WeatherService.isDay)
             color: ThemeService.foregroundColor
@@ -197,6 +198,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 width: parent.width
                 text: I18n.tr("Feels like %1").arg(WeatherService.apparentTemperature)
                 color: ThemeService.foregroundColor
@@ -205,6 +207,7 @@ Item {
                 horizontalAlignment: Text.AlignHCenter
             }
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 width: parent.width
                 text: I18n.tr("Humidity %1").arg(WeatherService.humidity)
                 color: ThemeService.foregroundColor
@@ -222,6 +225,7 @@ Item {
         spacing: Math.max(2, Math.round(widget.iconSize * 0.08))
 
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             text: WeatherService.conditionSymbol(WeatherService.weatherCode,
                                                  WeatherService.isDay)
             color: "white"
@@ -229,6 +233,7 @@ Item {
             font.pixelSize: Math.max(9, Math.round(widget.iconSize * 0.55))
         }
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             text: WeatherService.temperature
             color: "white"
             anchors.verticalCenter: parent.verticalCenter
@@ -238,6 +243,7 @@ Item {
             }
         }
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             text: I18n.tr("· Feels like %1").arg(WeatherService.apparentTemperature)
             color: "white"
             opacity: 0.68

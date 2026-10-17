@@ -38,6 +38,7 @@ PanelWindow {
         edgeMargin: 15
         pointerInsideBar: contentHoverHandler.hovered
         popupOpen: (barContentLoader.item?.statusArea?.anyPanelOpen ?? false)
+            || (barContentLoader.item?.statusArea?.statusEditorOpen ?? false)
             || (barContentLoader.item?.globalMenu?.menuOpen ?? false)
             || (barContentLoader.item?.systemMenu?.menuOpen ?? false)
         launcherOpen: AppLauncherService.open
@@ -206,6 +207,7 @@ PanelWindow {
                             right: parent.right
                             verticalCenter: parent.verticalCenter
                         }
+                        targetScreen: root.screen
                         // The popup surfaces anchored to this cluster must know
                         // when the Bar has stopped sliding, because a popup's
                         // anchor rectangle is measured only when its window is

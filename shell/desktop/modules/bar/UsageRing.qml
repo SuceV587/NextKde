@@ -1,5 +1,6 @@
 import QtQuick
 import qs.desktop.modules.dock
+import qs.desktop.modules.common
 
 Item {
     id: root
@@ -44,6 +45,7 @@ Item {
         }
 
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             anchors.centerIn: parent
             text: Math.round(root.value * 100) + "%"
             color: ThemeService.foregroundColor
@@ -55,11 +57,13 @@ Item {
         anchors { left: ring.right; leftMargin: 10; right: parent.right; verticalCenter: parent.verticalCenter }
         spacing: 3
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             text: root.label
             color: ThemeService.foregroundColor
             font { family: "Noto Sans CJK SC"; pixelSize: 13; weight: Font.DemiBold }
         }
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             width: parent.width
             text: root.detail
             elide: Text.ElideRight

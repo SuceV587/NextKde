@@ -176,6 +176,7 @@ PanelWindow {
                         }
                     }
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         visible: WallpaperPreviewService.mode === "theme"
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.bottom: parent.bottom
@@ -452,6 +453,7 @@ PanelWindow {
                                 color: option.iconColor
                             }
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: option.modelData
                                 color: option.iconColor

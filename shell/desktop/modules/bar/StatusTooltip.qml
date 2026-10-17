@@ -53,12 +53,14 @@ AnimatedPopupWindow {
             spacing: 3
 
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: root.primaryText
                 color: "#ffffff"
                 font { family: "Noto Sans CJK SC"; pixelSize: 12; weight: Font.DemiBold }
             }
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 anchors.horizontalCenter: parent.horizontalCenter
                 visible: root.secondaryText.length > 0
                 text: root.secondaryText

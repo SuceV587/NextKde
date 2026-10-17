@@ -13,6 +13,17 @@ AnimatedPopupWindow {
     id: editor
 
     property Item anchorItem: null
+    // Reveal progress of the auto-hiding Bar this editor hangs off (1 for a Bar
+    // that is permanently visible). A PopupWindow measures its anchor rectangle
+    // once, when its window is created, while the Bar hides by translating its
+    // whole content (barWrapper.y) -- so the window may only be created once the
+    // Bar has stopped moving.
+    property real barRevealProgress: 1
+    readonly property bool anchorSettled: barRevealProgress > 0.999
+    property bool pendingOpen: false
+    // Screen of the Bar that owns this editor; the full-screen dismissal
+    // catcher below is a separate surface and needs it explicitly.
+    property var targetScreen: null
     readonly property color foregroundColor: AppearanceTokens.surface.pick(
         AppearanceTokens.colors.surfaceForeground,
         AppearanceTokens.isDarkTheme ? "#f5f5f7" : "#1c1c1e")
@@ -54,7 +65,103 @@ AnimatedPopupWindow {
 
     function openFor(item) {
         anchorItem = item
-        show()
+        if (anchorSettled)
+            show()
+        else
+            pendingOpen = true
+    }
+
+    function close() {
+        pendingOpen = false
+        hide()
+    }
+
+    // The Bar finished sliding; create the window now that its anchor will be
+    // measured against the Bar's resting position.
+    onAnchorSettledChanged: {
+        if (!editor.anchorSettled || !editor.pendingOpen)
+            return
+        editor.pendingOpen = false
+        editor.show()
+    }
+
+    // An editor must never outlive a Bar that actually went away (output change,
+    // visibility-mode switch, controller reset). Closing it here also releases
+    // the Bar's popup inhibitor, so the controller can settle normally.
+    onBarRevealProgressChanged: {
+        if (editor.barRevealProgress > 0.001)
+            return
+        if (editor.pendingOpen || editor.requestedOpen)
+            editor.close()
+    }
+
+    // Safety net: a deferred request must never be swallowed if the Bar stops
+    // reporting a settled reveal. Showing the editor slightly high beats not
+    // showing it at all -- but a Bar that never came back is not a Bar to anchor
+    // to, so that request is dropped instead of orphaned.
+    Timer {
+        interval: 700
+        repeat: false
+        running: editor.pendingOpen
+        onTriggered: {
+            if (!editor.pendingOpen)
+                return
+            if (editor.barRevealProgress <= 0.001) {
+                editor.pendingOpen = false
+                return
+            }
+            console.info("[StatusAreaEditor] Bar reveal never settled; opening anyway")
+            editor.pendingOpen = false
+            editor.show()
+        }
+    }
+
+    // If the display server ever closes the popup behind our back, fold the open
+    // state too: otherwise `requestedOpen` keeps the Bar inhibited forever.
+    onClosed: {
+        if (editor.requestedOpen)
+            editor.close()
+    }
+
+    Connections {
+        target: ScreenLifecycle
+        function onOutputAvailableChanged() {
+            if (!ScreenLifecycle.outputAvailable)
+                editor.close()
+        }
+    }
+
+    // ── Outside-press dismissal ──────────────────────────────────────
+    // An AnimatedPopupWindow anchored to the layer-shell Bar cannot take a
+    // Wayland popup grab, so an explicit full-screen transparent catcher covers
+    // presses on the desktop or the Bar itself while the editor is open.
+    PanelWindow {
+        id: dismissalCatcher
+        screen: editor.targetScreen
+        visible: ScreenLifecycle.outputAvailable && editor.targetScreen !== null
+            && editor.requestedOpen
+        color: "transparent"
+        exclusionMode: ExclusionMode.Ignore
+        WlrLayershell.layer: WlrLayer.Top
+        WlrLayershell.namespace: "quickshell-statuseditor-backdrop"
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+        anchors {
+            top: true
+            bottom: true
+            left: true
+            right: true
+        }
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.ArrowCursor
+            onPressed: editor.close()
+        }
+    }
+
+    Shortcut {
+        sequence: "Escape"
+        enabled: editor.requestedOpen
+        onActivated: editor.close()
     }
 
     Item {
@@ -75,11 +182,13 @@ AnimatedPopupWindow {
             RowLayout {
                 Layout.fillWidth: true
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     text: I18n.tr("Status Area")
                     color: editor.foregroundColor
                     font { pixelSize: 14; weight: Font.DemiBold }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     text: I18n.tr("Drag to reorder, tap to show or hide")
                     color: editor.foregroundColor
                     opacity: 0.58
@@ -94,6 +203,7 @@ AnimatedPopupWindow {
                             editor.foregroundColor.g,
                             editor.foregroundColor.b, 0.10))
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         anchors.centerIn: parent
                         text: I18n.tr("Done")
                         color: AppearanceTokens.surface.pick(
@@ -101,7 +211,7 @@ AnimatedPopupWindow {
                             editor.foregroundColor)
                         font { pixelSize: 11; weight: Font.DemiBold }
                     }
-                    TapHandler { onTapped: editor.hide() }
+                    TapHandler { onTapped: editor.close() }
                 }
             }
 
@@ -141,18 +251,21 @@ AnimatedPopupWindow {
                             anchors.centerIn: parent
                             spacing: 3
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: editor.symbols[cellCard.modelData]
                                 color: editor.foregroundColor
                                 font.pixelSize: 19
                             }
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: editor.labels[cellCard.modelData]
                                 color: editor.foregroundColor
                                 font { pixelSize: 10; weight: Font.DemiBold }
                             }
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: cellCard.requiredCell
                                     ? I18n.tr("Pinned") : (cellCard.active ? "−" : "+")

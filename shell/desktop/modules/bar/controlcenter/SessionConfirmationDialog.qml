@@ -55,6 +55,7 @@ KosFloatPanel {
         }
 
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             anchors {
                 top: parent.top
                 topMargin: 88
@@ -69,6 +70,7 @@ KosFloatPanel {
         }
 
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             anchors {
                 top: parent.top
                 topMargin: 114
@@ -96,6 +98,7 @@ KosFloatPanel {
                 color: sessionConfirm.contentControlFill
 
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors.centerIn: parent
                     text: I18n.tr("Cancel")
                     color: sessionConfirm.contentForegroundColor
@@ -118,6 +121,7 @@ KosFloatPanel {
                 color: sessionConfirm.contentControlFill
 
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors.centerIn: parent
                     text: sessionConfirm.actionLabel === "poweroff" ? I18n.tr("Power Off")
                         : (sessionConfirm.actionLabel === "reboot" ? I18n.tr("Restart") : I18n.tr("Log Out"))

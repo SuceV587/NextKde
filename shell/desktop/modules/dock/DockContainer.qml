@@ -1255,6 +1255,7 @@ Item {
                 ThemeService.foregroundColor.b, 0.18))
 
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             id: componentEditLabel
             anchors.centerIn: parent
             text: I18n.tr("+ Widgets")

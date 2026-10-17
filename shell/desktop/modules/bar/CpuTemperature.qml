@@ -50,6 +50,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
 
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 text: I18n.tr("Avg temperature %1°").arg(root.currentC)
                 color: ThemeService.barInk
                 style: ThemeService.isDark && !AppearanceTokens.bar.macStyle
@@ -63,6 +64,7 @@ Item {
             }
 
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 text: I18n.tr("Max temperature %1°").arg(root.maximum5MinuteC)
                 color: ThemeService.barInk
                 style: ThemeService.isDark && !AppearanceTokens.bar.macStyle

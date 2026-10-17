@@ -248,6 +248,7 @@ PopupWindow {
                 height: 26
 
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     id: previewTitle
                     anchors.left: parent.left
                     anchors.right: plusBg.left
@@ -298,6 +299,7 @@ PopupWindow {
                     }
 
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         anchors.centerIn: parent
                         text: "+"
                         color: ThemeService.foregroundColor
@@ -473,6 +475,7 @@ PopupWindow {
                                     }
 
                                     Text {
+                                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: cardDelegate.thumbUrl
                                             ? I18n.tr("Refreshing…") : I18n.tr("Loading preview…")
@@ -494,6 +497,7 @@ PopupWindow {
                             // because the windows of one application each carry
                             // a different one.
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 id: titleText
                                 anchors.left: parent.left
                                 anchors.right: parent.right
@@ -536,6 +540,7 @@ PopupWindow {
                                 }
 
                                 Text {
+                                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                     anchors.centerIn: parent
                                     text: "✕"
                                     color: "white"

@@ -78,6 +78,7 @@ KosFloatPanel {
             Item { width: parent.width; height: 12 }
 
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 width: parent.width
                 leftPadding: dialogContent.sidePadding
                 rightPadding: dialogContent.sidePadding
@@ -90,6 +91,7 @@ KosFloatPanel {
             Item { width: parent.width; height: 4 }
 
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 width: parent.width
                 leftPadding: dialogContent.sidePadding
                 rightPadding: dialogContent.sidePadding
@@ -126,6 +128,7 @@ KosFloatPanel {
                         color: popup.contentControlFill
 
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             anchors.centerIn: parent
                             text: popup.cancelText
                             color: popup.contentForegroundColor
@@ -153,6 +156,7 @@ KosFloatPanel {
                         color: popup.contentControlFill
 
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             anchors.centerIn: parent
                             text: popup.confirmBusy ? I18n.tr("Working…") : popup.confirmText
                             color: popup.confirmBusy

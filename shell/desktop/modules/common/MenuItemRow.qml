@@ -120,6 +120,7 @@ Item {
         }
 
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             text: row.label
             elide: Text.ElideRight
             font.family: "SF Pro Display, Noto Sans CJK SC, sans-serif"

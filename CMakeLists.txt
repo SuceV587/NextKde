@@ -134,6 +134,21 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/shell/desktop/modules/bar/test_control_center_submenu_state.mjs
         )
         set_tests_properties(kos-shell.control-center-submenu-state PROPERTIES TIMEOUT 10)
+        add_test(NAME kos-shell.status-editor-panel
+            COMMAND ${KOS_NODE_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/shell/desktop/modules/bar/test_status_editor_panel.mjs
+        )
+        set_tests_properties(kos-shell.status-editor-panel PROPERTIES TIMEOUT 10)
+        add_test(NAME kos-shell.network-traffic-width
+            COMMAND ${KOS_NODE_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/shell/desktop/modules/bar/test_network_traffic_width.mjs
+        )
+        set_tests_properties(kos-shell.network-traffic-width PROPERTIES TIMEOUT 10)
+        add_test(NAME kos-shell.native-text-rendering
+            COMMAND ${KOS_NODE_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/shell/desktop/modules/common/test_native_text_rendering.mjs
+        )
+        set_tests_properties(kos-shell.native-text-rendering PROPERTIES TIMEOUT 10)
         add_test(NAME kos-shell.visibility-policy
             COMMAND ${KOS_NODE_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/shell/desktop/modules/common/test_visibility_policy.mjs

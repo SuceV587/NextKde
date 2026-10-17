@@ -137,6 +137,7 @@ Item {
                             color: modelData.accent
                         }
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             anchors {
                                 left: parent.left
                                 leftMargin: Math.round(widget.iconSize * 0.16)
@@ -153,6 +154,7 @@ Item {
                             }
                         }
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             anchors {
                                 right: parent.right
                                 verticalCenter: parent.verticalCenter
@@ -253,6 +255,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
         }
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             text: widget.available ? widget.currentC + "°" : "--°"
             color: "white"
             anchors.verticalCenter: parent.verticalCenter
@@ -263,6 +266,7 @@ Item {
             }
         }
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             text: I18n.tr("· Peak %1").arg(widget.available
                 ? widget.maximum5MinuteC + "°" : "--°")
             color: "white"

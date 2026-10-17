@@ -89,6 +89,7 @@ Scope {
                         color: movePointer.containsMouse ? Qt.rgba(1, 1, 1, 0.24) : Qt.rgba(1, 1, 1, 0.12)
                         border.color: Qt.rgba(1, 1, 1, 0.22)
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             anchors.centerIn: parent
                             text: I18n.tr("↔ Move")
                             color: "white"
@@ -107,6 +108,7 @@ Scope {
                         anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 9 }
                         spacing: 28
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             text: I18n.tr("Drag the lyrics box to adjust its position")
                             color: Qt.rgba(1, 1, 1, 0.72)
                             font.pixelSize: 12

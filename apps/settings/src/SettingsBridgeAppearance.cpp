@@ -209,6 +209,12 @@ void SettingsBridge::updateSpatialWallpaperEnabled(bool enabled)
         enabled ? QStringLiteral("true") : QStringLiteral("false") });
 }
 
+void SettingsBridge::updateNativeTextRendering(bool enabled)
+{
+    callAppearance({ QStringLiteral("updateNativeTextRendering"),
+        enabled ? QStringLiteral("true") : QStringLiteral("false") });
+}
+
 void SettingsBridge::updateBarVisibilityMode(const QString& mode)
 {
     callAppearance({ QStringLiteral("updateBarVisibilityMode"), mode });
@@ -338,6 +344,10 @@ QVariantMap SettingsBridge::appearanceSnapshotFromReply(const QString& payload)
             object.value(QStringLiteral("glassFollowsAppearanceMode")).toBool(true) },
         { QStringLiteral("spatialWallpaperEnabled"),
             object.value(QStringLiteral("spatialWallpaperEnabled")).toBool(false) },
+        // Qt's default glyph rasterisation, i.e. what a shell older than this
+        // key renders with.
+        { QStringLiteral("nativeTextRendering"),
+            object.value(QStringLiteral("nativeTextRendering")).toBool(false) },
         { QStringLiteral("barVisibilityMode"),
             barVisibility.isEmpty() ? QStringLiteral("always") : barVisibility },
         { QStringLiteral("barLayoutMode"),

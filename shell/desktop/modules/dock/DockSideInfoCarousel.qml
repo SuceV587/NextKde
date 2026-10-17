@@ -327,6 +327,7 @@ Item {
                             height: parent.height * 0.50
 
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors.centerIn: parent
                                 visible: sideSlot.modelData === carousel.musicPage
                                 text: "♫"
@@ -335,6 +336,7 @@ Item {
                                     Math.round(carousel.iconSize * 0.54))
                             }
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors.centerIn: parent
                                 visible: sideSlot.modelData === carousel.weatherPage
                                 text: WeatherService.conditionSymbol(
@@ -362,6 +364,7 @@ Item {
                         }
 
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             width: parent.width - carousel.iconSize * 0.12
                             height: parent.height * 0.50
                             anchors.horizontalCenter: parent.horizontalCenter

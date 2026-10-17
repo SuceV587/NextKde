@@ -118,6 +118,7 @@ Item {
             color: ThemeService.tooltipBackground
 
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 id: tooltipText
                 anchors.centerIn: parent
                 text: I18n.tr("CPU avg %1°C · 5 min max %2°C")

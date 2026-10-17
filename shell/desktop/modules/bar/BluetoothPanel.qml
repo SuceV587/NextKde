@@ -132,6 +132,7 @@ AnimatedPopupWindow {
                     }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     visible: modelData.connected
                     anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
                     text: "✓"
@@ -140,6 +141,7 @@ AnimatedPopupWindow {
                     font { pixelSize: 18; weight: Font.DemiBold }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { left: parent.left; right: parent.right; leftMargin: 58; rightMargin: 12; verticalCenter: parent.verticalCenter }
                     text: modelData.name
                     elide: Text.ElideRight
@@ -194,6 +196,7 @@ AnimatedPopupWindow {
                 color: Qt.rgba(1, 1, 1, 0.16)
             }
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter }
                 text: I18n.tr("Bluetooth settings…")
                 color: surface.foregroundColor

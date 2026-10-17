@@ -685,6 +685,9 @@ ColumnLayout {
         showGlassMaterial: false
         showIconAppearance: true
         showSpatialWallpaper: false
+        // This instance is the one every shell style shows, so the
+        // text-rendering card lives here rather than in the Material-only one.
+        showTextRendering: true
     }
 
     WidgetAppearanceSection {

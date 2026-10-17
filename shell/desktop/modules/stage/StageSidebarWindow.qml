@@ -11,6 +11,7 @@ import qs.desktop.modules.platform
 import qs.desktop.modules.applauncher
 import "stage-geometry.mjs" as StageGeo
 import "stage-groups.mjs" as StageGroups
+import qs.desktop.modules.common
 
 // Stage Sidebar 面板本体：常驻侧栏（side 可配左/右）、全屏透明浮层
 //（卡片纯悬浮、不保留屏幕空间）。同应用的窗口堆叠在同一张卡上（×N
@@ -2389,6 +2390,7 @@ PanelWindow {
 
         // 空态提示
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             visible: root.sideGroups.length === 0
             width: parent.width - 24
             x: 12
@@ -2457,6 +2459,7 @@ PanelWindow {
                 }
 
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     visible: cardModel.count > 12
                     anchors.verticalCenter: indicatorRow.verticalCenter
                     text: "…"
@@ -2465,6 +2468,7 @@ PanelWindow {
                 }
 
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     text: I18n.tr("%1 windows").arg(root.totalWindows)
                     color: Qt.rgba(1, 1, 1, 0.60)
                     font { pixelSize: 10; weight: Font.DemiBold }

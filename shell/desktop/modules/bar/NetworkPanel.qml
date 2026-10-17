@@ -291,6 +291,7 @@ AnimatedPopupWindow {
         border.color: Qt.rgba(0.74, 0.95, 1, 0.28)
 
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             visible: false
             anchors { left: parent.left; top: parent.top; leftMargin: 13; topMargin: 10 }
             text: NetworkService.wifiEnabled ? I18n.tr("Nearby Wi‑Fi") : I18n.tr("Wi‑Fi is off")
@@ -343,6 +344,7 @@ AnimatedPopupWindow {
                 }
 
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     visible: modelData.active
                     anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
                     text: "✓"
@@ -412,6 +414,7 @@ AnimatedPopupWindow {
                     }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     // Reserve the checkmark slot in every row. Connected
                     // state changes only the checkmark, never alignment.
                     anchors {
@@ -499,6 +502,7 @@ AnimatedPopupWindow {
                 }
 
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
                     text: I18n.tr("WLAN settings…")
                     color: panelSurface.foregroundColor
@@ -597,6 +601,7 @@ AnimatedPopupWindow {
                 anchors { left: parent.left; right: parent.right; top: joinWifiGlyph.bottom; topMargin: 10; leftMargin: 22; rightMargin: 22 }
                 spacing: 9
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     width: parent.width
                     text: I18n.tr("Join \u201C%1\u201D")
                         .arg(panel.selectedNetwork?.ssid || "Wi‑Fi")

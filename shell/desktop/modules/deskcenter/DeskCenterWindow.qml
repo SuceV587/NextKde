@@ -450,6 +450,7 @@ PanelWindow {
                         ThemeService.foregroundColor.g,
                         ThemeService.foregroundColor.b, 0.16))
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     id: toolbarText
                     anchors.centerIn: parent
                     text: modelData.label
@@ -519,18 +520,21 @@ PanelWindow {
                         anchors.centerIn: parent
                         spacing: 5
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: root.widgetSymbols[modelData]
                             color: ThemeService.foregroundColor
                             font.pixelSize: 20
                         }
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: root.widgetLabels[modelData]
                             color: ThemeService.foregroundColor
                             font { pixelSize: 9; weight: Font.DemiBold }
                         }
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: active ? "−" : "+"
                             color: active ? "#ff453a" : ThemeService.accentColor
@@ -637,6 +641,7 @@ PanelWindow {
                 border.width: 1
                 border.color: AppearanceTokens.surface.pick(AppearanceTokens.colors.outlineVariant, Qt.rgba(1, 1, 1, 0.18))
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     id: sizeLabel
                     anchors.centerIn: parent
                     text: ({ small: I18n.tr("Small"), medium: I18n.tr("Medium"), large: I18n.tr("Large") })[
@@ -654,6 +659,7 @@ PanelWindow {
                 width: 26; height: 26; radius: 13
                 color: "#ff453a"
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors.centerIn: parent
                     text: "−"
                     color: "white"
@@ -676,6 +682,7 @@ PanelWindow {
                     AppearanceTokens.colors.primaryContainer,
                     Qt.rgba(0, 0, 0, 0.56))
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     id: editSizeText
                     anchors.centerIn: parent
                     text: ({ small: I18n.tr("Small"), medium: I18n.tr("Medium"), large: I18n.tr("Large") })[
@@ -878,6 +885,7 @@ PanelWindow {
                             Component.onCompleted: requestPaint()
                         }
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             id: timerTimeText
                             anchors.centerIn: parent
                             text: root.formattedTimer()
@@ -903,6 +911,7 @@ PanelWindow {
                             }
                         }
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             text: I18n.tr("Ends at %1").arg(root.formattedTimerEndTime())
                             color: Qt.rgba(1, 1, 1, 0.72)
                             font { pixelSize: 10; weight: Font.DemiBold }
@@ -925,6 +934,7 @@ PanelWindow {
 	                                border.color: AppearanceTokens.content.onBackdrop
 	                                    ? Qt.rgba(1, 1, 1, 0.72) : Qt.rgba(255 / 255, 165 / 255, 21 / 255, 0.72)
                                 Text {
+                                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                     anchors.centerIn: parent
                                     text: I18n.tr("%1 min").arg(modelData)
 	                                    color: AppearanceTokens.content.onBackdrop ? "white" : "#ffb028"
@@ -961,6 +971,7 @@ PanelWindow {
 	                                border.color: modelData.id !== "cancel"
 	                                    ? (AppearanceTokens.content.onBackdrop ? "white" : "#ffa515") : Qt.rgba(1, 1, 1, 0.22)
                                 Text {
+                                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                     anchors.centerIn: parent
                                     text: modelData.label
 	                                    color: modelData.id !== "cancel"
@@ -985,6 +996,7 @@ PanelWindow {
                         }
                     }
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         anchors { left: parent.left; top: parent.top; leftMargin: 10; topMargin: 7 }
                         text: "×"
                         color: Qt.rgba(1, 1, 1, 0.74)
@@ -1014,6 +1026,7 @@ PanelWindow {
                     color: "#ff626a"
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 5 }
                     text: I18n.fmt(calendarClock.dayDate, I18n.tr("yyyy/MM"))
                     color: "white"
@@ -1021,6 +1034,7 @@ PanelWindow {
                 }
                 Text { anchors.centerIn: parent; anchors.verticalCenterOffset: 10; text: I18n.fmt(calendarClock.dayDate, I18n.tr("d dddd")); color: "#111118"; font { pixelSize: 24; weight: Font.Bold } }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 10 }
                     text: I18n.fmt(calendarClock.dayDate, "dddd")
                     color: "#3c3c43"
@@ -1177,6 +1191,7 @@ PanelWindow {
                     }
 
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         anchors { right: parent.right; top: parent.top; rightMargin: 26; topMargin: 8 }
                         visible: WeatherTheme.isStorm(WeatherService.weatherCode)
                         text: "ϟ"
@@ -1186,30 +1201,35 @@ PanelWindow {
                     }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { left: parent.left; top: parent.top; leftMargin: 16; topMargin: 12 }
                     text: WeatherService.cityName
 	                    color: AppearanceTokens.content.ink("white")
                     font { pixelSize: 15; weight: Font.DemiBold }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { left: parent.left; top: parent.top; leftMargin: 15; topMargin: 29 }
                     text: WeatherService.temperature
 	                    color: AppearanceTokens.content.ink("white")
                     font { family: "SF Pro Display"; pixelSize: Math.min(42, parent.height * 0.32); weight: Font.Normal }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { right: parent.right; top: parent.top; rightMargin: 18; topMargin: 14 }
                     text: WeatherService.conditionSymbol(WeatherService.weatherCode, WeatherService.isDay)
 	                    color: AppearanceTokens.content.ink(root.weatherTheme.accent)
                     font.pixelSize: Math.min(34, parent.height * 0.26)
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { right: parent.right; top: parent.top; rightMargin: 16; topMargin: 48 }
                     text: WeatherService.conditionText(WeatherService.weatherCode)
 	                    color: AppearanceTokens.content.ink("white")
                     font { pixelSize: 15; weight: Font.DemiBold }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { right: parent.right; bottom: weeklyForecast.top; rightMargin: 16; bottomMargin: 3 }
                     text: WeatherService.forecastDays.length > 0
                         ? I18n.tr("High %1°  Low %2°").arg(WeatherService.forecastDays[0].high)
@@ -1231,18 +1251,21 @@ PanelWindow {
                             width: weeklyForecast.width / 7
                             height: weeklyForecast.height
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors { horizontalCenter: parent.horizontalCenter; top: parent.top }
                                 text: WeatherService.forecastLabel(modelData.date, index)
 	                                color: AppearanceTokens.content.ink(Qt.rgba(1, 1, 1, 0.72), 0.72)
                                 font { pixelSize: 10; weight: Font.DemiBold }
                             }
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors { horizontalCenter: parent.horizontalCenter; verticalCenter: parent.verticalCenter }
                                 text: WeatherService.conditionSymbol(modelData.code, true)
 	                                color: AppearanceTokens.content.ink(root.weatherTheme.accent)
                                 font.pixelSize: 22
                             }
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
                                 text: modelData.high + "°/" + modelData.low + "°"
 	                                color: AppearanceTokens.content.ink("white")
@@ -1251,6 +1274,7 @@ PanelWindow {
                         }
                     }
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         anchors.centerIn: parent
                         visible: WeatherService.forecastDays.length === 0
                         text: WeatherService.loading ? I18n.tr("Loading 7-day forecast…") : I18n.tr("No 7-day forecast")
@@ -1302,12 +1326,14 @@ PanelWindow {
                                 Component.onCompleted: requestPaint()
                             }
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors { horizontalCenter: parent.horizontalCenter; top: ring.bottom; topMargin: 2 }
                                 text: modelData.value
                                 color: "#36313a"
                                 font { pixelSize: 10; weight: Font.Bold }
                             }
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
                                 text: modelData.label
                                 color: "#5e5660"
@@ -1333,6 +1359,7 @@ PanelWindow {
                     color: Qt.rgba(0, 0, 0, 0.34)
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { left: parent.left; bottom: parent.bottom; leftMargin: 12; bottomMargin: 8 }
                     text: I18n.tr("Featured")
                     color: "white"
@@ -1457,6 +1484,7 @@ PanelWindow {
                             size: Math.max(10, activityRings.width * 0.1)
                         }
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: activityRings.labels[activityRings.hoveredMetric] + " "
                                 + Math.round(activityRings.values[activityRings.hoveredMetric] * 100) + "%"
@@ -1510,12 +1538,14 @@ PanelWindow {
                         Column {
                             spacing: -1
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 text: temperatureSummary.available
                                     ? Math.round(temperatureSummary.currentC) + "°" : "--"
 	                                color: AppearanceTokens.content.ink("#7d7782")
                                 font { family: "SF Pro Display"; pixelSize: Math.max(10, temperatureSummary.height * 0.42); weight: Font.DemiBold }
                             }
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 text: I18n.tr("Now")
 	                                color: AppearanceTokens.content.ink(Qt.rgba(0.49, 0.47, 0.51, 0.76), 0.72)
                                 font.pixelSize: Math.max(8, temperatureSummary.height * 0.25)
@@ -1530,12 +1560,14 @@ PanelWindow {
                         Column {
                             spacing: -1
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 text: temperatureSummary.available
                                     ? Math.round(temperatureSummary.maximum5MinuteC) + "°" : "--"
 	                                color: AppearanceTokens.content.ink("#7d7782")
                                 font { family: "SF Pro Display"; pixelSize: Math.max(10, temperatureSummary.height * 0.42); weight: Font.DemiBold }
                             }
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 text: I18n.tr("High")
 	                                color: AppearanceTokens.content.ink(Qt.rgba(0.49, 0.47, 0.51, 0.76), 0.72)
                                 font.pixelSize: Math.max(8, temperatureSummary.height * 0.25)
@@ -1553,6 +1585,7 @@ PanelWindow {
                         width: parent.width
                         height: (parent.height - parent.spacing * 2) / 3
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             id: memoryTrendLabel
                             anchors { left: parent.left; top: parent.top }
                             text: I18n.tr("Memory  %1%").arg(Math.round(activityRings.memoryValue * 100))
@@ -1575,6 +1608,7 @@ PanelWindow {
                         width: parent.width
                         height: (parent.height - parent.spacing * 2) / 3
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             id: cpuTrendLabel
                             anchors { left: parent.left; top: parent.top }
                             text: I18n.tr("CPU  %1%").arg(Math.round(activityRings.cpuValue * 100))
@@ -1596,6 +1630,7 @@ PanelWindow {
                         width: parent.width
                         height: (parent.height - parent.spacing * 2) / 3
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             id: frequencyTrendLabel
                             anchors { left: parent.left; top: parent.top }
                             text: I18n.tr("Avg frequency  %1 MHz").arg(Math.round(systemContent.metrics.cpuFrequencyMhz ?? 0))
@@ -1644,6 +1679,7 @@ PanelWindow {
                             width: activityLeftPane.width
                             height: activityLeftPane.height * 0.3
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: uptimeHeatmap.hoveredDay
                                     ? I18n.tr("%1 · Uptime: %2").arg(uptimeHeatmap.hoveredDay.key)
@@ -1729,6 +1765,7 @@ PanelWindow {
 	                                        }
                                     }
                                     Text {
+                                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                         id: appDurationText
                                         anchors { right: appUsageRow.right; verticalCenter: appUsageRow.verticalCenter }
                                         text: root.formatDuration(modelData.seconds)
@@ -1736,6 +1773,7 @@ PanelWindow {
                                         font { family: "SF Pro Display"; pixelSize: 9 }
                                     }
                                     Text {
+                                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                         anchors { left: appUsageIcon.right; right: appDurationText.left; verticalCenter: appUsageRow.verticalCenter; leftMargin: 6; rightMargin: 6 }
                                         text: modelData.name || modelData.id
                                         elide: Text.ElideRight
@@ -1763,12 +1801,14 @@ PanelWindow {
                     color: "#f5c400"
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { left: parent.left; top: parent.top; leftMargin: 12; topMargin: 7 }
                     text: I18n.tr("Notes")
                     color: "white"
                     font { pixelSize: 11; weight: Font.Bold }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 12; rightMargin: 12; topMargin: 42 }
                     text: I18n.tr("No more notes for now")
                     color: "#333238"
@@ -1785,6 +1825,7 @@ PanelWindow {
                     Item {
                 anchors.fill: parent
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     text: I18n.tr("Desktop Workspace")
                     color: "white"
                     anchors { left: parent.left; top: parent.top; leftMargin: 18; topMargin: 42 }
@@ -1964,6 +2005,7 @@ PanelWindow {
                                 layer.enabled: true
                             }
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors.centerIn: parent
 	                                visible: !musicContent.hasPlayer
                                 text: "♫"
@@ -1980,6 +2022,7 @@ PanelWindow {
                         width: musicBody.width - x
                         height: musicBody.height
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             id: musicTitle
                             anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; verticalCenterOffset: -22 }
                             text: musicContent.player?.trackTitle || I18n.tr("Nothing playing")
@@ -1989,6 +2032,7 @@ PanelWindow {
                             font { pixelSize: 14; weight: Font.DemiBold }
                         }
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             id: musicArtist
                             anchors { left: parent.left; right: parent.right; top: musicTitle.bottom; topMargin: 3 }
                             text: musicContent.player?.trackArtist || ""
@@ -2050,12 +2094,14 @@ PanelWindow {
                             height: 11
                             visible: musicProgressTrack.visible
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors.left: parent.left
                                 text: musicContent.formatPlaybackTime(musicContent.player?.position ?? 0)
 	                                color: AppearanceTokens.content.ink(Qt.rgba(1, 1, 1, 0.60), 0.60)
                                 font.pixelSize: 8
                             }
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 anchors.right: parent.right
                                 text: musicContent.formatPlaybackTime(musicContent.safeLength)
 	                                color: AppearanceTokens.content.ink(Qt.rgba(1, 1, 1, 0.60), 0.60)
@@ -2216,12 +2262,14 @@ PanelWindow {
                             }
                         }
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             anchors { left: parent.left; top: parent.top; margins: 14 }
                             text: I18n.tr("Reminders")
                             color: AppearanceTokens.content.ink("white")
                             font { pixelSize: 13; weight: Font.Bold }
                         }
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             visible: todoContent.widgetSize === "small"
                             anchors.centerIn: parent
                             anchors.verticalCenterOffset: 12
@@ -2230,6 +2278,7 @@ PanelWindow {
                             font { pixelSize: 38; weight: Font.DemiBold }
                         }
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             visible: todoContent.widgetSize === "small"
                             anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 14 }
                             text: I18n.tr("todos")
@@ -2256,6 +2305,7 @@ PanelWindow {
                                         border.color: AppearanceTokens.content.accent(AppearanceTokens.colors.primary, "#ff5d66", 0.7)
                                     }
                                     Text {
+                                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                         anchors { left: parent.left; right: dueText.left; verticalCenter: parent.verticalCenter; leftMargin: 22; rightMargin: 8 }
                                         text: String(PimWidgetService.value(parent.modelData, "title",
                                             I18n.tr("Untitled task")))
@@ -2264,6 +2314,7 @@ PanelWindow {
                                         font { pixelSize: 11; weight: Font.Medium }
                                     }
                                     Text {
+                                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                         id: dueText
                                         anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                                         text: String(PimWidgetService.value(parent.modelData, "due", "")).slice(0, 10)
@@ -2285,6 +2336,7 @@ PanelWindow {
                                 }
                             }
                             Text {
+                            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                 visible: todoContent.tasks.length === 0
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 // Distinguish a starting service from one
@@ -2376,6 +2428,7 @@ PanelWindow {
                 }
 
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors.centerIn: calendarHeader
                     text: I18n.fmt(calendarClock.dayDate, I18n.tr("yyyy/MM"))
                     horizontalAlignment: Text.AlignHCenter
@@ -2383,12 +2436,14 @@ PanelWindow {
                     font { pixelSize: 15; weight: Font.Bold }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { left: parent.left; top: parent.top; leftMargin: 15; topMargin: calendarContent.headerHeight + 7 }
                     text: I18n.fmt(calendarClock.dayDate, I18n.tr("d"))
 	                    color: AppearanceTokens.content.ink("#15151a")
                     font { family: "SF Pro Display"; pixelSize: 32; weight: Font.DemiBold }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { left: parent.left; top: parent.top; leftMargin: 16; topMargin: calendarContent.headerHeight + 46 }
                     text: I18n.fmt(calendarClock.dayDate, "ddd") + " · " + root.lunarDate(calendarClock.dayDate)
 	                    color: AppearanceTokens.content.ink("#4d4d55", 0.74)
@@ -2412,6 +2467,7 @@ PanelWindow {
                         }
                     }
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         visible: calendarContent.todayEvents.length === 0
                             && PimWidgetService.state === PimWidgetService.stateUnavailable
                         text: I18n.tr("Calendar service not connected")
@@ -2463,6 +2519,7 @@ PanelWindow {
 	                                        : "transparent"
                                 }
                                 Text {
+                                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                                     anchors.centerIn: parent
                                     visible: parent.day > 0 && parent.day <= calendarContent.daysInMonth
                                     text: parent.day
@@ -3429,6 +3486,7 @@ PanelWindow {
             radius: 16
             z: 19
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 anchors.centerIn: parent
                 text: I18n.tr("Copy to desktop")
                 color: Qt.rgba(1, 1, 1, 0.78)
@@ -3577,6 +3635,7 @@ PanelWindow {
                         outlined: true
                     }
                     Text {
+                    renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                         anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: desktopFileGrid.iconSize + 12; leftMargin: 5; rightMargin: 5 }
                         text: desktopFileGrid.displayName(modelData)
                         elide: Text.ElideRight
@@ -3836,6 +3895,7 @@ PanelWindow {
 
                         // Emoji centered inside the folder body.
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             anchors {
                                 horizontalCenter: parent.horizontalCenter
                                 top: parent.top
@@ -3877,6 +3937,7 @@ PanelWindow {
                     }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: desktopFileGrid.iconSize + 12; leftMargin: 5; rightMargin: 5 }
                     opacity: fileDelegate.isRenaming ? 0 : 1
                     visible: opacity > 0.01
@@ -4227,12 +4288,14 @@ PanelWindow {
                 })
             }
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 anchors { left: parent.left; top: parent.top; leftMargin: 16; topMargin: 14 }
                 text: I18n.tr("Open With")
                 color: "white"
                 font { pixelSize: 13; weight: Font.DemiBold }
             }
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 16; rightMargin: 16; topMargin: 36 }
                 text: "“" + (openWithDialog.entry?.name ?? "") + "”"
                 color: Qt.rgba(1, 1, 1, 0.54)
@@ -4240,6 +4303,7 @@ PanelWindow {
                 font.pixelSize: 10
             }
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 16; rightMargin: 16; topMargin: 57 }
                 text: root.desktopFiles.openWith.mime || I18n.tr("Unrecognized file type")
                 color: Qt.rgba(1, 1, 1, 0.42)
@@ -4258,6 +4322,7 @@ PanelWindow {
                         color: openWithDialog.selectedHandler === modelData
                             ? Qt.rgba(0, 0, 0, 0.54) : Qt.rgba(1, 1, 1, 0.07)
                         Text {
+                        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                             anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 9; rightMargin: 9 }
                             text: openWithDialog.appName(modelData)
                             color: "white"
@@ -4268,6 +4333,7 @@ PanelWindow {
                     }
                 }
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     visible: root.desktopFiles.openWith.handlers.length === 0
                     text: I18n.tr("No associated applications found on the system.")
                     color: Qt.rgba(1, 1, 1, 0.52)

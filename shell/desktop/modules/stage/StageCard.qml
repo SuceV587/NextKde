@@ -7,6 +7,7 @@ import org.kde.taskmanager
 import "../../../shared/qml/i18n"
 import qs.desktop.modules.dock
 import "stage-geometry.mjs" as StageGeo
+import qs.desktop.modules.common
 
 // StageCard — 台前侧栏的单张应用卡片（同应用窗口堆叠在同一张卡上）。
 // 纯展示组件：编排（快照/预测卡位/最小化派发）都在 StageSidebarWindow，
@@ -491,6 +492,7 @@ Item {
             height: 24
 
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 anchors {
                     left: parent.left
                     // 合并卡让位给拆分芯片（芯片亮起盖住标题尾部 ~18px，
@@ -536,6 +538,7 @@ Item {
                     ? "#ef4444" : Qt.rgba(0.04, 0.055, 0.08, 0.45)
 
                 Text {
+                renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                     anchors.centerIn: parent
                     text: "✕"
                     font.pixelSize: 11
@@ -685,6 +688,7 @@ Item {
             // 缩略图未就绪时的占位：只留标题文本居中——应用图标改由左下
             // 角的正视图标排承担（居中大图标是旧占位形态，用户定稿移除）
             Text {
+            renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
                 anchors.centerIn: parent
                 visible: !preview.visible && !liveStream.visible
                 width: Math.min(parent.width - 16, contentWidth)
@@ -992,6 +996,7 @@ Item {
 
         // 更多窗口收进 "+N"（x 定位同上——不碰水平锚点）
         Text {
+        renderType: AppearanceConfigService.nativeTextRendering ? Text.NativeRendering : Text.QtRendering
             visible: card.iconPairs.length > iconRow.visibleCount
             anchors.verticalCenter: parent.verticalCenter
             x: card.rightSide ? -width - 5 : parent.width + 5

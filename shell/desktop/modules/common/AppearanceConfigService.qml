@@ -177,6 +177,16 @@ QtObject {
     property bool barMacStyle: false
     property real barMacTint: 0.30
     property string dockWindowAnimationStyle: "scale"
+    // Shell text rendering. Off is Qt's default glyph rasterisation, whose
+    // per-channel (LCD subpixel) coverage tints every glyph edge; on a
+    // translucent surface each channel then blends with a different backdrop,
+    // which reads as coloured fringing over the glass. On switches the shell's
+    // text to native, grayscale rasterisation and removes it, at the cost of
+    // Qt's subpixel positioning and its gamma-corrected blending -- which is
+    // why it is a choice and not the default. Every Text drawn on a shell
+    // surface reads this flag; GlassText applies it once for the glass
+    // surfaces. The settings page writes it.
+    property bool nativeTextRendering: false
     // Which individual surfaces are shown. Both lists hold the ids that are
     // *hidden*; an absent id is visible, so a newly added widget or StatusArea
     // cell appears by default and an upgrade never silently removes one.
@@ -575,6 +585,15 @@ QtObject {
         return true
     }
 
+    function updateNativeTextRendering(rawValue) {
+        const value = _toBool(rawValue)
+        if (nativeTextRendering === value)
+            return false
+        nativeTextRendering = value
+        saveTimer.restart()
+        return true
+    }
+
     function updateDockWindowAnimationStyle(rawStyle) {
         const style = String(rawStyle)
         if (!isValidDockWindowAnimationStyle(style)
@@ -690,6 +709,7 @@ QtObject {
             barLayoutMode: service.barLayoutMode,
             barMacStyle: service.barMacStyle,
             barMacTint: service.barMacTint,
+            nativeTextRendering: service.nativeTextRendering,
             dockWindowAnimationStyle: service.dockWindowAnimationStyle,
             // Sorted before writing so a reorder in the UI never produces a
             // spurious diff, and so the file stays readable by hand.
@@ -774,6 +794,14 @@ QtObject {
                     // so a missing pair is not a reason to rewrite the file.
                     const hasBarMacStyle = typeof object.barMacStyle === "boolean"
                         && Number.isFinite(Number(object.barMacTint))
+                    // Not part of the version gate: a file written before this
+                    // key carries Qt's default rasterisation, which is exactly
+                    // what those installations already render with, so a
+                    // missing key is applied as off rather than rewriting the
+                    // file.
+                    const nativeTextRendering = object.nativeTextRendering
+                    const hasNativeTextRendering =
+                        typeof nativeTextRendering === "boolean"
                     const animationStyle = String(object.dockWindowAnimationStyle ?? "")
                     // v28 adds per-surface visibility. Files written before it
                     // carry neither key, and the empty arrays they fall back to
@@ -842,6 +870,8 @@ QtObject {
                         if (Number.isFinite(barMacTint))
                             service.barMacTint = barMacTint
                     }
+                    if (hasNativeTextRendering)
+                        service.nativeTextRendering = nativeTextRendering
                     if (service.isValidDockWindowAnimationStyle(animationStyle))
                         service.dockWindowAnimationStyle = animationStyle
                     if (service.isValidGlassStyle(glassStyle))

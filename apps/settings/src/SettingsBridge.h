@@ -113,6 +113,7 @@ public:
     Q_INVOKABLE void updateMaterialColorScheme(const QString& scheme);
     Q_INVOKABLE void updateBarIntegratedWithDock(bool enabled);
     Q_INVOKABLE void updateGlassFollowsAppearanceMode(bool enabled);
+    Q_INVOKABLE void updateNativeTextRendering(bool enabled);
     Q_INVOKABLE void updateSpatialWallpaperEnabled(bool enabled);
     Q_INVOKABLE void updateBarVisibilityMode(const QString& mode);
     Q_INVOKABLE void updateBarLayoutMode(const QString& mode);
